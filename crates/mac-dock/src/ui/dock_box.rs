@@ -15,6 +15,9 @@ pub fn build(
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     data_home: &Path,
+    pinned_file: &Path,
+    rebuild: &Rc<dyn Fn()>,
+    win: &gtk4::ApplicationWindow,
 ) -> gtk4::Box {
     let inner_orientation = if config.is_vertical() {
         gtk4::Orientation::Vertical
@@ -25,14 +28,9 @@ pub fn build(
 
     // Pack into alignment box
     match config.alignment.as_str() {
-        "start" => {
-            alignment_box.prepend(&main_box);
-        }
-        "end" => {
-            alignment_box.append(&main_box);
-        }
+        "start" => alignment_box.prepend(&main_box),
+        "end" => alignment_box.append(&main_box),
         _ => {
-            // center: the alignment box handles centering via halign/valign
             alignment_box.append(&main_box);
             main_box.set_halign(gtk4::Align::Center);
             main_box.set_valign(gtk4::Align::Center);
@@ -42,10 +40,7 @@ pub fn build(
     let mut s = state.borrow_mut();
 
     // Reload pinned items
-    let pinned_path = dock_common::config::paths::cache_dir()
-        .unwrap_or_default()
-        .join("nwg-dock-pinned");
-    s.pinned = pinning::load_pinned(&pinned_path);
+    s.pinned = pinning::load_pinned(pinned_file);
 
     // Collect all unique items (pinned first, then running tasks)
     let mut all_items: Vec<String> = Vec::new();
@@ -57,17 +52,15 @@ pub fn build(
 
     // Sort clients by workspace then class
     s.clients.sort_by(|a, b| {
-        a.workspace
-            .id
-            .cmp(&b.workspace.id)
-            .then_with(|| a.class.cmp(&b.class))
+        a.workspace.id.cmp(&b.workspace.id).then_with(|| a.class.cmp(&b.class))
     });
 
     // Filter out ignored workspaces
     let ignored_ws = config.ignored_workspaces();
     s.clients.retain(|cl| {
         let ws_base = cl.workspace.name.split(':').next().unwrap_or("");
-        !ignored_ws.contains(&cl.workspace.id.to_string()) && !ignored_ws.iter().any(|iw| iw == ws_base)
+        !ignored_ws.contains(&cl.workspace.id.to_string())
+            && !ignored_ws.iter().any(|iw| iw == ws_base)
     });
 
     let ignored_classes = config.ignored_classes();
@@ -90,13 +83,14 @@ pub fn build(
         s.img_size_scaled = config.icon_size;
     }
 
-    drop(s); // Release borrow before creating buttons
+    drop(s);
 
     // Launcher at start
     if config.launcher_pos == "start"
-        && let Some(btn) = buttons::launcher_button(config, state, data_home) {
-            main_box.append(&btn);
-        }
+        && let Some(btn) = buttons::launcher_button(config, state, data_home, win)
+    {
+        main_box.append(&btn);
+    }
 
     // Pinned items
     let mut already_added: Vec<String> = Vec::new();
@@ -117,16 +111,11 @@ pub fn build(
 
         let instances = state.borrow().task_instances(pin);
         if instances.is_empty() {
-            // Pinned but not running
-            let btn = buttons::pinned_button(pin, config, state, data_home);
+            let btn = buttons::pinned_button(pin, config, state, data_home, pinned_file, rebuild);
             main_box.append(&btn);
         } else if instances.len() == 1 || !already_added.contains(pin) {
             let btn = buttons::task_button(
-                &instances[0],
-                &instances,
-                config,
-                state,
-                data_home,
+                &instances[0], &instances, config, state, data_home, pinned_file, rebuild,
             );
             if instances[0].class == active_class && !config.autohide {
                 btn.set_widget_name("active");
@@ -149,11 +138,7 @@ pub fn build(
         let instances = state.borrow().task_instances(&task.class);
         if instances.len() == 1 || !already_added.contains(&task.class) {
             let btn = buttons::task_button(
-                task,
-                &instances,
-                config,
-                state,
-                data_home,
+                task, &instances, config, state, data_home, pinned_file, rebuild,
             );
             if task.class == active_class && !config.autohide {
                 btn.set_widget_name("active");
@@ -165,9 +150,10 @@ pub fn build(
 
     // Launcher at end
     if config.launcher_pos == "end"
-        && let Some(btn) = buttons::launcher_button(config, state, data_home) {
-            main_box.append(&btn);
-        }
+        && let Some(btn) = buttons::launcher_button(config, state, data_home, win)
+    {
+        main_box.append(&btn);
+    }
 
     main_box
 }

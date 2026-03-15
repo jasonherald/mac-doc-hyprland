@@ -58,16 +58,39 @@ pub fn default_categories() -> Vec<Category> {
 }
 
 /// Assigns an entry to a main category based on its Categories field.
-/// Returns the first matching category name, or "Other".
+/// Returns the first matching main category name, or "Other".
+///
+/// Handles secondary categories: Science/Education→Office, Settings/PackageManager→System,
+/// Audio/Video→AudioVideo, etc.
 pub fn assign_category(categories_field: &str) -> &'static str {
-    let known = [
+    let primary = [
         "AudioVideo", "Development", "Game", "Graphics", "Network", "Office", "System", "Utility",
+    ];
+
+    // Secondary → primary mappings
+    let secondary: &[(&str, &str)] = &[
+        ("Audio", "AudioVideo"),
+        ("Video", "AudioVideo"),
+        ("Science", "Office"),
+        ("Education", "Office"),
+        ("Settings", "System"),
+        ("DesktopSettings", "System"),
+        ("PackageManager", "System"),
+        ("HardwareSettings", "System"),
     ];
 
     for cat in categories_field.split(';') {
         let cat = cat.trim();
-        if known.contains(&cat) {
-            return known.iter().find(|&&k| k == cat).unwrap();
+        if cat.is_empty() {
+            continue;
+        }
+        // Check primary match first
+        if let Some(&matched) = primary.iter().find(|&&k| k == cat) {
+            return matched;
+        }
+        // Check secondary mapping
+        if let Some(&(_, mapped)) = secondary.iter().find(|&&(k, _)| k == cat) {
+            return mapped;
         }
     }
 
@@ -88,5 +111,14 @@ mod tests {
     fn assigns_other_for_unknown() {
         assert_eq!(assign_category("FooBar;Baz;"), "Other");
         assert_eq!(assign_category(""), "Other");
+    }
+
+    #[test]
+    fn assigns_secondary_categories() {
+        assert_eq!(assign_category("Science;Math;"), "Office");
+        assert_eq!(assign_category("Education;"), "Office");
+        assert_eq!(assign_category("Settings;DesktopSettings;"), "System");
+        assert_eq!(assign_category("Audio;Player;"), "AudioVideo");
+        assert_eq!(assign_category("PackageManager;"), "System");
     }
 }

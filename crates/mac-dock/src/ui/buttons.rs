@@ -1,5 +1,6 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
+use crate::ui::menus;
 use dock_common::desktop::icons;
 use dock_common::hyprland::types::HyprClient;
 use gtk4::prelude::*;
@@ -10,7 +11,7 @@ use std::rc::Rc;
 /// Indicator SVG filenames based on instance count and orientation.
 struct IndicatorAsset {
     name: &'static str,
-    width_divisor: i32,  // 1 = full size, 8 = 1/8 size
+    width_divisor: i32,
     height_divisor: i32,
 }
 
@@ -25,13 +26,7 @@ fn indicator_asset(count: usize, vertical: bool) -> IndicatorAsset {
     }
 }
 
-/// Creates an indicator image widget (the dot/bar below/beside the icon).
-fn indicator_image(
-    data_home: &Path,
-    count: usize,
-    vertical: bool,
-    img_size: i32,
-) -> Option<gtk4::Image> {
+fn indicator_image(data_home: &Path, count: usize, vertical: bool, img_size: i32) -> Option<gtk4::Image> {
     let asset = indicator_asset(count, vertical);
     let path = data_home.join("nwg-dock-hyprland/images").join(asset.name);
     let w = img_size / asset.width_divisor;
@@ -40,7 +35,6 @@ fn indicator_image(
     Some(gtk4::Image::from_pixbuf(Some(&pixbuf)))
 }
 
-/// Packs a button and indicator into a box with correct ordering for position.
 fn pack_button_box(
     button: &gtk4::Button,
     indicator: Option<&gtk4::Image>,
@@ -53,7 +47,6 @@ fn pack_button_box(
         gtk4::Orientation::Vertical
     };
     let bx = gtk4::Box::new(orientation, 0);
-
     let at_start = position == "left" || position == "top";
 
     if let Some(img) = indicator {
@@ -67,7 +60,6 @@ fn pack_button_box(
     } else {
         bx.append(button);
     }
-
     bx
 }
 
@@ -77,6 +69,8 @@ pub fn pinned_button(
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     data_home: &Path,
+    pinned_file: &Path,
+    rebuild: &Rc<dyn Fn()>,
 ) -> gtk4::Box {
     let img_size = state.borrow().img_size_scaled;
     let app_dirs = state.borrow().app_dirs.clone();
@@ -92,12 +86,27 @@ pub fn pinned_button(
     }
     button.set_tooltip_text(Some(&icons::get_name(app_id, &app_dirs)));
 
-    // Click → launch
+    // Left-click → launch
     let id = app_id.to_string();
     let dirs = app_dirs.clone();
     button.connect_clicked(move |_| {
         dock_common::launch::launch(&id, &dirs);
     });
+
+    // Right-click → unpin context menu
+    let id = app_id.to_string();
+    let state_ref = Rc::clone(state);
+    let pinned_path = pinned_file.to_path_buf();
+    let rebuild_ref = Rc::clone(rebuild);
+    let gesture = gtk4::GestureClick::new();
+    gesture.set_button(3);
+    gesture.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        if let Some(widget) = gesture.widget() {
+            menus::show_pinned_context_menu(&id, &state_ref, &pinned_path, &rebuild_ref, &widget);
+        }
+    });
+    button.add_controller(gesture);
 
     let indicator = indicator_image(data_home, 0, config.is_vertical(), img_size);
     pack_button_box(&button, indicator.as_ref(), &config.position, config.is_vertical())
@@ -110,6 +119,8 @@ pub fn task_button(
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     data_home: &Path,
+    pinned_file: &Path,
+    rebuild: &Rc<dyn Fn()>,
 ) -> gtk4::Box {
     let img_size = state.borrow().img_size_scaled;
     let app_dirs = state.borrow().app_dirs.clone();
@@ -125,7 +136,7 @@ pub fn task_button(
     }
     button.set_tooltip_text(Some(&icons::get_name(&client.class, &app_dirs)));
 
-    // Click behavior depends on instance count
+    // Left-click: single instance → focus, multiple → show instance menu
     if instances.len() == 1 {
         let addr = client.address.clone();
         let ws_name = client.workspace.name.clone();
@@ -133,21 +144,43 @@ pub fn task_button(
             focus_window(&addr, &ws_name);
         });
     } else {
-        // Multiple instances — we'll handle this via menus in the click handler
-        // For now, focus the first instance
-        let addr = client.address.clone();
-        let ws_name = client.workspace.name.clone();
-        button.connect_clicked(move |_| {
-            focus_window(&addr, &ws_name);
+        let insts = instances.to_vec();
+        button.connect_clicked(move |btn| {
+            menus::show_client_menu(&insts, btn);
         });
     }
 
-    let indicator = indicator_image(
-        data_home,
-        instances.len(),
-        config.is_vertical(),
-        img_size,
-    );
+    // Middle-click → launch new instance
+    let class = client.class.clone();
+    let dirs = app_dirs.clone();
+    let middle = gtk4::GestureClick::new();
+    middle.set_button(2);
+    middle.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        dock_common::launch::launch(&class, &dirs);
+    });
+    button.add_controller(middle);
+
+    // Right-click → context menu
+    let class = client.class.clone();
+    let insts = instances.to_vec();
+    let config_ref = config.clone();
+    let state_ref = Rc::clone(state);
+    let pinned_path = pinned_file.to_path_buf();
+    let rebuild_ref = Rc::clone(rebuild);
+    let right = gtk4::GestureClick::new();
+    right.set_button(3);
+    right.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        if let Some(widget) = gesture.widget() {
+            menus::show_context_menu(
+                &class, &insts, &config_ref, &state_ref, &pinned_path, &rebuild_ref, &widget,
+            );
+        }
+    });
+    button.add_controller(right);
+
+    let indicator = indicator_image(data_home, instances.len(), config.is_vertical(), img_size);
     pack_button_box(&button, indicator.as_ref(), &config.position, config.is_vertical())
 }
 
@@ -156,6 +189,7 @@ pub fn launcher_button(
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     data_home: &Path,
+    win: &gtk4::ApplicationWindow,
 ) -> Option<gtk4::Box> {
     if config.nolauncher || config.launcher_cmd.is_empty() {
         return None;
@@ -171,13 +205,12 @@ pub fn launcher_button(
         icons::create_pixbuf(&config.ico, img_size)
     };
 
-    if let Some(pb) = pixbuf {
-        button.set_child(Some(&gtk4::Image::from_pixbuf(Some(&pb))));
-    } else {
-        return None;
-    }
+    let pb = pixbuf?;
+    button.set_child(Some(&gtk4::Image::from_pixbuf(Some(&pb))));
 
     let cmd = config.launcher_cmd.clone();
+    let autohide = config.autohide;
+    let win_ref = win.clone();
     button.connect_clicked(move |_| {
         let elements: Vec<&str> = cmd.split_whitespace().collect();
         if let Some((&prog, args)) = elements.split_first() {
@@ -186,6 +219,9 @@ pub fn launcher_button(
             if let Err(e) = command.spawn() {
                 log::warn!("Unable to start launcher: {}", e);
             }
+        }
+        if autohide {
+            win_ref.set_visible(false);
         }
     });
 
@@ -198,18 +234,16 @@ pub fn launcher_button(
     ))
 }
 
-/// Focuses a window by address, handling special workspaces.
 fn focus_window(address: &str, workspace_name: &str) {
     if workspace_name.starts_with("special") {
-        let special_name = workspace_name
-            .strip_prefix("special:")
-            .unwrap_or("");
-        let cmd = format!("dispatch togglespecialworkspace {}", special_name);
-        let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
+        let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
+        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+            "dispatch togglespecialworkspace {}", special_name
+        ));
     } else {
-        let cmd = format!("dispatch focuswindow address:{}", address);
-        let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
+        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+            "dispatch focuswindow address:{}", address
+        ));
     }
-    // Bring to top (fix #14 from original)
     let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");
 }

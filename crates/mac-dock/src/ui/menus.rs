@@ -1,207 +1,231 @@
-// Context menu functions — will be wired to button right-click handlers
-// when GTK4 gesture controllers are added.
-#![allow(dead_code)]
-
+use crate::config::DockConfig;
+use crate::state::DockState;
 use dock_common::hyprland::types::HyprClient;
 use dock_common::pinning;
-use gtk4::gio;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-use crate::state::DockState;
-
-/// Creates a popover menu listing all instances of a class (for multi-instance tasks).
-pub fn client_menu(
-    class: &str,
+/// Creates and shows a popover listing all instances of a class (for multi-instance left-click).
+pub fn show_client_menu(
     instances: &[HyprClient],
-    parent: &gtk4::Widget,
-) -> gtk4::PopoverMenu {
-    let menu = gio::Menu::new();
-
-    for (i, instance) in instances.iter().enumerate() {
-        let title = truncate_title(&instance.title, 25);
-        let label = format!("{} ({})", title, instance.workspace.name);
-        let action_name = format!("dock.focus-{}-{}", class, i);
-        menu.append(Some(&label), Some(&format!("win.{}", action_name)));
-    }
-
-    let popover = gtk4::PopoverMenu::from_model(Some(&menu));
-    popover.set_parent(parent);
-    popover
-}
-
-/// Creates a context menu for a task with window management actions.
-pub fn client_context_menu(
-    class: &str,
-    instances: &[HyprClient],
-    num_ws: i32,
-    state: &Rc<RefCell<DockState>>,
     parent: &impl IsA<gtk4::Widget>,
-) -> gtk4::PopoverMenu {
-    let menu = gio::Menu::new();
+) {
+    let popover = gtk4::Popover::new();
+    popover.set_parent(parent.upcast_ref());
 
-    // Per-instance sub-sections
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
     for instance in instances {
         let title = truncate_title(&instance.title, 25);
         let label = format!("{} ({})", title, instance.workspace.name);
-        let section = gio::Menu::new();
-        section.append(Some(&label), None);
-        section.append(Some("Close"), Some(&format!("dock.close.{}", instance.address)));
-        section.append(
-            Some("Toggle Floating"),
-            Some(&format!("dock.float.{}", instance.address)),
-        );
-        section.append(
-            Some("Fullscreen"),
-            Some(&format!("dock.fullscreen.{}", instance.address)),
-        );
+        let btn = gtk4::Button::with_label(&label);
+        btn.add_css_class("flat");
 
-        // Workspace move submenu
-        let ws_menu = gio::Menu::new();
-        for ws in 1..=num_ws {
-            ws_menu.append(
-                Some(&format!("→ WS {}", ws)),
-                Some(&format!("dock.movews.{}.{}", instance.address, ws)),
-            );
-        }
-        section.append_submenu(Some("Move to..."), &ws_menu);
-        menu.append_section(None, &section);
+        let addr = instance.address.clone();
+        let ws_name = instance.workspace.name.clone();
+        let popover_ref = popover.clone();
+        btn.connect_clicked(move |_| {
+            popover_ref.popdown();
+            focus_window(&addr, &ws_name);
+        });
+        vbox.append(&btn);
     }
 
-    // Common actions
-    let common = gio::Menu::new();
-    common.append(Some("New window"), Some(&format!("dock.launch.{}", class)));
-    common.append(Some("Close all windows"), Some(&format!("dock.closeall.{}", class)));
-
-    let is_pinned = pinning::is_pinned(&state.borrow().pinned, class);
-    if is_pinned {
-        common.append(Some("Unpin"), Some(&format!("dock.unpin.{}", class)));
-    } else {
-        common.append(Some("Pin"), Some(&format!("dock.pin.{}", class)));
-    }
-    menu.append_section(None, &common);
-
-    let popover = gtk4::PopoverMenu::from_model(Some(&menu));
-    popover.set_parent(parent.upcast_ref());
-    popover
+    popover.set_child(Some(&vbox));
+    popover.popup();
 }
 
-/// Creates a simple context menu for pinned-only items (not running).
-pub fn pinned_context_menu(
-    task_id: &str,
-    parent: &impl IsA<gtk4::Widget>,
-) -> gtk4::PopoverMenu {
-    let menu = gio::Menu::new();
-    menu.append(Some("Unpin"), Some(&format!("dock.unpin.{}", task_id)));
-
-    let popover = gtk4::PopoverMenu::from_model(Some(&menu));
-    popover.set_parent(parent.upcast_ref());
-    popover
-}
-
-/// Installs GAction handlers for dock menu actions on the window.
-pub fn install_actions(
-    window: &gtk4::ApplicationWindow,
+/// Creates and shows a context menu for a task (right-click).
+pub fn show_context_menu(
+    class: &str,
+    instances: &[HyprClient],
+    config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     pinned_file: &Path,
-    rebuild_fn: Rc<dyn Fn()>,
+    rebuild: &Rc<dyn Fn()>,
+    parent: &impl IsA<gtk4::Widget>,
 ) {
-    let action_group = gio::SimpleActionGroup::new();
+    let popover = gtk4::Popover::new();
+    popover.set_parent(parent.upcast_ref());
 
-    // Generic dispatch action — handles close, float, fullscreen, movews, launch, pin, unpin
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
+
+    // Per-instance actions
+    for instance in instances {
+        let title = truncate_title(&instance.title, 25);
+        let header = gtk4::Label::new(Some(&format!("{} ({})", title, instance.workspace.name)));
+        header.add_css_class("heading");
+        vbox.append(&header);
+
+        let addr = instance.address.clone();
+        let actions_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+
+        // Close
+        let btn = gtk4::Button::with_label("Close");
+        btn.add_css_class("flat");
+        let a = addr.clone();
+        let p = popover.clone();
+        btn.connect_clicked(move |_| {
+            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                "dispatch closewindow address:{}", a
+            ));
+            p.popdown();
+        });
+        actions_box.append(&btn);
+
+        // Toggle floating
+        let btn = gtk4::Button::with_label("Toggle Floating");
+        btn.add_css_class("flat");
+        let a = addr.clone();
+        let p = popover.clone();
+        btn.connect_clicked(move |_| {
+            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                "dispatch togglefloating address:{}", a
+            ));
+            p.popdown();
+        });
+        actions_box.append(&btn);
+
+        // Fullscreen
+        let btn = gtk4::Button::with_label("Fullscreen");
+        btn.add_css_class("flat");
+        let a = addr.clone();
+        let p = popover.clone();
+        btn.connect_clicked(move |_| {
+            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                "dispatch fullscreen address:{}", a
+            ));
+            p.popdown();
+        });
+        actions_box.append(&btn);
+
+        // Move to workspace submenu
+        for ws in 1..=config.num_ws {
+            let btn = gtk4::Button::with_label(&format!("-> WS {}", ws));
+            btn.add_css_class("flat");
+            let a = addr.clone();
+            let p = popover.clone();
+            btn.connect_clicked(move |_| {
+                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                    "dispatch movetoworkspace {},address:{}", ws, a
+                ));
+                p.popdown();
+            });
+            actions_box.append(&btn);
+        }
+
+        vbox.append(&actions_box);
+        vbox.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
+    }
+
+    // New window
+    let btn = gtk4::Button::with_label("New window");
+    btn.add_css_class("flat");
+    let class_str = class.to_string();
+    let app_dirs = state.borrow().app_dirs.clone();
+    let p = popover.clone();
+    btn.connect_clicked(move |_| {
+        dock_common::launch::launch(&class_str, &app_dirs);
+        p.popdown();
+    });
+    vbox.append(&btn);
+
+    // Close all
+    let btn = gtk4::Button::with_label("Close all windows");
+    btn.add_css_class("flat");
+    let insts: Vec<String> = instances.iter().map(|i| i.address.clone()).collect();
+    let p = popover.clone();
+    btn.connect_clicked(move |_| {
+        for addr in &insts {
+            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                "dispatch closewindow address:{}", addr
+            ));
+        }
+        p.popdown();
+    });
+    vbox.append(&btn);
+
+    // Pin/Unpin
+    let is_pinned = pinning::is_pinned(&state.borrow().pinned, class);
+    let btn = if is_pinned {
+        gtk4::Button::with_label("Unpin")
+    } else {
+        gtk4::Button::with_label("Pin")
+    };
+    btn.add_css_class("flat");
+    let class_str = class.to_string();
     let state_ref = Rc::clone(state);
     let pinned_path = pinned_file.to_path_buf();
-    let rebuild = Rc::clone(&rebuild_fn);
-
-    // We use a single parameterized action that parses the action name
-    let dispatch = gio::SimpleAction::new("dispatch", Some(&String::static_variant_type()));
-    dispatch.connect_activate(move |_, param| {
-        if let Some(cmd) = param.and_then(|p| p.get::<String>()) {
-            handle_dock_action(&cmd, &state_ref, &pinned_path, &rebuild);
+    let rebuild_ref = Rc::clone(rebuild);
+    let p = popover.clone();
+    btn.connect_clicked(move |_| {
+        let mut s = state_ref.borrow_mut();
+        if is_pinned {
+            pinning::unpin_item(&mut s.pinned, &class_str);
+        } else {
+            pinning::pin_item(&mut s.pinned, &class_str);
         }
+        let _ = pinning::save_pinned(&s.pinned, &pinned_path);
+        drop(s);
+        p.popdown();
+        rebuild_ref();
     });
-    action_group.add_action(&dispatch);
+    vbox.append(&btn);
 
-    window.insert_action_group("dock", Some(&action_group));
+    popover.set_child(Some(&vbox));
+    popover.popup();
 }
 
-fn handle_dock_action(
-    cmd: &str,
+/// Creates and shows a simple unpin context menu for pinned-only items.
+pub fn show_pinned_context_menu(
+    task_id: &str,
     state: &Rc<RefCell<DockState>>,
-    pinned_path: &Path,
+    pinned_file: &Path,
     rebuild: &Rc<dyn Fn()>,
+    parent: &impl IsA<gtk4::Widget>,
 ) {
-    let parts: Vec<&str> = cmd.splitn(3, '.').collect();
-    if parts.is_empty() {
-        return;
-    }
+    let popover = gtk4::Popover::new();
+    popover.set_parent(parent.upcast_ref());
 
-    match parts[0] {
-        "close" if parts.len() >= 2 => {
-            let addr = parts[1];
-            let cmd = format!("dispatch closewindow address:{}", addr);
-            let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
-        }
-        "float" if parts.len() >= 2 => {
-            let addr = parts[1];
-            let cmd = format!("dispatch togglefloating address:{}", addr);
-            let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
-        }
-        "fullscreen" if parts.len() >= 2 => {
-            let addr = parts[1];
-            let cmd = format!("dispatch fullscreen address:{}", addr);
-            let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
-        }
-        "movews" if parts.len() >= 2 => {
-            // format: movews.ADDRESS.WS_NUM
-            let rest: Vec<&str> = parts[1].splitn(2, '.').collect();
-            if rest.len() == 2 {
-                let cmd = format!("dispatch movetoworkspace {},address:{}", rest[1], rest[0]);
-                let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
-            }
-        }
-        "launch" if parts.len() >= 2 => {
-            let class = parts[1];
-            let app_dirs = state.borrow().app_dirs.clone();
-            dock_common::launch::launch(class, &app_dirs);
-        }
-        "closeall" if parts.len() >= 2 => {
-            let class = parts[1];
-            let instances = state.borrow().task_instances(class);
-            for inst in &instances {
-                let cmd = format!("dispatch closewindow address:{}", inst.address);
-                let _ = dock_common::hyprland::ipc::hyprctl(&cmd);
-            }
-        }
-        "pin" if parts.len() >= 2 => {
-            let class = parts[1];
-            let mut s = state.borrow_mut();
-            if pinning::pin_item(&mut s.pinned, class) {
-                let _ = pinning::save_pinned(&s.pinned, pinned_path);
-            }
-            drop(s);
-            rebuild();
-        }
-        "unpin" if parts.len() >= 2 => {
-            let class = parts[1];
-            let mut s = state.borrow_mut();
-            if pinning::unpin_item(&mut s.pinned, class) {
-                let _ = pinning::save_pinned(&s.pinned, pinned_path);
-            }
-            drop(s);
-            rebuild();
-        }
-        _ => {
-            log::warn!("Unknown dock action: {}", cmd);
-        }
+    let btn = gtk4::Button::with_label("Unpin");
+    btn.add_css_class("flat");
+    let id = task_id.to_string();
+    let state_ref = Rc::clone(state);
+    let pinned_path = pinned_file.to_path_buf();
+    let rebuild_ref = Rc::clone(rebuild);
+    let p = popover.clone();
+    btn.connect_clicked(move |_| {
+        let mut s = state_ref.borrow_mut();
+        pinning::unpin_item(&mut s.pinned, &id);
+        let _ = pinning::save_pinned(&s.pinned, &pinned_path);
+        drop(s);
+        p.popdown();
+        rebuild_ref();
+    });
+
+    popover.set_child(Some(&btn));
+    popover.popup();
+}
+
+fn focus_window(address: &str, workspace_name: &str) {
+    if workspace_name.starts_with("special") {
+        let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
+        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+            "dispatch togglespecialworkspace {}", special_name
+        ));
+    } else {
+        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+            "dispatch focuswindow address:{}", address
+        ));
     }
+    let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");
 }
 
 fn truncate_title(title: &str, max: usize) -> String {
-    if title.len() > max {
-        format!("{}…", &title[..max])
+    if title.chars().count() > max {
+        let truncated: String = title.chars().take(max).collect();
+        format!("{}...", truncated)
     } else {
         title.to_string()
     }

@@ -153,38 +153,44 @@ fn main() {
         }
 
         // Build main box (the dock content)
-        let alignment_box_ref = alignment_box.clone();
-        let config_ref = Rc::clone(&config);
-        let state_ref = Rc::clone(&state);
-        let data_home_ref = Rc::clone(&data_home);
-
-        // Track current main_box for rebuild
+        // Use shared holder so rebuild can reference itself
+        type RebuildHolder = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
+        let rebuild_holder: RebuildHolder = Rc::new(RefCell::new(None));
         let current_main_box: Rc<RefCell<Option<gtk4::Box>>> = Rc::new(RefCell::new(None));
 
-        let rebuild = {
-            let alignment_box = alignment_box_ref.clone();
-            let config = Rc::clone(&config_ref);
-            let state = Rc::clone(&state_ref);
-            let data_home = Rc::clone(&data_home_ref);
+        {
+            let alignment_box = alignment_box.clone();
+            let config = Rc::clone(&config);
+            let state = Rc::clone(&state);
+            let data_home = Rc::clone(&data_home);
             let current = Rc::clone(&current_main_box);
+            let pinned_file_ref = Rc::clone(&pinned_file);
+            let win_ref = win.clone();
+            let holder = Rc::clone(&rebuild_holder);
 
-            Rc::new(move || {
-                // Remove old main box
+            let rebuild_fn = Rc::new(move || {
                 if let Some(old) = current.borrow_mut().take() {
                     alignment_box.remove(&old);
                 }
-                // Build new one
+                // Get self-reference for passing to buttons
+                let self_ref = holder.borrow().clone().unwrap_or_else(|| Rc::new(|| {}));
                 let new_box = ui::dock_box::build(
                     &alignment_box,
                     &config,
                     &state,
                     &data_home,
+                    &pinned_file_ref,
+                    &self_ref,
+                    &win_ref,
                 );
                 *current.borrow_mut() = Some(new_box);
-            })
-        };
+            });
+
+            *rebuild_holder.borrow_mut() = Some(rebuild_fn);
+        }
 
         // Initial build
+        let rebuild = rebuild_holder.borrow().clone().unwrap();
         rebuild();
 
         win.present();
@@ -246,7 +252,8 @@ fn main() {
         }
 
         // Start Hyprland event listener
-        events::start_event_listener(Rc::clone(&state), rebuild.clone() as Rc<dyn Fn()>);
+        let rebuild_for_events = rebuild_holder.borrow().clone().unwrap();
+        events::start_event_listener(Rc::clone(&state), rebuild_for_events);
 
         // Signal handler polling (check for show/hide/toggle signals)
         let win_sig = win.clone();
