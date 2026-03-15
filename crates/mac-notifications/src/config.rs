@@ -37,14 +37,6 @@ pub struct NotificationConfig {
     #[arg(long)]
     pub persist: bool,
 
-    /// Popup icon size in pixels
-    #[arg(long, default_value_t = 48)]
-    pub icon_size: i32,
-
-    /// Notification panel width in pixels
-    #[arg(long, default_value_t = 380)]
-    pub panel_width: i32,
-
     /// Turn on debug messages
     #[arg(long)]
     pub debug: bool,

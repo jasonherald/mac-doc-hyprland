@@ -3,7 +3,6 @@ use super::window;
 use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency};
 use crate::state::NotificationState;
-use dock_common::desktop::icons;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
@@ -140,8 +139,7 @@ impl PopupManager {
     }
 
     fn estimated_height(&self) -> i32 {
-        // Approximate: icon height + padding
-        POPUP_ICON_SIZE + 24
+        POPUP_ICON_SIZE + POPUP_PADDING
     }
 
     fn resolve_timeout(&self, notif: &Notification) -> u64 {
@@ -165,22 +163,19 @@ fn build_popup_content(notif: &Notification, app_dirs: &[PathBuf]) -> gtk4::Box 
         container.add_css_class("urgency-critical");
     }
 
-    // App icon
-    let icon = resolve_icon(
+    let icon = super::icons::resolve_popup_icon(
         &notif.app_icon,
         &notif.app_name,
         notif.desktop_entry.as_deref(),
         app_dirs,
+        POPUP_ICON_SIZE,
     );
-    icon.set_pixel_size(POPUP_ICON_SIZE);
     icon.add_css_class("popup-icon");
     container.append(&icon);
 
-    // Text column
     let text_box = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
     text_box.set_hexpand(true);
 
-    // Header: app name + time
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     let app_label = gtk4::Label::new(Some(&notif.app_name));
     app_label.add_css_class("popup-app-name");
@@ -193,21 +188,19 @@ fn build_popup_content(notif: &Notification, app_dirs: &[PathBuf]) -> gtk4::Box 
     header.append(&time_label);
     text_box.append(&header);
 
-    // Summary
     let summary = gtk4::Label::new(Some(&notif.summary));
     summary.add_css_class("popup-summary");
     summary.set_halign(gtk4::Align::Start);
     summary.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    summary.set_max_width_chars(40);
+    summary.set_max_width_chars(POPUP_SUMMARY_CHARS);
     text_box.append(&summary);
 
-    // Body
     if !notif.body.is_empty() {
         let body = gtk4::Label::new(Some(&notif.body));
         body.add_css_class("popup-body");
         body.set_halign(gtk4::Align::Start);
         body.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        body.set_max_width_chars(50);
+        body.set_max_width_chars(POPUP_BODY_CHARS);
         body.set_lines(POPUP_MAX_BODY_LINES);
         body.set_wrap(true);
         text_box.append(&body);
@@ -215,41 +208,6 @@ fn build_popup_content(notif: &Notification, app_dirs: &[PathBuf]) -> gtk4::Box 
 
     container.append(&text_box);
     container
-}
-
-/// Resolves the best icon for a notification.
-fn resolve_icon(
-    app_icon: &str,
-    app_name: &str,
-    desktop_entry: Option<&str>,
-    app_dirs: &[PathBuf],
-) -> gtk4::Image {
-    // Try app_icon first (could be path or theme name)
-    if !app_icon.is_empty()
-        && let Some(pb) = icons::create_pixbuf(app_icon, POPUP_ICON_SIZE)
-    {
-        return gtk4::Image::from_pixbuf(Some(&pb));
-    }
-
-    // Try desktop-entry hint
-    if let Some(entry) = desktop_entry
-        && let Some(icon_name) = icons::get_icon(entry, app_dirs)
-        && let Some(pb) = icons::create_pixbuf(&icon_name, POPUP_ICON_SIZE)
-    {
-        return gtk4::Image::from_pixbuf(Some(&pb));
-    }
-
-    // Try app_name
-    if let Some(icon_name) = icons::get_icon(app_name, app_dirs)
-        && let Some(pb) = icons::create_pixbuf(&icon_name, POPUP_ICON_SIZE)
-    {
-        return gtk4::Image::from_pixbuf(Some(&pb));
-    }
-
-    // Fallback
-    let img = gtk4::Image::from_icon_name("dialog-information");
-    img.set_pixel_size(POPUP_ICON_SIZE);
-    img
 }
 
 /// Finds the GDK monitor that Hyprland reports as focused.

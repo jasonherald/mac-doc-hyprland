@@ -33,8 +33,12 @@ pub fn build_grouped_list(
         let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
         header.add_css_class("group-header");
 
-        let icon = resolve_group_icon(&group.app_icon, &group.app_name, &app_dirs);
-        icon.set_pixel_size(super::constants::GROUP_ICON_SIZE);
+        let icon = super::icons::resolve_theme_icon(
+            &group.app_icon,
+            &group.app_name,
+            &app_dirs,
+            super::constants::GROUP_ICON_SIZE,
+        );
         header.append(&icon);
 
         let name_label = gtk4::Label::new(Some(&group.app_name));
@@ -93,30 +97,4 @@ pub fn build_grouped_list(
         sep.set_margin_bottom(4);
         container.append(&sep);
     }
-}
-
-/// Resolves group icon using GTK4 icon theme (avoids glycin crashes).
-fn resolve_group_icon(
-    app_icon: &str,
-    app_name: &str,
-    app_dirs: &[std::path::PathBuf],
-) -> gtk4::Image {
-    use dock_common::desktop::icons;
-    let size = super::constants::GROUP_ICON_SIZE;
-
-    if !app_icon.is_empty() && !app_icon.contains('/') {
-        let img = gtk4::Image::from_icon_name(app_icon);
-        img.set_pixel_size(size);
-        return img;
-    }
-    if let Some(icon_name) = icons::get_icon(app_name, app_dirs)
-        && !icon_name.contains('/')
-    {
-        let img = gtk4::Image::from_icon_name(&icon_name);
-        img.set_pixel_size(size);
-        return img;
-    }
-    let img = gtk4::Image::from_icon_name("dialog-information");
-    img.set_pixel_size(size);
-    img
 }

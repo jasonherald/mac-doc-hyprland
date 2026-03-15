@@ -101,14 +101,16 @@ impl NotificationState {
         urgency == Urgency::Critical
     }
 
-    /// Groups notifications by app, sorted by most recent first.
+    /// Groups notifications by app, preserving insertion order.
     pub fn grouped_by_app(&self) -> Vec<AppGroup> {
+        let mut index: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         let mut groups: Vec<AppGroup> = Vec::new();
 
         for notif in &self.history {
-            if let Some(group) = groups.iter_mut().find(|g| g.app_name == notif.app_name) {
-                group.notifications.push(notif.clone());
+            if let Some(&idx) = index.get(notif.app_name.as_str()) {
+                groups[idx].notifications.push(notif.clone());
             } else {
+                index.insert(&notif.app_name, groups.len());
                 groups.push(AppGroup {
                     app_name: notif.app_name.clone(),
                     app_icon: notif.app_icon.clone(),

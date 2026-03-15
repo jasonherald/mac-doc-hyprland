@@ -24,7 +24,6 @@ pub fn start_signal_listener() -> Rc<mpsc::Receiver<NotificationCommand>> {
     let sig_panel = signals::sig_notification_toggle();
     let sig_dnd = signals::sig_notification_dnd();
 
-    // SIGTERM → quit
     // SAFETY: sigaction requires unsafe. The handler calls process::exit.
     if let Err(e) = unsafe {
         signal::sigaction(

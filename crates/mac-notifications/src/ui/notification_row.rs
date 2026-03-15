@@ -1,6 +1,5 @@
 use super::constants::*;
 use crate::notification::Notification;
-use dock_common::desktop::icons;
 use gtk4::prelude::*;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -36,8 +35,12 @@ pub fn build_row(
     clickable.set_hexpand(true);
 
     // App icon (small for panel)
-    let icon = resolve_icon(&notif.app_icon, &notif.app_name, app_dirs);
-    icon.set_pixel_size(PANEL_ICON_SIZE);
+    let icon = super::icons::resolve_theme_icon(
+        &notif.app_icon,
+        &notif.app_name,
+        app_dirs,
+        PANEL_ICON_SIZE,
+    );
     icon.set_valign(gtk4::Align::Start);
     icon.set_margin_top(4);
     clickable.append(&icon);
@@ -53,7 +56,7 @@ pub fn build_row(
     summary.set_halign(gtk4::Align::Start);
     summary.set_hexpand(true);
     summary.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    summary.set_max_width_chars(35);
+    summary.set_max_width_chars(PANEL_SUMMARY_CHARS);
     header.append(&summary);
 
     let time_str = relative_time(notif.timestamp);
@@ -68,8 +71,8 @@ pub fn build_row(
         body.add_css_class("row-body");
         body.set_halign(gtk4::Align::Start);
         body.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        body.set_max_width_chars(45);
-        body.set_lines(2);
+        body.set_max_width_chars(PANEL_BODY_CHARS);
+        body.set_lines(PANEL_BODY_LINES);
         body.set_wrap(true);
         text_box.append(&body);
     }
@@ -97,28 +100,6 @@ pub fn build_row(
     row.append(&dismiss_btn);
 
     row
-}
-
-/// Resolves icon using GTK4 icon theme (avoids glycin crashes).
-fn resolve_icon(app_icon: &str, app_name: &str, app_dirs: &[PathBuf]) -> gtk4::Image {
-    // Try app_icon as icon theme name
-    if !app_icon.is_empty() && !app_icon.contains('/') {
-        let img = gtk4::Image::from_icon_name(app_icon);
-        img.set_pixel_size(PANEL_ICON_SIZE);
-        return img;
-    }
-    // Try desktop entry lookup
-    if let Some(icon_name) = icons::get_icon(app_name, app_dirs)
-        && !icon_name.contains('/')
-    {
-        let img = gtk4::Image::from_icon_name(&icon_name);
-        img.set_pixel_size(PANEL_ICON_SIZE);
-        return img;
-    }
-    // Fallback
-    let img = gtk4::Image::from_icon_name("dialog-information");
-    img.set_pixel_size(PANEL_ICON_SIZE);
-    img
 }
 
 fn relative_time(timestamp: SystemTime) -> String {
