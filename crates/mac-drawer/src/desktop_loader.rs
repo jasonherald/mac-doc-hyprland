@@ -1,5 +1,5 @@
 use crate::state::DrawerState;
-use dock_common::desktop::categories::assign_category;
+use dock_common::desktop::categories::assign_categories;
 use dock_common::desktop::dirs;
 use dock_common::desktop::entry;
 
@@ -29,13 +29,14 @@ pub fn load_desktop_entries(state: &mut DrawerState) {
             match entry::parse_desktop_file(&id, &path) {
                 Ok(de) => {
                     if !de.no_display {
-                        // Assign to category
-                        let cat = assign_category(&de.category).to_string();
-                        state
-                            .category_lists
-                            .entry(cat)
-                            .or_default()
-                            .push(de.desktop_id.clone());
+                        // Assign to ALL matching categories (matches Go behavior)
+                        for cat in assign_categories(&de.category) {
+                            state
+                                .category_lists
+                                .entry(cat.to_string())
+                                .or_default()
+                                .push(de.desktop_id.clone());
+                        }
                     }
                     state.id2entry.insert(de.desktop_id.clone(), de.clone());
                     state.desktop_entries.push(de);

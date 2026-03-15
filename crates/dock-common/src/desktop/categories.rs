@@ -57,17 +57,18 @@ pub fn default_categories() -> Vec<Category> {
     ]
 }
 
-/// Assigns an entry to a main category based on its Categories field.
-/// Returns the first matching main category name, or "Other".
+/// Assigns an entry to ALL matching main categories based on its Categories field.
+///
+/// Returns a vec of category names. An app with `Categories=Development;Network;`
+/// will appear in both Development and Network lists (matching Go behavior).
 ///
 /// Handles secondary categories: Science/Education→Office, Settings/PackageManager→System,
 /// Audio/Video→AudioVideo, etc.
-pub fn assign_category(categories_field: &str) -> &'static str {
+pub fn assign_categories(categories_field: &str) -> Vec<&'static str> {
     let primary = [
         "AudioVideo", "Development", "Game", "Graphics", "Network", "Office", "System", "Utility",
     ];
 
-    // Secondary → primary mappings
     let secondary: &[(&str, &str)] = &[
         ("Audio", "AudioVideo"),
         ("Video", "AudioVideo"),
@@ -79,22 +80,33 @@ pub fn assign_category(categories_field: &str) -> &'static str {
         ("HardwareSettings", "System"),
     ];
 
+    let mut result = Vec::new();
+
     for cat in categories_field.split(';') {
         let cat = cat.trim();
         if cat.is_empty() {
             continue;
         }
-        // Check primary match first
         if let Some(&matched) = primary.iter().find(|&&k| k == cat) {
-            return matched;
-        }
-        // Check secondary mapping
-        if let Some(&(_, mapped)) = secondary.iter().find(|&&(k, _)| k == cat) {
-            return mapped;
-        }
+            if !result.contains(&matched) {
+                result.push(matched);
+            }
+        } else if let Some(&(_, mapped)) = secondary.iter().find(|&&(k, _)| k == cat)
+            && !result.contains(&mapped) {
+                result.push(mapped);
+            }
     }
 
-    "Other"
+    if result.is_empty() {
+        result.push("Other");
+    }
+
+    result
+}
+
+/// Convenience: returns the first matching category (for simple use cases).
+pub fn assign_category(categories_field: &str) -> &'static str {
+    assign_categories(categories_field).into_iter().next().unwrap_or("Other")
 }
 
 #[cfg(test)]
@@ -120,5 +132,20 @@ mod tests {
         assert_eq!(assign_category("Settings;DesktopSettings;"), "System");
         assert_eq!(assign_category("Audio;Player;"), "AudioVideo");
         assert_eq!(assign_category("PackageManager;"), "System");
+    }
+
+    #[test]
+    fn multi_category_assignment() {
+        let cats = assign_categories("Development;Network;");
+        assert!(cats.contains(&"Development"));
+        assert!(cats.contains(&"Network"));
+        assert_eq!(cats.len(), 2);
+    }
+
+    #[test]
+    fn multi_category_dedup() {
+        // Audio and AudioVideo both map to AudioVideo — should appear once
+        let cats = assign_categories("Audio;AudioVideo;");
+        assert_eq!(cats, vec!["AudioVideo"]);
     }
 }

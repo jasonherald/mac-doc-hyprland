@@ -404,6 +404,9 @@ fn main() {
         let watch_rx = watcher::start_watcher(&app_dirs, &pinned_file);
         let state_watch = Rc::clone(&state);
         let pinned_file_watch = Rc::clone(&pinned_file);
+        let config_watch = Rc::clone(&config);
+        let on_launch_watch = Rc::clone(&on_launch);
+        let pinned_box_watch = pinned_box.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
             while let Ok(event) = watch_rx.try_recv() {
                 match event {
@@ -412,9 +415,20 @@ fn main() {
                         desktop_loader::load_desktop_entries(&mut state_watch.borrow_mut());
                     }
                     watcher::WatchEvent::PinnedChanged => {
-                        log::info!("Pinned file changed, reloading...");
+                        log::info!("Pinned file changed, rebuilding UI...");
                         state_watch.borrow_mut().pinned =
                             pinning::load_pinned(&pinned_file_watch);
+                        // Rebuild pinned FlowBox visually
+                        while let Some(child) = pinned_box_watch.first_child() {
+                            pinned_box_watch.remove(&child);
+                        }
+                        let new_pinned = ui::pinned::build_pinned_flow_box(
+                            &config_watch,
+                            &state_watch,
+                            &pinned_file_watch,
+                            Rc::clone(&on_launch_watch),
+                        );
+                        pinned_box_watch.append(&new_pinned);
                     }
                 }
             }
