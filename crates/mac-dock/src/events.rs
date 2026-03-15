@@ -24,11 +24,18 @@ pub fn start_event_listener(
             }
         };
 
-        while let Some(event) = stream.next_event() {
-            if let HyprEvent::ActiveWindowV2(addr) = event
-                && sender.send(addr).is_err()
-            {
-                break;
+        loop {
+            match stream.next_event() {
+                Ok(HyprEvent::ActiveWindowV2(addr)) => {
+                    if sender.send(addr).is_err() {
+                        break;
+                    }
+                }
+                Ok(_) => {} // Other events ignored
+                Err(e) => {
+                    log::error!("Hyprland event stream error: {}", e);
+                    break;
+                }
             }
         }
     });

@@ -67,7 +67,9 @@ fn main() {
     });
 
     let config_dir = paths::config_dir("nwg-dock-hyprland");
-    paths::ensure_dir(&config_dir);
+    if let Err(e) = paths::ensure_dir(&config_dir) {
+        log::warn!("Failed to create config dir: {}", e);
+    }
 
     let css_path = config_dir.join(&config.css_file);
     if !css_path.exists() {

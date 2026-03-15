@@ -55,14 +55,12 @@ pub fn find_data_home(app_name: &str) -> Option<PathBuf> {
 }
 
 /// Creates a directory and all parents if it doesn't exist.
-pub fn ensure_dir(dir: &Path) {
+pub fn ensure_dir(dir: &Path) -> std::io::Result<()> {
     if !dir.exists() {
-        if let Err(e) = fs::create_dir_all(dir) {
-            log::warn!("Failed to create directory {}: {}", dir.display(), e);
-        } else {
-            log::info!("Created directory: {}", dir.display());
-        }
+        fs::create_dir_all(dir)?;
+        log::info!("Created directory: {}", dir.display());
     }
+    Ok(())
 }
 
 /// Copies a file from `src` to `dst`, preserving permissions.

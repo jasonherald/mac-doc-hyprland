@@ -43,7 +43,9 @@ pub fn build_power_bar(
             if let Some((&prog, args)) = parts.split_first() {
                 let mut command = std::process::Command::new(prog);
                 command.args(args);
-                let _ = command.spawn();
+                if let Err(e) = command.spawn() {
+                    log::error!("Failed to run power command '{}': {}", cmd, e);
+                }
             }
             on_launch();
         });

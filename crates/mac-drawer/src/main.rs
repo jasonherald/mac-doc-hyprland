@@ -48,7 +48,9 @@ fn main() {
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
-    paths::ensure_dir(&config_dir);
+    if let Err(e) = paths::ensure_dir(&config_dir) {
+        log::warn!("Failed to create config dir: {}", e);
+    }
 
     let cache_dir = paths::cache_dir().expect("Couldn't determine cache directory");
     let pinned_file = cache_dir.join("mac-dock-pinned");

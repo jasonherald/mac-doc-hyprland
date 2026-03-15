@@ -35,31 +35,30 @@ impl EventStream {
     }
 
     /// Blocks until the next event is available.
-    /// Returns `None` on connection close.
-    pub fn next_event(&mut self) -> Option<HyprEvent> {
+    ///
+    /// Returns `Ok(event)` on success, `Err` on socket error, `Ok(None)` style
+    /// isn't used — instead the outer Option distinguishes EOF from data.
+    /// Returns `None` only on clean connection close (EOF).
+    pub fn next_event(&mut self) -> std::result::Result<HyprEvent, std::io::Error> {
         loop {
-            // Check if we have a complete line in remainder
             if let Some(newline_pos) = self.remainder.find('\n') {
                 let line = self.remainder[..newline_pos].to_string();
                 self.remainder = self.remainder[newline_pos + 1..].to_string();
                 if !line.is_empty() {
-                    return Some(parse_event(&line));
+                    return Ok(parse_event(&line));
                 }
                 continue;
             }
 
-            // Read more data
-            match self.conn.read(&mut self.buf) {
-                Ok(0) => return None,
-                Ok(n) => {
-                    let chunk = String::from_utf8_lossy(&self.buf[..n]);
-                    self.remainder.push_str(&chunk);
-                }
-                Err(e) => {
-                    log::error!("Error reading from Hyprland event socket: {}", e);
-                    return None;
-                }
+            let n = self.conn.read(&mut self.buf)?;
+            if n == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionReset,
+                    "Hyprland event socket closed",
+                ));
             }
+            let chunk = String::from_utf8_lossy(&self.buf[..n]);
+            self.remainder.push_str(&chunk);
         }
     }
 }

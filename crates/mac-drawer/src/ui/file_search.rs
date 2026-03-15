@@ -173,10 +173,13 @@ fn file_result_row(
         &path_str, preferred_apps,
     );
     button.connect_clicked(move |_| {
-        if let Some(ref cmd) = preferred_cmd {
-            let _ = std::process::Command::new(cmd).arg(&path).spawn();
+        let result = if let Some(ref cmd) = preferred_cmd {
+            std::process::Command::new(cmd).arg(&path).spawn()
         } else {
-            let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+            std::process::Command::new("xdg-open").arg(&path).spawn()
+        };
+        if let Err(e) = result {
+            log::error!("Failed to open {}: {}", path.display(), e);
         }
         on_launch();
     });
