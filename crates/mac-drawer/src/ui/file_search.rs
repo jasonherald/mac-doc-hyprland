@@ -9,7 +9,7 @@ use std::rc::Rc;
 /// Returns a Box with a clean columnar list: icon | filename | path
 pub fn search_files(
     phrase: &str,
-    _config: &DrawerConfig,
+    config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
     on_launch: Rc<dyn Fn()>,
 ) -> gtk4::Box {
@@ -25,7 +25,11 @@ pub fn search_files(
         if dir_name == "home" || !dir_path.exists() {
             continue;
         }
-        for result in walk_directory(dir_path, phrase, &exclusions) {
+        let remaining = config.fs_max_results.saturating_sub(all_results.len());
+        if remaining == 0 {
+            break;
+        }
+        for result in walk_directory(dir_path, phrase, &exclusions, remaining) {
             let display = result.path
                 .strip_prefix(dir_path)
                 .unwrap_or(&result.path)
@@ -75,19 +79,31 @@ struct FileResult {
     is_dir: bool,
 }
 
-fn walk_directory(root: &Path, phrase: &str, exclusions: &[String]) -> Vec<FileResult> {
+fn walk_directory(
+    root: &Path,
+    phrase: &str,
+    exclusions: &[String],
+    max_results: usize,
+) -> Vec<FileResult> {
     let mut results = Vec::new();
     let phrase_lower = phrase.to_lowercase();
 
     fn walk_inner(
         dir: &Path, root: &Path, phrase: &str,
         exclusions: &[String], results: &mut Vec<FileResult>,
+        max_results: usize,
     ) {
+        if results.len() >= max_results {
+            return;
+        }
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => return,
         };
         for entry in entries.filter_map(|e| e.ok()) {
+            if results.len() >= max_results {
+                return;
+            }
             let path = entry.path();
             let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy();
             if exclusions.iter().any(|ex| relative.contains(ex)) {
@@ -97,12 +113,12 @@ fn walk_directory(root: &Path, phrase: &str, exclusions: &[String]) -> Vec<FileR
                 results.push(FileResult { is_dir: path.is_dir(), path: path.clone() });
             }
             if path.is_dir() {
-                walk_inner(&path, root, phrase, exclusions, results);
+                walk_inner(&path, root, phrase, exclusions, results, max_results);
             }
         }
     }
 
-    walk_inner(root, root, &phrase_lower, exclusions, &mut results);
+    walk_inner(root, root, &phrase_lower, exclusions, &mut results, max_results);
     results
 }
 

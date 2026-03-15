@@ -26,16 +26,30 @@ pub fn start_cursor_poller(
     // Track when cursor last left the dock area (for hide delay)
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
-    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+    // Cache monitors — they rarely change during a session
+    let cached_monitors: Rc<RefCell<Vec<HyprMonitor>>> = Rc::new(RefCell::new(
+        ipc::list_monitors().unwrap_or_default(),
+    ));
+    let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
+
+    glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
         let cursor = match get_cursor_pos() {
             Some(c) => c,
             None => return glib::ControlFlow::Continue,
         };
 
-        let monitors = match ipc::list_monitors() {
-            Ok(m) => m,
-            Err(_) => return glib::ControlFlow::Continue,
-        };
+        // Refresh monitor cache every ~10 seconds (50 polls at 200ms)
+        {
+            let mut count = monitor_refresh_counter.borrow_mut();
+            *count += 1;
+            if *count >= 50 {
+                *count = 0;
+                if let Ok(m) = ipc::list_monitors() {
+                    *cached_monitors.borrow_mut() = m;
+                }
+            }
+        }
+        let monitors = cached_monitors.borrow();
 
         let any_visible = windows.borrow().iter().any(|w| w.is_visible());
 

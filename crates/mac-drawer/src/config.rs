@@ -60,6 +60,10 @@ pub struct DrawerConfig {
     #[arg(long)]
     pub no_fs: bool,
 
+    /// Maximum number of file search results
+    #[arg(long, default_value_t = 25)]
+    pub fs_max_results: usize,
+
     /// Leave the program resident in memory
     #[arg(short = 'r', long)]
     pub resident: bool,
