@@ -1,7 +1,6 @@
 use crate::config::DrawerConfig;
 use crate::state::DrawerState;
-use crate::ui::app_grid::truncate;
-use dock_common::desktop::icons;
+use crate::ui::widgets;
 use dock_common::pinning;
 use gtk4::prelude::*;
 use std::cell::RefCell;
@@ -42,63 +41,32 @@ pub fn build_pinned_flow_box(
             }
         };
 
-        let button = gtk4::Button::new();
-        button.set_has_frame(false);
-        button.add_css_class("app-button");
+        let name = if !entry.name_loc.is_empty() { &entry.name_loc } else { &entry.name };
+        let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, &app_dirs);
 
-        // Icon above label layout
-        let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-        vbox.set_halign(gtk4::Align::Center);
-
-        if !entry.icon.is_empty()
-            && let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
-                image.set_pixel_size(config.icon_size);
-                image.set_halign(gtk4::Align::Center);
-                vbox.append(&image);
-            }
-
-        let name = if !entry.name_loc.is_empty() {
-            &entry.name_loc
-        } else {
-            &entry.name
-        };
-        let label = gtk4::Label::new(Some(&truncate(name, 20)));
-        label.set_halign(gtk4::Align::Center);
-        label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-        label.set_max_width_chars(14);
-        vbox.append(&label);
-
-        button.set_child(Some(&vbox));
-
-        // Left click → launch via hyprctl dispatch
+        // Left click → launch
         let exec = entry.exec.clone();
         let terminal = entry.terminal;
         let term = config.term.clone();
         let on_launch_ref = Rc::clone(&on_launch);
         button.connect_clicked(move |_| {
-            let exec = exec.replace(['"', '\''], "");
-            // Strip field codes (%u, %f, etc.)
-            let exec = if let Some(pos) = exec.find('%') {
-                exec[..pos.saturating_sub(1)].trim().to_string()
-            } else {
-                exec.trim().to_string()
-            };
-            if !exec.is_empty() {
+            let clean = widgets::clean_exec(&exec);
+            if !clean.is_empty() {
                 if terminal {
-                    dock_common::launch::launch_hyprctl_terminal(&exec, &term);
+                    dock_common::launch::launch_hyprctl_terminal(&clean, &term);
                 } else {
-                    dock_common::launch::launch_hyprctl(&exec);
+                    dock_common::launch::launch_hyprctl(&clean);
                 }
             }
             on_launch_ref();
         });
 
-        // Right-click gesture → unpin
+        // Right-click → unpin
         let id = desktop_id.clone();
         let state_ref = Rc::clone(state);
         let pinned_path = pinned_file.to_path_buf();
         let gesture = gtk4::GestureClick::new();
-        gesture.set_button(3); // right click
+        gesture.set_button(3);
         gesture.connect_released(move |gesture, _, _, _| {
             gesture.set_state(gtk4::EventSequenceState::Claimed);
             let mut s = state_ref.borrow_mut();

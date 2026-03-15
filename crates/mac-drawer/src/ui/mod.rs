@@ -7,4 +7,5 @@ pub mod power_bar;
 pub mod search;
 pub mod search_handler;
 pub mod well_builder;
+pub mod widgets;
 pub mod window;

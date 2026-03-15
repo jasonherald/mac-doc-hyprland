@@ -1,4 +1,5 @@
 mod config;
+mod context;
 mod dock_windows;
 mod events;
 mod listeners;

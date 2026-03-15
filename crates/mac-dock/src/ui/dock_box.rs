@@ -1,24 +1,17 @@
-use crate::config::DockConfig;
-use crate::state::DockState;
+use crate::context::DockContext;
 use crate::ui::buttons;
 use dock_common::pinning;
 use gtk4::prelude::*;
-use std::cell::RefCell;
-use std::path::Path;
-use std::rc::Rc;
 
 /// Builds the main dock content box with pinned and task buttons.
 ///
 /// This is the core UI builder, called on every refresh.
 pub fn build(
     alignment_box: &gtk4::Box,
-    config: &DockConfig,
-    state: &Rc<RefCell<DockState>>,
-    data_home: &Path,
-    pinned_file: &Path,
-    rebuild: &Rc<dyn Fn()>,
+    ctx: &DockContext,
     win: &gtk4::ApplicationWindow,
 ) -> gtk4::Box {
+    let config = &ctx.config;
     let inner_orientation = if config.is_vertical() {
         gtk4::Orientation::Vertical
     } else {
@@ -26,22 +19,10 @@ pub fn build(
     };
     let main_box = gtk4::Box::new(inner_orientation, 0);
 
-    // Pack into alignment box — replicate Go's PackStart expand/fill semantics
-    // Go: "start" → PackStart(mainBox, false, true, 0)  expand=false, fill=true
-    // Go: "end"   → PackEnd(mainBox, false, true, 0)    expand=false, fill=true
-    // Go: center  → PackStart(mainBox, true, false, 0)  expand=true,  fill=false
     match config.alignment.as_str() {
-        "start" => {
-            alignment_box.prepend(&main_box);
-            // expand=false: don't take extra space
-        }
-        "end" => {
-            alignment_box.append(&main_box);
-            // expand=false: don't take extra space
-        }
+        "start" => alignment_box.prepend(&main_box),
+        "end" => alignment_box.append(&main_box),
         _ => {
-            // Center: when full-width, expand to fill then center content.
-            // When content-width, just append (window shrinks to fit).
             if config.full {
                 main_box.set_hexpand(true);
                 main_box.set_halign(gtk4::Align::Center);
@@ -50,12 +31,9 @@ pub fn build(
         }
     }
 
-    let mut s = state.borrow_mut();
+    let mut s = ctx.state.borrow_mut();
+    s.pinned = pinning::load_pinned(&ctx.pinned_file);
 
-    // Reload pinned items
-    s.pinned = pinning::load_pinned(pinned_file);
-
-    // Collect all unique items (pinned first, then running tasks)
     let mut all_items: Vec<String> = Vec::new();
     for pin in &s.pinned {
         if !all_items.contains(pin) {
@@ -63,12 +41,10 @@ pub fn build(
         }
     }
 
-    // Sort clients by workspace then class
     s.clients.sort_by(|a, b| {
         a.workspace.id.cmp(&b.workspace.id).then_with(|| a.class.cmp(&b.class))
     });
 
-    // Filter out ignored workspaces
     let ignored_ws = config.ignored_workspaces();
     s.clients.retain(|cl| {
         let ws_base = cl.workspace.name.split(':').next().unwrap_or("");
@@ -105,36 +81,26 @@ pub fn build(
 
     // Launcher at start
     if config.launcher_pos == "start"
-        && let Some(btn) = buttons::launcher_button(config, state, data_home, win)
-    {
-        main_box.append(&btn);
-    }
+        && let Some(btn) = buttons::launcher_button(ctx, win) {
+            main_box.append(&btn);
+        }
 
     // Pinned items
     let mut already_added: Vec<String> = Vec::new();
-    let pinned_snapshot = state.borrow().pinned.clone();
-    let clients_snapshot = state.borrow().clients.clone();
-    let active_class = state
-        .borrow()
-        .active_client
-        .as_ref()
-        .map(|c| c.class.clone())
-        .unwrap_or_default();
+    let pinned_snapshot = ctx.state.borrow().pinned.clone();
+    let clients_snapshot = ctx.state.borrow().clients.clone();
+    let active_class = ctx.state.borrow()
+        .active_client.as_ref().map(|c| c.class.clone()).unwrap_or_default();
 
     for pin in &pinned_snapshot {
         if ignored_classes.contains(pin) {
-            log::debug!("Ignoring pin '{}'", pin);
             continue;
         }
-
-        let instances = state.borrow().task_instances(pin);
+        let instances = ctx.state.borrow().task_instances(pin);
         if instances.is_empty() {
-            let btn = buttons::pinned_button(pin, config, state, data_home, pinned_file, rebuild);
-            main_box.append(&btn);
+            main_box.append(&buttons::pinned_button(pin, ctx));
         } else if instances.len() == 1 || !already_added.contains(pin) {
-            let btn = buttons::task_button(
-                &instances[0], &instances, config, state, data_home, pinned_file, rebuild,
-            );
+            let btn = buttons::task_button(&instances[0], &instances, ctx);
             if instances[0].class == active_class && !config.autohide {
                 btn.set_widget_name("active");
             }
@@ -152,12 +118,9 @@ pub fn build(
         {
             continue;
         }
-
-        let instances = state.borrow().task_instances(&task.class);
+        let instances = ctx.state.borrow().task_instances(&task.class);
         if instances.len() == 1 || !already_added.contains(&task.class) {
-            let btn = buttons::task_button(
-                task, &instances, config, state, data_home, pinned_file, rebuild,
-            );
+            let btn = buttons::task_button(task, &instances, ctx);
             if task.class == active_class && !config.autohide {
                 btn.set_widget_name("active");
             }
@@ -168,10 +131,9 @@ pub fn build(
 
     // Launcher at end
     if config.launcher_pos == "end"
-        && let Some(btn) = buttons::launcher_button(config, state, data_home, win)
-    {
-        main_box.append(&btn);
-    }
+        && let Some(btn) = buttons::launcher_button(ctx, win) {
+            main_box.append(&btn);
+        }
 
     main_box
 }

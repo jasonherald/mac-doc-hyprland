@@ -1,10 +1,8 @@
-use crate::config::DockConfig;
-use crate::state::DockState;
+use crate::context::DockContext;
 use crate::ui::menus;
 use dock_common::desktop::icons;
 use dock_common::hyprland::types::HyprClient;
 use gtk4::prelude::*;
-use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -55,7 +53,6 @@ fn pack_button_box(
     bx.set_margin_bottom(0);
 
     let at_start = position == "left" || position == "top";
-
     if let Some(img) = indicator {
         img.set_margin_start(0);
         img.set_margin_end(0);
@@ -75,25 +72,16 @@ fn pack_button_box(
 }
 
 /// Creates a pinned app button (not currently running).
-pub fn pinned_button(
-    app_id: &str,
-    config: &DockConfig,
-    state: &Rc<RefCell<DockState>>,
-    data_home: &Path,
-    pinned_file: &Path,
-    rebuild: &Rc<dyn Fn()>,
-) -> gtk4::Box {
-    let img_size = state.borrow().img_size_scaled;
-    let app_dirs = state.borrow().app_dirs.clone();
+pub fn pinned_button(app_id: &str, ctx: &DockContext) -> gtk4::Box {
+    let img_size = ctx.state.borrow().img_size_scaled;
+    let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
     let image = icons::create_image(app_id, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
-        if let Some(pb) = icons::pixbuf_from_file(&path, img_size, img_size) {
-            gtk4::Image::from_pixbuf(Some(&pb))
-        } else {
-            gtk4::Image::new()
-        }
+        let path = ctx.data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
+        icons::pixbuf_from_file(&path, img_size, img_size)
+            .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
+            .unwrap_or_default()
     });
     image.set_pixel_size(img_size);
     button.set_child(Some(&image));
@@ -110,9 +98,9 @@ pub fn pinned_button(
 
     // Right-click → unpin context menu
     let id = app_id.to_string();
-    let state_ref = Rc::clone(state);
-    let pinned_path = pinned_file.to_path_buf();
-    let rebuild_ref = Rc::clone(rebuild);
+    let state_ref = Rc::clone(&ctx.state);
+    let pinned_path = ctx.pinned_file.as_ref().clone();
+    let rebuild_ref = Rc::clone(&ctx.rebuild);
     let gesture = gtk4::GestureClick::new();
     gesture.set_button(3);
     gesture.connect_released(move |gesture, _, _, _| {
@@ -123,31 +111,21 @@ pub fn pinned_button(
     });
     button.add_controller(gesture);
 
-    let indicator = indicator_image(data_home, 0, config.is_vertical(), img_size);
-    pack_button_box(&button, indicator.as_ref(), &config.position, config.is_vertical())
+    let indicator = indicator_image(&ctx.data_home, 0, ctx.config.is_vertical(), img_size);
+    pack_button_box(&button, indicator.as_ref(), &ctx.config.position, ctx.config.is_vertical())
 }
 
 /// Creates a task button for a running application.
-pub fn task_button(
-    client: &HyprClient,
-    instances: &[HyprClient],
-    config: &DockConfig,
-    state: &Rc<RefCell<DockState>>,
-    data_home: &Path,
-    pinned_file: &Path,
-    rebuild: &Rc<dyn Fn()>,
-) -> gtk4::Box {
-    let img_size = state.borrow().img_size_scaled;
-    let app_dirs = state.borrow().app_dirs.clone();
+pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockContext) -> gtk4::Box {
+    let img_size = ctx.state.borrow().img_size_scaled;
+    let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
     let image = icons::create_image(&client.class, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
-        if let Some(pb) = icons::pixbuf_from_file(&path, img_size, img_size) {
-            gtk4::Image::from_pixbuf(Some(&pb))
-        } else {
-            gtk4::Image::new()
-        }
+        let path = ctx.data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
+        icons::pixbuf_from_file(&path, img_size, img_size)
+            .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
+            .unwrap_or_default()
     });
     image.set_pixel_size(img_size);
     button.set_child(Some(&image));
@@ -155,7 +133,7 @@ pub fn task_button(
     button.set_has_frame(false);
     button.set_tooltip_text(Some(&icons::get_name(&client.class, &app_dirs)));
 
-    // Left-click: single instance → focus, multiple → show instance menu
+    // Left-click
     if instances.len() == 1 {
         let addr = client.address.clone();
         let ws_name = client.workspace.name.clone();
@@ -164,7 +142,7 @@ pub fn task_button(
         });
     } else {
         let insts = instances.to_vec();
-        let state_menu = Rc::clone(state);
+        let state_menu = Rc::clone(&ctx.state);
         button.connect_clicked(move |btn| {
             menus::show_client_menu(&insts, &state_menu, btn);
         });
@@ -184,10 +162,10 @@ pub fn task_button(
     // Right-click → context menu
     let class = client.class.clone();
     let insts = instances.to_vec();
-    let config_ref = config.clone();
-    let state_ref = Rc::clone(state);
-    let pinned_path = pinned_file.to_path_buf();
-    let rebuild_ref = Rc::clone(rebuild);
+    let config_ref = ctx.config.as_ref().clone();
+    let state_ref = Rc::clone(&ctx.state);
+    let pinned_path = ctx.pinned_file.as_ref().clone();
+    let rebuild_ref = Rc::clone(&ctx.rebuild);
     let right = gtk4::GestureClick::new();
     right.set_button(3);
     right.connect_released(move |gesture, _, _, _| {
@@ -200,29 +178,24 @@ pub fn task_button(
     });
     button.add_controller(right);
 
-    let indicator = indicator_image(data_home, instances.len(), config.is_vertical(), img_size);
-    pack_button_box(&button, indicator.as_ref(), &config.position, config.is_vertical())
+    let indicator = indicator_image(&ctx.data_home, instances.len(), ctx.config.is_vertical(), img_size);
+    pack_button_box(&button, indicator.as_ref(), &ctx.config.position, ctx.config.is_vertical())
 }
 
 /// Creates the launcher button (opens the drawer).
-pub fn launcher_button(
-    config: &DockConfig,
-    state: &Rc<RefCell<DockState>>,
-    data_home: &Path,
-    win: &gtk4::ApplicationWindow,
-) -> Option<gtk4::Box> {
-    if config.nolauncher || config.launcher_cmd.is_empty() {
+pub fn launcher_button(ctx: &DockContext, win: &gtk4::ApplicationWindow) -> Option<gtk4::Box> {
+    if ctx.config.nolauncher || ctx.config.launcher_cmd.is_empty() {
         return None;
     }
 
-    let img_size = state.borrow().img_size_scaled;
+    let img_size = ctx.state.borrow().img_size_scaled;
     let button = gtk4::Button::new();
 
-    let pixbuf = if config.ico.is_empty() {
-        let path = data_home.join("nwg-dock-hyprland/images/grid.svg");
+    let pixbuf = if ctx.config.ico.is_empty() {
+        let path = ctx.data_home.join("nwg-dock-hyprland/images/grid.svg");
         icons::pixbuf_from_file(&path, img_size, img_size)
     } else {
-        icons::create_pixbuf(&config.ico, img_size)
+        icons::create_pixbuf(&ctx.config.ico, img_size)
     };
 
     let pb = pixbuf?;
@@ -232,8 +205,8 @@ pub fn launcher_button(
     button.add_css_class("dock-button");
     button.set_has_frame(false);
 
-    let cmd = config.launcher_cmd.clone();
-    let autohide = config.autohide;
+    let cmd = ctx.config.launcher_cmd.clone();
+    let autohide = ctx.config.autohide;
     let win_ref = win.clone();
     button.connect_clicked(move |_| {
         let elements: Vec<&str> = cmd.split_whitespace().collect();
@@ -249,12 +222,12 @@ pub fn launcher_button(
         }
     });
 
-    let indicator = indicator_image(data_home, 0, config.is_vertical(), img_size);
+    let indicator = indicator_image(&ctx.data_home, 0, ctx.config.is_vertical(), img_size);
     Some(pack_button_box(
         &button,
         indicator.as_ref(),
-        &config.position,
-        config.is_vertical(),
+        &ctx.config.position,
+        ctx.config.is_vertical(),
     ))
 }
 
