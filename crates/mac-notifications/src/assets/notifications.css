@@ -100,6 +100,10 @@ window.dnd-menu-window {
     background-color: transparent;
 }
 
+window.dnd-menu-backdrop {
+    background-color: rgba(0, 0, 0, 0.01);
+}
+
 .dnd-menu {
     background-color: rgba(30, 30, 46, 0.95);
     border-radius: 12px;
@@ -116,6 +120,12 @@ window.dnd-menu-window {
 }
 .dnd-menu-item:hover {
     background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dnd-menu-expires {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    padding: 2px 16px;
 }
 
 /* ===== History Panel ===== */
