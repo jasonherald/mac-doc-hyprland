@@ -1,0 +1,20 @@
+[package]
+name = "mac-notifications"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "mac-notifications-rs"
+path = "src/main.rs"
+
+[dependencies]
+dock-common = { workspace = true }
+gtk4 = { workspace = true }
+gtk4-layer-shell = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+nix = { workspace = true }

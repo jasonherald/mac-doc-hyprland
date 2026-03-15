@@ -4,6 +4,7 @@ members = [
     "crates/dock-common",
     "crates/mac-dock",
     "crates/mac-drawer",
+    "crates/mac-notifications",
 ]
 
 [workspace.dependencies]

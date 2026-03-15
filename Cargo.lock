@@ -813,6 +813,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "mac-notifications"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "dock-common",
+ "env_logger",
+ "gtk4",
+ "gtk4-layer-shell",
+ "log",
+ "nix",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -39,10 +39,11 @@ pub fn setup_drag_source(
     // Drag begin: fade the original and mark it as being dragged
     drag_source.connect_drag_begin(move |source, _drag| {
         if let Some(widget) = source.widget()
-            && let Some(parent) = widget.parent() {
-                parent.set_opacity(0.2);
-                parent.add_css_class("dragging-source");
-            }
+            && let Some(parent) = widget.parent()
+        {
+            parent.set_opacity(0.2);
+            parent.add_css_class("dragging-source");
+        }
     });
 
     // Drag end: if dropped outside the dock (not accepted), unpin the item
@@ -115,10 +116,11 @@ pub fn setup_dock_drop_target(
     drop_target.connect_motion(move |_target, x, _y| {
         // Clear "will remove" indicator when cursor returns to dock
         if let Some(idx) = state_motion.borrow().drag_source_index
-            && let Some(child) = find_dock_child_at(&dock_box_motion, idx) {
-                child.remove_css_class("drag-will-remove");
-                child.set_opacity(0.2);
-            }
+            && let Some(child) = find_dock_child_at(&dock_box_motion, idx)
+        {
+            child.remove_css_class("drag-will-remove");
+            child.set_opacity(0.2);
+        }
 
         let new_idx = calculate_drop_index(&dock_box_motion, x);
         let mut current = placeholder_idx_motion.borrow_mut();
@@ -138,9 +140,10 @@ pub fn setup_dock_drop_target(
 
             // Unparent if previously parented elsewhere
             if let Some(parent) = preview.parent()
-                && let Ok(parent_box) = parent.downcast::<gtk4::Box>() {
-                    parent_box.remove(&preview);
-                }
+                && let Ok(parent_box) = parent.downcast::<gtk4::Box>()
+            {
+                parent_box.remove(&preview);
+            }
 
             insert_placeholder(&dock_box_motion, new_idx, preview);
             *current = Some(new_idx);
@@ -161,10 +164,11 @@ pub fn setup_dock_drop_target(
 
         // Mark the source item as "will be removed"
         if let Some(idx) = state_leave.borrow().drag_source_index
-            && let Some(child) = find_dock_child_at(&dock_box_leave, idx) {
-                child.add_css_class("drag-will-remove");
-                child.set_opacity(0.3);
-            }
+            && let Some(child) = find_dock_child_at(&dock_box_leave, idx)
+        {
+            child.add_css_class("drag-will-remove");
+            child.set_opacity(0.3);
+        }
     });
 
     // On drop: reorder pinned list
