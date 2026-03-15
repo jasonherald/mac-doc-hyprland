@@ -19,16 +19,6 @@ impl From<u8> for Urgency {
     }
 }
 
-/// Reason a notification was closed, per D-Bus spec.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)] // Used in Phase 3 (panel dismiss)
-pub enum CloseReason {
-    Expired = 1,
-    Dismissed = 2,
-    Closed = 3,
-    Undefined = 4,
-}
-
 /// A single notification received via D-Bus.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {

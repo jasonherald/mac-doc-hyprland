@@ -27,11 +27,18 @@ impl NotificationPanel {
         win.set_width_request(PANEL_WIDTH);
         setup_panel_window(&win);
 
-        // Panel content container
+        // Revealer for slide animation
+        let revealer = gtk4::Revealer::new();
+        revealer.set_transition_type(gtk4::RevealerTransitionType::SlideLeft);
+        revealer.set_transition_duration(PANEL_REVEAL_DURATION_MS);
+        revealer.set_reveal_child(false);
+        win.set_child(Some(&revealer));
+
+        // Panel content container (inside revealer)
         let panel_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         panel_box.add_css_class("notification-panel");
         panel_box.set_width_request(PANEL_WIDTH);
-        win.set_child(Some(&panel_box));
+        revealer.set_child(Some(&panel_box));
 
         // Header
         let header = build_header(state);
@@ -46,9 +53,6 @@ impl NotificationPanel {
         let list_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         list_box.add_css_class("panel-list");
         scrolled.set_child(Some(&list_box));
-
-        // Dummy revealer field (not used, kept for struct compat)
-        let revealer = gtk4::Revealer::new();
 
         let panel = Self {
             win,
@@ -66,26 +70,36 @@ impl NotificationPanel {
         panel
     }
 
-    /// Toggles panel visibility.
+    /// Toggles panel visibility with slide animation.
     pub fn toggle(&self) {
-        if self.win.is_visible() {
-            self.win.set_visible(false);
+        if self.revealer.reveals_child() {
+            // Slide out, then hide window after animation completes
+            self.revealer.set_reveal_child(false);
+            let win = self.win.clone();
+            gtk4::glib::timeout_add_local_once(
+                std::time::Duration::from_millis(PANEL_REVEAL_DURATION_MS as u64),
+                move || {
+                    win.set_visible(false);
+                },
+            );
         } else {
-            // Defer rebuild+show to next idle to avoid reentrancy
+            // Rebuild, show window, then slide in
             let list = self.list_box.clone();
             let state = Rc::clone(&self.state);
             let on_click = Rc::clone(&self.on_notification_click);
             let win = self.win.clone();
+            let revealer = self.revealer.clone();
             gtk4::glib::idle_add_local_once(move || {
                 rebuild_list(&list, &state, on_click);
                 win.set_visible(true);
+                revealer.set_reveal_child(true);
             });
         }
     }
 
     /// Returns whether the panel is currently visible.
     pub fn is_visible(&self) -> bool {
-        self.win.is_visible()
+        self.revealer.reveals_child()
     }
 
     /// Rebuilds the notification list content.
@@ -162,10 +176,18 @@ fn rebuild_list(
     state: &Rc<RefCell<NotificationState>>,
     on_click: Rc<dyn Fn(u32)>,
 ) {
-    let state_ref = Rc::clone(state);
-    let list_ref = list_box.clone();
+    // Build the on_rebuild callback that re-invokes this function on next idle.
+    // Deferred via idle_add to avoid reentrancy during button click handlers.
+    let list_rebuild = list_box.clone();
+    let state_rebuild = Rc::clone(state);
+    let on_click_rebuild = Rc::clone(&on_click);
     let on_rebuild: Rc<dyn Fn()> = Rc::new(move || {
-        // One level deep — don't recurse further
+        let list = list_rebuild.clone();
+        let state = Rc::clone(&state_rebuild);
+        let on_click = Rc::clone(&on_click_rebuild);
+        gtk4::glib::idle_add_local_once(move || {
+            rebuild_list(&list, &state, on_click);
+        });
     });
 
     panel_content::build_grouped_list(list_box, state, on_click, on_rebuild);

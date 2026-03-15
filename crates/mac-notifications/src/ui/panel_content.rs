@@ -1,5 +1,4 @@
 use super::notification_row;
-use crate::notification::Notification;
 use crate::state::NotificationState;
 use gtk4::prelude::*;
 use std::cell::RefCell;
@@ -68,7 +67,6 @@ pub fn build_grouped_list(
             let click_cb = Rc::clone(&on_notification_click);
             let state_dismiss = Rc::clone(state);
             let rebuild_dismiss = Rc::clone(&on_rebuild);
-            let notif_id = notif.id;
 
             let row = notification_row::build_row(
                 notif,
@@ -104,12 +102,12 @@ fn resolve_group_icon(
         img.set_pixel_size(size);
         return img;
     }
-    if let Some(icon_name) = icons::get_icon(app_name, app_dirs) {
-        if !icon_name.contains('/') {
-            let img = gtk4::Image::from_icon_name(&icon_name);
-            img.set_pixel_size(size);
-            return img;
-        }
+    if let Some(icon_name) = icons::get_icon(app_name, app_dirs)
+        && !icon_name.contains('/')
+    {
+        let img = gtk4::Image::from_icon_name(&icon_name);
+        img.set_pixel_size(size);
+        return img;
     }
     let img = gtk4::Image::from_icon_name("dialog-information");
     img.set_pixel_size(size);

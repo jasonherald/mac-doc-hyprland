@@ -17,6 +17,15 @@ pub fn sig_hide() -> i32 {
     SIGRTMIN + 3
 }
 
+/// Signal numbers used by the notification daemon.
+pub fn sig_notification_toggle() -> i32 {
+    SIGRTMIN + 4
+}
+
+pub fn sig_notification_dnd() -> i32 {
+    SIGRTMIN + 5
+}
+
 /// Window visibility commands sent via signal handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowCommand {
@@ -105,10 +114,10 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
                 None
             };
 
-            if let Some(cmd) = cmd {
-                if tx.send(cmd).is_err() {
-                    break;
-                }
+            if let Some(cmd) = cmd
+                && tx.send(cmd).is_err()
+            {
+                break;
             }
         }
     });

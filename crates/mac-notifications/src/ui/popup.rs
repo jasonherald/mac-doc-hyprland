@@ -1,7 +1,7 @@
 use super::constants::*;
 use super::window;
 use crate::config::NotificationConfig;
-use crate::notification::{CloseReason, Notification, Urgency};
+use crate::notification::{Notification, Urgency};
 use crate::state::NotificationState;
 use dock_common::desktop::icons;
 use gtk4::prelude::*;
@@ -214,26 +214,25 @@ fn resolve_icon(
     app_dirs: &[PathBuf],
 ) -> gtk4::Image {
     // Try app_icon first (could be path or theme name)
-    if !app_icon.is_empty() {
-        if let Some(pb) = icons::create_pixbuf(app_icon, POPUP_ICON_SIZE) {
-            return gtk4::Image::from_pixbuf(Some(&pb));
-        }
+    if !app_icon.is_empty()
+        && let Some(pb) = icons::create_pixbuf(app_icon, POPUP_ICON_SIZE)
+    {
+        return gtk4::Image::from_pixbuf(Some(&pb));
     }
 
     // Try desktop-entry hint
-    if let Some(entry) = desktop_entry {
-        if let Some(icon_name) = icons::get_icon(entry, app_dirs) {
-            if let Some(pb) = icons::create_pixbuf(&icon_name, POPUP_ICON_SIZE) {
-                return gtk4::Image::from_pixbuf(Some(&pb));
-            }
-        }
+    if let Some(entry) = desktop_entry
+        && let Some(icon_name) = icons::get_icon(entry, app_dirs)
+        && let Some(pb) = icons::create_pixbuf(&icon_name, POPUP_ICON_SIZE)
+    {
+        return gtk4::Image::from_pixbuf(Some(&pb));
     }
 
     // Try app_name
-    if let Some(icon_name) = icons::get_icon(app_name, app_dirs) {
-        if let Some(pb) = icons::create_pixbuf(&icon_name, POPUP_ICON_SIZE) {
-            return gtk4::Image::from_pixbuf(Some(&pb));
-        }
+    if let Some(icon_name) = icons::get_icon(app_name, app_dirs)
+        && let Some(pb) = icons::create_pixbuf(&icon_name, POPUP_ICON_SIZE)
+    {
+        return gtk4::Image::from_pixbuf(Some(&pb));
     }
 
     // Fallback

@@ -18,3 +18,4 @@ clap = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
 nix = { workspace = true }
+libc = "0.2"

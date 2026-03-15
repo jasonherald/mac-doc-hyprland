@@ -90,12 +90,12 @@ fn resolve_icon(app_icon: &str, app_name: &str, app_dirs: &[PathBuf]) -> gtk4::I
         return img;
     }
     // Try desktop entry lookup
-    if let Some(icon_name) = icons::get_icon(app_name, app_dirs) {
-        if !icon_name.contains('/') {
-            let img = gtk4::Image::from_icon_name(&icon_name);
-            img.set_pixel_size(PANEL_ICON_SIZE);
-            return img;
-        }
+    if let Some(icon_name) = icons::get_icon(app_name, app_dirs)
+        && !icon_name.contains('/')
+    {
+        let img = gtk4::Image::from_icon_name(&icon_name);
+        img.set_pixel_size(PANEL_ICON_SIZE);
+        return img;
     }
     // Fallback
     let img = gtk4::Image::from_icon_name("dialog-information");

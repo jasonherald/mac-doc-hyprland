@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 /// A group of notifications from the same application.
-#[allow(dead_code)] // Used in Phase 3 (panel content)
 pub struct AppGroup {
     pub app_name: String,
     pub app_icon: String,
@@ -11,7 +10,6 @@ pub struct AppGroup {
 }
 
 /// Mutable state for the notification daemon.
-#[allow(dead_code)] // Some fields used in later phases
 pub struct NotificationState {
     /// All notifications, newest first.
     pub history: Vec<Notification>,
@@ -27,7 +25,6 @@ pub struct NotificationState {
     pub max_history: usize,
 }
 
-#[allow(dead_code)] // Methods used incrementally across phases
 impl NotificationState {
     pub fn new(app_dirs: Vec<PathBuf>, max_history: usize) -> Self {
         Self {
