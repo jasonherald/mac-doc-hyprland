@@ -12,7 +12,11 @@ pub fn load_preferred_apps(path: &Path) -> Option<HashMap<String, String>> {
         .into_iter()
         .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
         .collect();
-    if result.is_empty() { None } else { Some(result) }
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 /// Finds the preferred command for a file path by matching patterns.

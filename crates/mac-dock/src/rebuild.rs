@@ -33,10 +33,8 @@ pub fn create_rebuild_fn(
 
         Rc::new(move || {
             // Upgrade the weak self-reference for passing to buttons
-            let rebuild_ref: Rc<dyn Fn()> = holder
-                .borrow()
-                .upgrade()
-                .unwrap_or_else(|| Rc::new(|| {}));
+            let rebuild_ref: Rc<dyn Fn()> =
+                holder.borrow().upgrade().unwrap_or_else(|| Rc::new(|| {}));
 
             let ctx = DockContext {
                 config: Rc::clone(&config),

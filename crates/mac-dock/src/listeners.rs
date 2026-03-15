@@ -18,18 +18,16 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
 
     std::thread::spawn(move || {
         let tx = tx;
-        let mut watcher = match notify::recommended_watcher(
-            move |res: Result<notify::Event, _>| {
-                if let Ok(event) = res
-                    && matches!(
-                        event.kind,
-                        notify::EventKind::Modify(_) | notify::EventKind::Create(_)
-                    )
-                {
-                    let _ = tx.send(());
-                }
-            },
-        ) {
+        let mut watcher = match notify::recommended_watcher(move |res: Result<notify::Event, _>| {
+            if let Ok(event) = res
+                && matches!(
+                    event.kind,
+                    notify::EventKind::Modify(_) | notify::EventKind::Create(_)
+                )
+            {
+                let _ = tx.send(());
+            }
+        }) {
             Ok(w) => w,
             Err(e) => {
                 log::warn!("Pin watcher failed: {}", e);
@@ -87,12 +85,9 @@ pub fn setup_autohide(
 ) {
     for win in all_windows.borrow().iter() {
         let win_hide = win.clone();
-        glib::timeout_add_local_once(
-            std::time::Duration::from_millis(500),
-            move || {
-                win_hide.set_visible(false);
-            },
-        );
+        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+            win_hide.set_visible(false);
+        });
     }
 
     crate::ui::hotspot::start_cursor_poller(all_windows, config, state);

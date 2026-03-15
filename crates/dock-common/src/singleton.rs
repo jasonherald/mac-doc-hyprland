@@ -16,15 +16,16 @@ pub fn acquire_lock(app_name: &str) -> Result<LockFile, Option<u32>> {
     if lock_path.exists() {
         // Try to read the existing PID
         if let Ok(content) = fs::read_to_string(&lock_path)
-            && let Ok(pid) = content.trim().parse::<u32>() {
-                // Check if the process is still running
-                let proc_path = format!("/proc/{}", pid);
-                if Path::new(&proc_path).exists() {
-                    return Err(Some(pid));
-                }
-                // Process is dead, remove stale lock
-                log::info!("Removing stale lock file (pid {} no longer running)", pid);
+            && let Ok(pid) = content.trim().parse::<u32>()
+        {
+            // Check if the process is still running
+            let proc_path = format!("/proc/{}", pid);
+            if Path::new(&proc_path).exists() {
+                return Err(Some(pid));
             }
+            // Process is dead, remove stale lock
+            log::info!("Removing stale lock file (pid {} no longer running)", pid);
+        }
         let _ = fs::remove_file(&lock_path);
     }
 

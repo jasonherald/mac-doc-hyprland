@@ -27,9 +27,8 @@ pub fn start_cursor_poller(
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
     // Cache monitors — they rarely change during a session
-    let cached_monitors: Rc<RefCell<Vec<HyprMonitor>>> = Rc::new(RefCell::new(
-        ipc::list_monitors().unwrap_or_default(),
-    ));
+    let cached_monitors: Rc<RefCell<Vec<HyprMonitor>>> =
+        Rc::new(RefCell::new(ipc::list_monitors().unwrap_or_default()));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
 
     glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
@@ -168,21 +167,22 @@ fn is_cursor_in_visible_dock(
         // We need the monitor's geometry to compute absolute position.
         // Use the surface allocation as an approximation.
         if win.surface().is_some()
-            && let Ok(monitors) = ipc::list_monitors() {
-                for mon in &monitors {
-                    // Check if this window is on this monitor
-                    // (dock centered at bottom of monitor)
-                    let dock_x = mon.x + (mon.width - w) / 2;
-                    let dock_y = mon.y + mon.height - h;
+            && let Ok(monitors) = ipc::list_monitors()
+        {
+            for mon in &monitors {
+                // Check if this window is on this monitor
+                // (dock centered at bottom of monitor)
+                let dock_x = mon.x + (mon.width - w) / 2;
+                let dock_y = mon.y + mon.height - h;
 
-                    let in_x = cursor.x >= dock_x && cursor.x < dock_x + w;
-                    let in_y = cursor.y >= dock_y && cursor.y <= mon.y + mon.height;
+                let in_x = cursor.x >= dock_x && cursor.x < dock_x + w;
+                let in_y = cursor.y >= dock_y && cursor.y <= mon.y + mon.height;
 
-                    if in_x && in_y {
-                        return true;
-                    }
+                if in_x && in_y {
+                    return true;
                 }
             }
+        }
     }
     false
 }

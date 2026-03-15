@@ -6,7 +6,11 @@ use gtk4_layer_shell::LayerShell;
 pub fn eval_expression(expr: &str) -> Option<f64> {
     let mut parser = Parser::new(expr);
     let result = parser.parse_expr();
-    if parser.is_done() { Some(result?) } else { None }
+    if parser.is_done() {
+        Some(result?)
+    } else {
+        None
+    }
 }
 
 /// Shows a math result popup window and copies result to clipboard.
@@ -134,8 +138,14 @@ impl Parser {
         let mut left = self.parse_term()?;
         loop {
             match self.peek() {
-                Some('+') => { self.consume(); left += self.parse_term()?; }
-                Some('-') => { self.consume(); left -= self.parse_term()?; }
+                Some('+') => {
+                    self.consume();
+                    left += self.parse_term()?;
+                }
+                Some('-') => {
+                    self.consume();
+                    left -= self.parse_term()?;
+                }
                 _ => return Some(left),
             }
         }
@@ -145,11 +155,16 @@ impl Parser {
         let mut left = self.parse_unary()?;
         loop {
             match self.peek() {
-                Some('*') => { self.consume(); left *= self.parse_unary()?; }
+                Some('*') => {
+                    self.consume();
+                    left *= self.parse_unary()?;
+                }
                 Some('/') => {
                     self.consume();
                     let right = self.parse_unary()?;
-                    if right == 0.0 { return None; }
+                    if right == 0.0 {
+                        return None;
+                    }
                     left /= right;
                 }
                 _ => return Some(left),
@@ -159,8 +174,14 @@ impl Parser {
 
     fn parse_unary(&mut self) -> Option<f64> {
         match self.peek() {
-            Some('-') => { self.consume(); Some(-self.parse_primary()?) }
-            Some('+') => { self.consume(); self.parse_primary() }
+            Some('-') => {
+                self.consume();
+                Some(-self.parse_primary()?)
+            }
+            Some('+') => {
+                self.consume();
+                self.parse_primary()
+            }
             _ => self.parse_primary(),
         }
     }
@@ -169,7 +190,9 @@ impl Parser {
         if self.peek() == Some('(') {
             self.consume(); // '('
             let val = self.parse_expr()?;
-            if self.peek() == Some(')') { self.consume(); }
+            if self.peek() == Some(')') {
+                self.consume();
+            }
             Some(val)
         } else {
             self.parse_number()

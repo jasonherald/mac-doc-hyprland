@@ -49,9 +49,7 @@ pub fn find_data_home(app_name: &str) -> Option<PathBuf> {
         search_dirs.push(PathBuf::from("/usr/share"));
     }
 
-    search_dirs
-        .into_iter()
-        .find(|d| d.join(app_name).exists())
+    search_dirs.into_iter().find(|d| d.join(app_name).exists())
 }
 
 /// Creates a directory and all parents if it doesn't exist.

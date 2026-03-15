@@ -38,7 +38,11 @@ pub fn build_pinned_flow_box(
             }
         };
 
-        let name = if !entry.name_loc.is_empty() { &entry.name_loc } else { &entry.name };
+        let name = if !entry.name_loc.is_empty() {
+            &entry.name_loc
+        } else {
+            &entry.name
+        };
         let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, &app_dirs);
 
         // Left click → launch

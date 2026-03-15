@@ -8,9 +8,7 @@ use std::rc::Rc;
 /// Maps Hyprland output names to GDK monitors.
 ///
 /// Uses the Hyprland monitor list (by index) to match against GDK monitors.
-pub fn map_outputs(
-    state: &Rc<RefCell<DockState>>,
-) -> HashMap<String, gdk::Monitor> {
+pub fn map_outputs(state: &Rc<RefCell<DockState>>) -> HashMap<String, gdk::Monitor> {
     let mut result = HashMap::new();
 
     if let Err(e) = state.borrow_mut().refresh_monitors() {
@@ -31,9 +29,10 @@ pub fn map_outputs(
 
     for (i, hypr_mon) in hypr_monitors.iter().enumerate() {
         if let Some(item) = monitors.item(i as u32)
-            && let Ok(mon) = item.downcast::<gdk::Monitor>() {
-                result.insert(hypr_mon.name.clone(), mon);
-            }
+            && let Ok(mon) = item.downcast::<gdk::Monitor>()
+        {
+            result.insert(hypr_mon.name.clone(), mon);
+        }
     }
 
     result
@@ -49,7 +48,10 @@ pub fn resolve_monitors(
         if let Some(mon) = output_map.get(&config.output) {
             vec![mon.clone()]
         } else {
-            log::warn!("Target output '{}' not found, using all monitors", config.output);
+            log::warn!(
+                "Target output '{}' not found, using all monitors",
+                config.output
+            );
             list_gdk_monitors()
         }
     } else {
@@ -68,9 +70,10 @@ pub fn list_gdk_monitors() -> Vec<gdk::Monitor> {
     let model = display.monitors();
     for i in 0..model.n_items() {
         if let Some(item) = model.item(i)
-            && let Ok(mon) = item.downcast::<gdk::Monitor>() {
-                monitors.push(mon);
-            }
+            && let Ok(mon) = item.downcast::<gdk::Monitor>()
+        {
+            monitors.push(mon);
+        }
     }
     monitors
 }

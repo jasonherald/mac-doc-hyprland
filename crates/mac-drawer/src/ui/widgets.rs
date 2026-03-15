@@ -19,11 +19,12 @@ pub fn app_icon_button(
 
     // Icon
     if !icon_name.is_empty()
-        && let Some(image) = icons::create_image(icon_name, icon_size, app_dirs) {
-            image.set_pixel_size(icon_size);
-            image.set_halign(gtk4::Align::Center);
-            vbox.append(&image);
-        }
+        && let Some(image) = icons::create_image(icon_name, icon_size, app_dirs)
+    {
+        image.set_pixel_size(icon_size);
+        image.set_halign(gtk4::Align::Center);
+        vbox.append(&image);
+    }
 
     // Label
     let label = gtk4::Label::new(Some(&truncate(display_name, 20)));

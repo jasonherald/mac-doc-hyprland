@@ -81,21 +81,41 @@ pub fn show_context_menu(
 
         actions_box.append(&action_button("Close", &popover, {
             let a = addr.clone();
-            move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch closewindow address:{}", a)); }
+            move || {
+                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                    "dispatch closewindow address:{}",
+                    a
+                ));
+            }
         }));
         actions_box.append(&action_button("Toggle Floating", &popover, {
             let a = addr.clone();
-            move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch togglefloating address:{}", a)); }
+            move || {
+                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                    "dispatch togglefloating address:{}",
+                    a
+                ));
+            }
         }));
         actions_box.append(&action_button("Fullscreen", &popover, {
             let a = addr.clone();
-            move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch fullscreen address:{}", a)); }
+            move || {
+                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                    "dispatch fullscreen address:{}",
+                    a
+                ));
+            }
         }));
 
         for ws in 1..=config.num_ws {
             actions_box.append(&action_button(&format!("-> WS {}", ws), &popover, {
                 let a = addr.clone();
-                move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch movetoworkspace {},address:{}", ws, a)); }
+                move || {
+                    let _ = dock_common::hyprland::ipc::hyprctl(&format!(
+                        "dispatch movetoworkspace {},address:{}",
+                        ws, a
+                    ));
+                }
             }));
         }
 
@@ -123,7 +143,8 @@ pub fn show_context_menu(
     btn.connect_clicked(move |_| {
         for addr in &insts {
             let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                "dispatch closewindow address:{}", addr
+                "dispatch closewindow address:{}",
+                addr
             ));
         }
         p.popdown();
@@ -195,11 +216,13 @@ fn focus_window(address: &str, workspace_name: &str) {
     if workspace_name.starts_with("special") {
         let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
         let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch togglespecialworkspace {}", special_name
+            "dispatch togglespecialworkspace {}",
+            special_name
         ));
     } else {
         let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch focuswindow address:{}", address
+            "dispatch focuswindow address:{}",
+            address
         ));
     }
     let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");

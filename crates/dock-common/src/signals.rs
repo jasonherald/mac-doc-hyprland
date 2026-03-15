@@ -104,9 +104,10 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
                     };
 
                     if let Some(cmd) = cmd
-                        && tx.send(cmd).is_err() {
-                            break;
-                        }
+                        && tx.send(cmd).is_err()
+                    {
+                        break;
+                    }
                 }
                 Err(e) => {
                     log::error!("sigwait error: {}", e);

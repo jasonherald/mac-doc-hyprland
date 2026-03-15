@@ -125,7 +125,10 @@ impl DockConfig {
         if self.ignore_workspaces.is_empty() {
             Vec::new()
         } else {
-            self.ignore_workspaces.split(',').map(|s| s.trim().to_string()).collect()
+            self.ignore_workspaces
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .collect()
         }
     }
 
@@ -134,7 +137,10 @@ impl DockConfig {
         if self.ignore_classes.is_empty() {
             Vec::new()
         } else {
-            self.ignore_classes.split(' ').map(|s| s.trim().to_string()).collect()
+            self.ignore_classes
+                .split(' ')
+                .map(|s| s.trim().to_string())
+                .collect()
         }
     }
 }

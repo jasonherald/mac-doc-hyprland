@@ -108,14 +108,12 @@ fn main() {
         let monitors = monitor::resolve_monitors(&state, &config);
 
         // Windows
-        let (per_monitor, all_windows) =
-            dock_windows::create_dock_windows(app, &monitors, &config);
+        let (per_monitor, all_windows) = dock_windows::create_dock_windows(app, &monitors, &config);
         let per_monitor = Rc::new(RefCell::new(per_monitor));
 
         // Rebuild function
-        let rebuild = rebuild::create_rebuild_fn(
-            &per_monitor, &config, &state, &data_home, &pinned_file,
-        );
+        let rebuild =
+            rebuild::create_rebuild_fn(&per_monitor, &config, &state, &data_home, &pinned_file);
         rebuild();
 
         for win in all_windows.borrow().iter() {

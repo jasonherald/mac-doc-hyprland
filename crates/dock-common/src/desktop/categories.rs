@@ -66,7 +66,14 @@ pub fn default_categories() -> Vec<Category> {
 /// Audio/Video→AudioVideo, etc.
 pub fn assign_categories(categories_field: &str) -> Vec<&'static str> {
     let primary = [
-        "AudioVideo", "Development", "Game", "Graphics", "Network", "Office", "System", "Utility",
+        "AudioVideo",
+        "Development",
+        "Game",
+        "Graphics",
+        "Network",
+        "Office",
+        "System",
+        "Utility",
     ];
 
     let secondary: &[(&str, &str)] = &[
@@ -92,9 +99,10 @@ pub fn assign_categories(categories_field: &str) -> Vec<&'static str> {
                 result.push(matched);
             }
         } else if let Some(&(_, mapped)) = secondary.iter().find(|&&(k, _)| k == cat)
-            && !result.contains(&mapped) {
-                result.push(mapped);
-            }
+            && !result.contains(&mapped)
+        {
+            result.push(mapped);
+        }
     }
 
     if result.is_empty() {
@@ -106,7 +114,10 @@ pub fn assign_categories(categories_field: &str) -> Vec<&'static str> {
 
 /// Convenience: returns the first matching category (for simple use cases).
 pub fn assign_category(categories_field: &str) -> &'static str {
-    assign_categories(categories_field).into_iter().next().unwrap_or("Other")
+    assign_categories(categories_field)
+        .into_iter()
+        .next()
+        .unwrap_or("Other")
 }
 
 #[cfg(test)]

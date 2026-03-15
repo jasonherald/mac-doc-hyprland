@@ -12,7 +12,10 @@ pub fn load_css(css_path: &Path) -> bool {
         provider.load_from_path(css_path);
         log::info!("Loaded CSS from {}", css_path.display());
     } else {
-        log::warn!("{} not found, using default GTK styling", css_path.display());
+        log::warn!(
+            "{} not found, using default GTK styling",
+            css_path.display()
+        );
         return false;
     }
 
@@ -31,7 +34,6 @@ pub fn load_css_from_data(css: &str) -> gtk4::CssProvider {
 }
 
 fn apply_provider(provider: &gtk4::CssProvider, priority: u32) {
-    let display = gdk::Display::default()
-        .expect("GTK display not available — is GTK initialized?");
+    let display = gdk::Display::default().expect("GTK display not available — is GTK initialized?");
     gtk4::style_context_add_provider_for_display(&display, provider, priority);
 }

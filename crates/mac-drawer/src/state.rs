@@ -63,8 +63,8 @@ fn map_xdg_user_dirs() -> HashMap<String, PathBuf> {
     result.insert("pictures".into(), PathBuf::from(&home).join("Pictures"));
     result.insert("videos".into(), PathBuf::from(&home).join("Videos"));
 
-    let config_home = std::env::var("XDG_CONFIG_HOME")
-        .unwrap_or_else(|_| format!("{}/.config", home));
+    let config_home =
+        std::env::var("XDG_CONFIG_HOME").unwrap_or_else(|_| format!("{}/.config", home));
     let user_dirs_file = PathBuf::from(&config_home).join("user-dirs.dirs");
 
     if let Ok(content) = std::fs::read_to_string(&user_dirs_file) {

@@ -27,40 +27,35 @@ pub fn setup_keyboard(
     let app = app.clone();
 
     let key_ctrl = gtk4::EventControllerKey::new();
-    key_ctrl.connect_key_released(move |_, keyval, _, _| {
-        match keyval {
-            gtk4::gdk::Key::Escape => {
-                let text = search_entry.text();
-                if !text.is_empty() {
-                    search_entry.set_text("");
-                } else if !config.resident {
-                    win.close();
-                } else {
-                    search_entry.set_text("");
-                    win.set_visible(false);
-                }
+    key_ctrl.connect_key_released(move |_, keyval, _, _| match keyval {
+        gtk4::gdk::Key::Escape => {
+            let text = search_entry.text();
+            if !text.is_empty() {
+                search_entry.set_text("");
+            } else if !config.resident {
+                win.close();
+            } else {
+                search_entry.set_text("");
+                win.set_visible(false);
             }
-            gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                let text = search_entry.text().to_string();
-                if text.starts_with(':') && text.len() > 1 {
-                    let cmd = &text[1..];
-                    dock_common::launch::launch_hyprctl(cmd);
-                    on_launch();
-                } else if let Some(result) = crate::ui::math::eval_expression(&text) {
-                    crate::ui::math::show_result_window(&text, result, &app);
-                }
-            }
-            _ => {}
         }
+        gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
+            let text = search_entry.text().to_string();
+            if text.starts_with(':') && text.len() > 1 {
+                let cmd = &text[1..];
+                dock_common::launch::launch_hyprctl(cmd);
+                on_launch();
+            } else if let Some(result) = crate::ui::math::eval_expression(&text) {
+                crate::ui::math::show_result_window(&text, result, &app);
+            }
+        }
+        _ => {}
     });
     win_ctrl.add_controller(key_ctrl);
 }
 
 /// Polls Hyprland activewindow to close drawer when another window gets focus.
-pub fn setup_focus_detector(
-    win: &gtk4::ApplicationWindow,
-    on_launch: &Rc<dyn Fn()>,
-) {
+pub fn setup_focus_detector(win: &gtk4::ApplicationWindow, on_launch: &Rc<dyn Fn()>) {
     let win = win.clone();
     let on_launch = Rc::clone(on_launch);
     let baseline: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
@@ -74,7 +69,11 @@ pub fn setup_focus_detector(
         if let Ok(reply) = dock_common::hyprland::ipc::hyprctl("j/activewindow")
             && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&reply)
         {
-            let addr = val.get("address").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let addr = val
+                .get("address")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let class = val.get("class").and_then(|v| v.as_str()).unwrap_or("");
 
             if addr.is_empty() || class.is_empty() {
@@ -118,14 +117,22 @@ pub fn setup_file_watcher(
                     log::info!("Desktop files changed, reloading...");
                     desktop_loader::load_desktop_entries(&mut state.borrow_mut());
                     well_builder::build_normal_well(
-                        &well, &config, &state, &pinned_file, &on_launch,
+                        &well,
+                        &config,
+                        &state,
+                        &pinned_file,
+                        &on_launch,
                     );
                 }
                 watcher::WatchEvent::PinnedChanged => {
                     log::info!("Pinned file changed, rebuilding...");
                     state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
                     well_builder::build_normal_well(
-                        &well, &config, &state, &pinned_file, &on_launch,
+                        &well,
+                        &config,
+                        &state,
+                        &pinned_file,
+                        &on_launch,
                     );
                 }
             }

@@ -61,7 +61,11 @@ fn flow_box_button(
     on_launch: Rc<dyn Fn()>,
 ) -> gtk4::Button {
     let app_dirs = state.borrow().app_dirs.clone();
-    let name = if !entry.name_loc.is_empty() { &entry.name_loc } else { &entry.name };
+    let name = if !entry.name_loc.is_empty() {
+        &entry.name_loc
+    } else {
+        &entry.name
+    };
 
     let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, &app_dirs);
 

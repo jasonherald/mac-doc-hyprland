@@ -3,10 +3,7 @@ use gtk4::prelude::*;
 use std::rc::Rc;
 
 /// Builds the power bar with lock/exit/reboot/sleep/poweroff buttons.
-pub fn build_power_bar(
-    config: &DrawerConfig,
-    on_launch: Rc<dyn Fn()>,
-) -> gtk4::Box {
+pub fn build_power_bar(config: &DrawerConfig, on_launch: Rc<dyn Fn()>) -> gtk4::Box {
     let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     hbox.set_halign(gtk4::Align::Center);
 

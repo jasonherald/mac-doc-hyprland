@@ -21,9 +21,8 @@ pub fn build_normal_well(
     if !pinned.is_empty() {
         well.append(&section_header("Favorites"));
 
-        let pinned_flow = ui::pinned::build_pinned_flow_box(
-            config, state, pinned_file, Rc::clone(on_launch),
-        );
+        let pinned_flow =
+            ui::pinned::build_pinned_flow_box(config, state, pinned_file, Rc::clone(on_launch));
         pinned_flow.set_hexpand(true);
         well.append(&pinned_flow);
         well.append(&divider());
@@ -33,7 +32,12 @@ pub fn build_normal_well(
     well.append(&section_header("Applications"));
 
     let flow = ui::app_grid::build_app_flow_box(
-        config, state, None, "", pinned_file, Rc::clone(on_launch),
+        config,
+        state,
+        None,
+        "",
+        pinned_file,
+        Rc::clone(on_launch),
     );
     flow.set_hexpand(true);
     well.append(&flow);
@@ -54,7 +58,12 @@ pub fn build_search_results(
 
     // App results
     let app_flow = ui::app_grid::build_app_flow_box(
-        config, state, None, phrase, pinned_file, Rc::clone(on_launch),
+        config,
+        state,
+        None,
+        phrase,
+        pinned_file,
+        Rc::clone(on_launch),
     );
     app_flow.set_halign(gtk4::Align::Center);
     app_flow.set_hexpand(true);
@@ -65,9 +74,8 @@ pub fn build_search_results(
         well.append(&divider());
         well.append(&section_header("Files"));
 
-        let file_results = ui::file_search::search_files(
-            phrase, config, state, Rc::clone(on_launch),
-        );
+        let file_results =
+            ui::file_search::search_files(phrase, config, state, Rc::clone(on_launch));
         well.append(&file_results);
     }
 }

@@ -67,33 +67,29 @@ pub fn parse_desktop_entry<R: BufRead>(id: &str, reader: R) -> DesktopEntry {
             "Icon" => entry.icon = value.to_string(),
             "Categories" => entry.category = value.to_string(),
             "Terminal" => entry.terminal = value.parse().unwrap_or(false),
-            "NoDisplay"
-                if !entry.no_display => {
-                    entry.no_display = value.parse().unwrap_or(false);
-                }
-            "Hidden"
-                if !entry.no_display => {
-                    entry.no_display = value.parse().unwrap_or(false);
-                }
-            "OnlyShowIn"
-                if !entry.no_display => {
-                    entry.no_display = true;
-                    if !current_desktop.is_empty() {
-                        for item in value.split(';') {
-                            if !item.is_empty() && item == current_desktop {
-                                entry.no_display = false;
-                            }
-                        }
-                    }
-                }
-            "NotShowIn"
-                if !entry.no_display && !current_desktop.is_empty() => {
+            "NoDisplay" if !entry.no_display => {
+                entry.no_display = value.parse().unwrap_or(false);
+            }
+            "Hidden" if !entry.no_display => {
+                entry.no_display = value.parse().unwrap_or(false);
+            }
+            "OnlyShowIn" if !entry.no_display => {
+                entry.no_display = true;
+                if !current_desktop.is_empty() {
                     for item in value.split(';') {
                         if !item.is_empty() && item == current_desktop {
-                            entry.no_display = true;
+                            entry.no_display = false;
                         }
                     }
                 }
+            }
+            "NotShowIn" if !entry.no_display && !current_desktop.is_empty() => {
+                for item in value.split(';') {
+                    if !item.is_empty() && item == current_desktop {
+                        entry.no_display = true;
+                    }
+                }
+            }
             "Exec" => {
                 entry.exec = value.replace(['"', '\''], "");
             }

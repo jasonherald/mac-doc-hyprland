@@ -13,7 +13,11 @@ fn hypr_socket_dir() -> Result<PathBuf> {
     let runtime_dir = env::var("XDG_RUNTIME_DIR").unwrap_or_default();
     let hypr_dir = if !runtime_dir.is_empty() {
         let candidate = PathBuf::from(&runtime_dir).join("hypr");
-        if candidate.exists() { candidate } else { PathBuf::from("/tmp/hypr") }
+        if candidate.exists() {
+            candidate
+        } else {
+            PathBuf::from("/tmp/hypr")
+        }
     } else {
         PathBuf::from("/tmp/hypr")
     };

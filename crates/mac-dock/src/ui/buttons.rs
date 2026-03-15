@@ -15,16 +15,45 @@ struct IndicatorAsset {
 
 fn indicator_asset(count: usize, vertical: bool) -> IndicatorAsset {
     match (count, vertical) {
-        (0, false) => IndicatorAsset { name: "task-empty.svg", width_divisor: 1, height_divisor: 8 },
-        (0, true) => IndicatorAsset { name: "task-empty-vertical.svg", width_divisor: 8, height_divisor: 1 },
-        (1, false) => IndicatorAsset { name: "task-single.svg", width_divisor: 1, height_divisor: 8 },
-        (1, true) => IndicatorAsset { name: "task-single-vertical.svg", width_divisor: 8, height_divisor: 1 },
-        (_, false) => IndicatorAsset { name: "task-multiple.svg", width_divisor: 1, height_divisor: 8 },
-        (_, true) => IndicatorAsset { name: "task-multiple-vertical.svg", width_divisor: 8, height_divisor: 1 },
+        (0, false) => IndicatorAsset {
+            name: "task-empty.svg",
+            width_divisor: 1,
+            height_divisor: 8,
+        },
+        (0, true) => IndicatorAsset {
+            name: "task-empty-vertical.svg",
+            width_divisor: 8,
+            height_divisor: 1,
+        },
+        (1, false) => IndicatorAsset {
+            name: "task-single.svg",
+            width_divisor: 1,
+            height_divisor: 8,
+        },
+        (1, true) => IndicatorAsset {
+            name: "task-single-vertical.svg",
+            width_divisor: 8,
+            height_divisor: 1,
+        },
+        (_, false) => IndicatorAsset {
+            name: "task-multiple.svg",
+            width_divisor: 1,
+            height_divisor: 8,
+        },
+        (_, true) => IndicatorAsset {
+            name: "task-multiple-vertical.svg",
+            width_divisor: 8,
+            height_divisor: 1,
+        },
     }
 }
 
-fn indicator_image(data_home: &Path, count: usize, vertical: bool, img_size: i32) -> Option<gtk4::Image> {
+fn indicator_image(
+    data_home: &Path,
+    count: usize,
+    vertical: bool,
+    img_size: i32,
+) -> Option<gtk4::Image> {
     let asset = indicator_asset(count, vertical);
     let path = data_home.join("nwg-dock-hyprland/images").join(asset.name);
     let w = img_size / asset.width_divisor;
@@ -78,7 +107,9 @@ pub fn pinned_button(app_id: &str, ctx: &DockContext) -> gtk4::Box {
 
     let button = gtk4::Button::new();
     let image = icons::create_image(app_id, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = ctx.data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
+        let path = ctx
+            .data_home
+            .join("nwg-dock-hyprland/images/icon-missing.svg");
         icons::pixbuf_from_file(&path, img_size, img_size)
             .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
             .unwrap_or_default()
@@ -112,7 +143,12 @@ pub fn pinned_button(app_id: &str, ctx: &DockContext) -> gtk4::Box {
     button.add_controller(gesture);
 
     let indicator = indicator_image(&ctx.data_home, 0, ctx.config.is_vertical(), img_size);
-    pack_button_box(&button, indicator.as_ref(), &ctx.config.position, ctx.config.is_vertical())
+    pack_button_box(
+        &button,
+        indicator.as_ref(),
+        &ctx.config.position,
+        ctx.config.is_vertical(),
+    )
 }
 
 /// Creates a task button for a running application.
@@ -122,7 +158,9 @@ pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockCont
 
     let button = gtk4::Button::new();
     let image = icons::create_image(&client.class, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = ctx.data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
+        let path = ctx
+            .data_home
+            .join("nwg-dock-hyprland/images/icon-missing.svg");
         icons::pixbuf_from_file(&path, img_size, img_size)
             .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
             .unwrap_or_default()
@@ -172,14 +210,30 @@ pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockCont
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         if let Some(widget) = gesture.widget() {
             menus::show_context_menu(
-                &class, &insts, &config_ref, &state_ref, &pinned_path, &rebuild_ref, &widget,
+                &class,
+                &insts,
+                &config_ref,
+                &state_ref,
+                &pinned_path,
+                &rebuild_ref,
+                &widget,
             );
         }
     });
     button.add_controller(right);
 
-    let indicator = indicator_image(&ctx.data_home, instances.len(), ctx.config.is_vertical(), img_size);
-    pack_button_box(&button, indicator.as_ref(), &ctx.config.position, ctx.config.is_vertical())
+    let indicator = indicator_image(
+        &ctx.data_home,
+        instances.len(),
+        ctx.config.is_vertical(),
+        img_size,
+    );
+    pack_button_box(
+        &button,
+        indicator.as_ref(),
+        &ctx.config.position,
+        ctx.config.is_vertical(),
+    )
 }
 
 /// Creates the launcher button (opens the drawer).
@@ -235,11 +289,13 @@ fn focus_window(address: &str, workspace_name: &str) {
     if workspace_name.starts_with("special") {
         let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
         let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch togglespecialworkspace {}", special_name
+            "dispatch togglespecialworkspace {}",
+            special_name
         ));
     } else {
         let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch focuswindow address:{}", address
+            "dispatch focuswindow address:{}",
+            address
         ));
     }
     let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");

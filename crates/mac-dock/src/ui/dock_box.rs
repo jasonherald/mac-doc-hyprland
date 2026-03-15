@@ -42,7 +42,10 @@ pub fn build(
     }
 
     s.clients.sort_by(|a, b| {
-        a.workspace.id.cmp(&b.workspace.id).then_with(|| a.class.cmp(&b.class))
+        a.workspace
+            .id
+            .cmp(&b.workspace.id)
+            .then_with(|| a.class.cmp(&b.class))
     });
 
     let ignored_ws = config.ignored_workspaces();
@@ -74,23 +77,32 @@ pub fn build(
 
     log::debug!(
         "Dock build: {} items, icon_size={}, img_size_scaled={}, pinned={}",
-        all_items.len(), config.icon_size, s.img_size_scaled, s.pinned.len()
+        all_items.len(),
+        config.icon_size,
+        s.img_size_scaled,
+        s.pinned.len()
     );
 
     drop(s);
 
     // Launcher at start
     if config.launcher_pos == "start"
-        && let Some(btn) = buttons::launcher_button(ctx, win) {
-            main_box.append(&btn);
-        }
+        && let Some(btn) = buttons::launcher_button(ctx, win)
+    {
+        main_box.append(&btn);
+    }
 
     // Pinned items
     let mut already_added: Vec<String> = Vec::new();
     let pinned_snapshot = ctx.state.borrow().pinned.clone();
     let clients_snapshot = ctx.state.borrow().clients.clone();
-    let active_class = ctx.state.borrow()
-        .active_client.as_ref().map(|c| c.class.clone()).unwrap_or_default();
+    let active_class = ctx
+        .state
+        .borrow()
+        .active_client
+        .as_ref()
+        .map(|c| c.class.clone())
+        .unwrap_or_default();
 
     for pin in &pinned_snapshot {
         if ignored_classes.contains(pin) {
@@ -131,9 +143,10 @@ pub fn build(
 
     // Launcher at end
     if config.launcher_pos == "end"
-        && let Some(btn) = buttons::launcher_button(ctx, win) {
-            main_box.append(&btn);
-        }
+        && let Some(btn) = buttons::launcher_button(ctx, win)
+    {
+        main_box.append(&btn);
+    }
 
     main_box
 }

@@ -8,8 +8,8 @@ pub fn get_app_dirs() -> Vec<PathBuf> {
 
     let home = env::var("HOME").unwrap_or_default();
     let xdg_data_home = env::var("XDG_DATA_HOME").ok();
-    let xdg_data_dirs = env::var("XDG_DATA_DIRS")
-        .unwrap_or_else(|_| "/usr/local/share/:/usr/share/".to_string());
+    let xdg_data_dirs =
+        env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share/:/usr/share/".to_string());
 
     // User data dir first
     if let Some(ref data_home) = xdg_data_home {
@@ -50,10 +50,7 @@ pub fn list_desktop_files(dir: &Path) -> Vec<PathBuf> {
     entries
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| {
-            p.extension()
-                .is_some_and(|ext| ext == "desktop")
-        })
+        .filter(|p| p.extension().is_some_and(|ext| ext == "desktop"))
         .collect()
 }
 
@@ -82,13 +79,9 @@ pub fn search_desktop_dirs(app_id: &str, app_dirs: &[PathBuf]) -> Option<PathBuf
                 && name.ends_with(&desktop_suffix)
         }),
         // 2. Exact case-insensitive match
-        Box::new(move |name: &str, _: &Path| {
-            name.to_uppercase() == desktop_upper
-        }),
+        Box::new(move |name: &str, _: &Path| name.to_uppercase() == desktop_upper),
         // 3. Contains app name (case-insensitive)
-        Box::new(move |name: &str, _: &Path| {
-            name.to_uppercase().contains(&space_upper)
-        }),
+        Box::new(move |name: &str, _: &Path| name.to_uppercase().contains(&space_upper)),
         // 4. StartupWMClass in file contents
         Box::new(move |_: &str, path: &Path| {
             fs::read_to_string(path).is_ok_and(|c| c.contains(&wm_class_needle))
@@ -97,7 +90,11 @@ pub fn search_desktop_dirs(app_id: &str, app_dirs: &[PathBuf]) -> Option<PathBuf
 
     for search in &searches {
         for dir in app_dirs {
-            for entry in fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok()) {
+            for entry in fs::read_dir(dir)
+                .into_iter()
+                .flatten()
+                .filter_map(|e| e.ok())
+            {
                 if entry.file_type().is_ok_and(|ft| ft.is_dir()) {
                     continue;
                 }

@@ -21,9 +21,10 @@ pub fn get_icon(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
     let lines = load_text_lines(&desktop_path).ok()?;
     for line in &lines {
         if line.to_uppercase().starts_with("ICON")
-            && let Some(value) = line.split('=').nth(1) {
-                return Some(value.to_string());
-            }
+            && let Some(value) = line.split('=').nth(1)
+        {
+            return Some(value.to_string());
+        }
     }
 
     None
@@ -59,13 +60,14 @@ pub fn get_exec(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
 /// Resolves the display name for an application.
 pub fn get_name(app_name: &str, app_dirs: &[PathBuf]) -> String {
     if let Some(desktop_path) = find_desktop_file(app_name, app_dirs)
-        && let Ok(lines) = load_text_lines(&desktop_path) {
-            for line in &lines {
-                if line.to_uppercase().starts_with("NAME=") {
-                    return line[5..].to_string();
-                }
+        && let Ok(lines) = load_text_lines(&desktop_path)
+    {
+        for line in &lines {
+            if line.to_uppercase().starts_with("NAME=") {
+                return line[5..].to_string();
             }
         }
+    }
     app_name.to_string()
 }
 
@@ -95,10 +97,7 @@ fn find_desktop_file(app_name: &str, app_dirs: &[PathBuf]) -> Option<PathBuf> {
 ///
 /// If `icon` is an absolute path, loads from file.
 /// Otherwise, tries the icon theme, then falls back to desktop file lookup.
-pub fn create_pixbuf(
-    icon: &str,
-    size: i32,
-) -> Option<gtk4::gdk_pixbuf::Pixbuf> {
+pub fn create_pixbuf(icon: &str, size: i32) -> Option<gtk4::gdk_pixbuf::Pixbuf> {
     // Absolute path
     if icon.starts_with('/') {
         return gtk4::gdk_pixbuf::Pixbuf::from_file_at_size(icon, size, size).ok();
@@ -128,11 +127,7 @@ pub fn create_pixbuf(
 }
 
 /// Creates a GTK4 Image widget from an app ID.
-pub fn create_image(
-    app_id: &str,
-    size: i32,
-    app_dirs: &[PathBuf],
-) -> Option<gtk4::Image> {
+pub fn create_image(app_id: &str, size: i32, app_dirs: &[PathBuf]) -> Option<gtk4::Image> {
     let icon_name = get_icon(app_id, app_dirs).unwrap_or_else(|| app_id.to_string());
     let pixbuf = create_pixbuf(&icon_name, size)?;
     Some(gtk4::Image::from_pixbuf(Some(&pixbuf)))

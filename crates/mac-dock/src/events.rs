@@ -9,10 +9,7 @@ use std::sync::mpsc;
 /// and triggers UI refreshes on the main thread via polling.
 /// Only rebuilds if the client list actually changed (different count
 /// or different set of classes).
-pub fn start_event_listener(
-    state: Rc<RefCell<DockState>>,
-    rebuild_fn: Rc<dyn Fn()>,
-) {
+pub fn start_event_listener(state: Rc<RefCell<DockState>>, rebuild_fn: Rc<dyn Fn()>) {
     let (sender, receiver) = mpsc::channel::<String>();
 
     std::thread::spawn(move || {

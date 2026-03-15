@@ -30,7 +30,8 @@ pub fn search_files(
             break;
         }
         for result in walk_directory(dir_path, phrase, &exclusions, remaining) {
-            let display = result.path
+            let display = result
+                .path
                 .strip_prefix(dir_path)
                 .unwrap_or(&result.path)
                 .to_string_lossy()
@@ -67,7 +68,13 @@ pub fn search_files(
 
     // Result rows
     for (display, file_path, is_dir) in &all_results {
-        let row = file_result_row(display, file_path, *is_dir, &preferred_apps, Rc::clone(&on_launch));
+        let row = file_result_row(
+            display,
+            file_path,
+            *is_dir,
+            &preferred_apps,
+            Rc::clone(&on_launch),
+        );
         container.append(&row);
     }
 
@@ -89,8 +96,11 @@ fn walk_directory(
     let phrase_lower = phrase.to_lowercase();
 
     fn walk_inner(
-        dir: &Path, root: &Path, phrase: &str,
-        exclusions: &[String], results: &mut Vec<FileResult>,
+        dir: &Path,
+        root: &Path,
+        phrase: &str,
+        exclusions: &[String],
+        results: &mut Vec<FileResult>,
         max_results: usize,
     ) {
         if results.len() >= max_results {
@@ -110,7 +120,10 @@ fn walk_directory(
                 continue;
             }
             if relative.to_lowercase().contains(phrase) {
-                results.push(FileResult { is_dir: path.is_dir(), path: path.clone() });
+                results.push(FileResult {
+                    is_dir: path.is_dir(),
+                    path: path.clone(),
+                });
             }
             if path.is_dir() {
                 walk_inner(&path, root, phrase, exclusions, results, max_results);
@@ -118,7 +131,14 @@ fn walk_directory(
         }
     }
 
-    walk_inner(root, root, &phrase_lower, exclusions, &mut results, max_results);
+    walk_inner(
+        root,
+        root,
+        &phrase_lower,
+        exclusions,
+        &mut results,
+        max_results,
+    );
     results
 }
 
@@ -148,7 +168,8 @@ fn file_result_row(
     hbox.append(&icon);
 
     // Filename column
-    let filename = file_path.file_name()
+    let filename = file_path
+        .file_name()
         .unwrap_or_default()
         .to_string_lossy()
         .to_string();
@@ -161,7 +182,8 @@ fn file_result_row(
     hbox.append(&name_label);
 
     // Path/location column
-    let parent = file_path.parent()
+    let parent = file_path
+        .parent()
         .unwrap_or(file_path)
         .to_string_lossy()
         .to_string();
@@ -185,9 +207,8 @@ fn file_result_row(
     // Click → open
     let path = file_path.to_path_buf();
     let path_str = file_path.to_string_lossy().to_string();
-    let preferred_cmd = dock_common::desktop::preferred_apps::find_preferred_app(
-        &path_str, preferred_apps,
-    );
+    let preferred_cmd =
+        dock_common::desktop::preferred_apps::find_preferred_app(&path_str, preferred_apps);
     button.connect_clicked(move |_| {
         let result = if let Some(ref cmd) = preferred_cmd {
             std::process::Command::new(cmd).arg(&path).spawn()
@@ -204,7 +225,11 @@ fn file_result_row(
 }
 
 fn file_type_icon(path: &Path) -> &'static str {
-    let ext = path.extension().unwrap_or_default().to_string_lossy().to_lowercase();
+    let ext = path
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_lowercase();
     match ext.as_str() {
         "pdf" => "application-pdf",
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" => "image-x-generic",

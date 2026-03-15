@@ -61,12 +61,13 @@ fn main() {
     };
 
     if !css_path.exists()
-        && let Some(data_dir) = paths::find_data_home("nwg-drawer") {
-            let src = data_dir.join("nwg-drawer/drawer.css");
-            if let Err(e) = paths::copy_file(&src, &css_path) {
-                log::warn!("Failed copying default CSS: {}", e);
-            }
+        && let Some(data_dir) = paths::find_data_home("nwg-drawer")
+    {
+        let src = data_dir.join("nwg-drawer/drawer.css");
+        if let Err(e) = paths::copy_file(&src, &css_path) {
+            log::warn!("Failed copying default CSS: {}", e);
         }
+    }
 
     let app_dirs = get_app_dirs();
     let exclusions = if config_dir.join("excluded-dirs").exists() {
@@ -152,28 +153,32 @@ fn main() {
         well.set_width_request(900);
         content_box.append(&well);
 
-        ui::well_builder::build_normal_well(
-            &well, &config, &state, &pinned_file, &on_launch,
-        );
+        ui::well_builder::build_normal_well(&well, &config, &state, &pinned_file, &on_launch);
 
         // Search
         ui::search_handler::connect_search(
-            &search_entry, &well, &status_label,
-            &config, &state, &pinned_file, &on_launch,
+            &search_entry,
+            &well,
+            &status_label,
+            &config,
+            &state,
+            &pinned_file,
+            &on_launch,
         );
 
         // Power bar + status
         if config.has_power_bar() {
-            main_vbox.append(&ui::power_bar::build_power_bar(&config, Rc::clone(&on_launch)));
+            main_vbox.append(&ui::power_bar::build_power_bar(
+                &config,
+                Rc::clone(&on_launch),
+            ));
         }
         main_vbox.append(&status_label);
 
         // Listeners
         listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app);
         listeners::setup_focus_detector(&win, &on_launch);
-        listeners::setup_file_watcher(
-            &app_dirs, &pinned_file, &well, &config, &state, &on_launch,
-        );
+        listeners::setup_file_watcher(&app_dirs, &pinned_file, &well, &config, &state, &on_launch);
         listeners::setup_signal_poller(&win, &sig_rx);
 
         win.present();
@@ -200,10 +205,11 @@ fn apply_theme_settings(config: &DrawerConfig) {
 fn load_preferred_apps(state: &mut DrawerState) {
     let pa_file = paths::config_dir("nwg-drawer").join("preferred-apps.json");
     if pa_file.exists()
-        && let Some(pa) = dock_common::desktop::preferred_apps::load_preferred_apps(&pa_file) {
-            log::info!("Found {} custom file associations", pa.len());
-            state.preferred_apps = pa;
-        }
+        && let Some(pa) = dock_common::desktop::preferred_apps::load_preferred_apps(&pa_file)
+    {
+        log::info!("Found {} custom file associations", pa.len());
+        state.preferred_apps = pa;
+    }
 }
 
 fn resolve_target_monitor(config: &DrawerConfig) -> Option<gtk4::gdk::Monitor> {
@@ -217,19 +223,16 @@ fn resolve_target_monitor(config: &DrawerConfig) -> Option<gtk4::gdk::Monitor> {
     for (i, hm) in hypr_monitors.iter().enumerate() {
         if hm.name == config.output
             && let Some(item) = monitors.item(i as u32)
-                && let Ok(mon) = item.downcast::<gtk4::gdk::Monitor>() {
-                    return Some(mon);
-                }
+            && let Ok(mon) = item.downcast::<gtk4::gdk::Monitor>()
+        {
+            return Some(mon);
+        }
     }
     log::warn!("Target output '{}' not found", config.output);
     None
 }
 
-fn setup_close_button(
-    main_vbox: &gtk4::Box,
-    win: &gtk4::ApplicationWindow,
-    config: &DrawerConfig,
-) {
+fn setup_close_button(main_vbox: &gtk4::Box, win: &gtk4::ApplicationWindow, config: &DrawerConfig) {
     if config.closebtn == "none" {
         return;
     }
@@ -241,7 +244,11 @@ fn setup_close_button(
     let win = win.clone();
     let resident = config.resident;
     close_btn.connect_clicked(move |_| {
-        if !resident { win.close(); } else { win.set_visible(false); }
+        if !resident {
+            win.close();
+        } else {
+            win.set_visible(false);
+        }
     });
 
     close_box.set_halign(if config.closebtn == "left" {

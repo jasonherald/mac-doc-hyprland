@@ -19,8 +19,7 @@ pub fn create_dock_windows(
     config: &DockConfig,
 ) -> (Vec<MonitorDock>, Rc<RefCell<Vec<gtk4::ApplicationWindow>>>) {
     let mut per_monitor = Vec::new();
-    let all_windows: Rc<RefCell<Vec<gtk4::ApplicationWindow>>> =
-        Rc::new(RefCell::new(Vec::new()));
+    let all_windows: Rc<RefCell<Vec<gtk4::ApplicationWindow>>> = Rc::new(RefCell::new(Vec::new()));
 
     for mon in monitors {
         let win = gtk4::ApplicationWindow::new(app);

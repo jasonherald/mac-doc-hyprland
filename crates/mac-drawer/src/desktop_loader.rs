@@ -31,14 +31,18 @@ pub fn load_desktop_entries(state: &mut DrawerState) {
                     if !de.no_display {
                         // Assign to ALL matching categories (matches Go behavior)
                         for cat in assign_categories(&de.category) {
-                            state.apps
+                            state
+                                .apps
                                 .category_lists
                                 .entry(cat.to_string())
                                 .or_default()
                                 .push(de.desktop_id.clone());
                         }
                     }
-                    state.apps.id2entry.insert(de.desktop_id.clone(), de.clone());
+                    state
+                        .apps
+                        .id2entry
+                        .insert(de.desktop_id.clone(), de.clone());
                     state.apps.entries.push(de);
                 }
                 Err(e) => {
@@ -49,11 +53,10 @@ pub fn load_desktop_entries(state: &mut DrawerState) {
     }
 
     // Sort by localized name
-    state.apps.entries.sort_by(|a, b| {
-        a.name_loc
-            .to_lowercase()
-            .cmp(&b.name_loc.to_lowercase())
-    });
+    state
+        .apps
+        .entries
+        .sort_by_key(|a| a.name_loc.to_lowercase());
 
     log::info!(
         "Loaded {} desktop entries from {} directories",
