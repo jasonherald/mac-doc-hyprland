@@ -51,22 +51,54 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 
 ## Installation
 
+### Dependencies
+
+GTK4, gtk4-layer-shell, and a running Hyprland session.
+
+On Arch Linux:
+```bash
+pacman -S gtk4 gtk4-layer-shell
+```
+
+### Quick install
+
+```bash
+git clone https://github.com/jasonherald/mac-doc-hyprland.git
+cd mac-dock-hyprland
+./install.sh
+```
+
+This builds all three binaries in release mode and installs them to `~/.cargo/bin/`.
+
+### Manual install
+
 ```bash
 cargo install --path crates/mac-dock
 cargo install --path crates/mac-drawer
 cargo install --path crates/mac-notifications
 ```
 
-### Dependencies
+### Post-install setup
 
-- GTK4
-- gtk4-layer-shell
-- Hyprland (running)
+1. **Hyprland autostart** — add to `~/.config/hypr/autostart.conf`:
+    ```ini
+    exec-once = uwsm-app -- nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
+    exec-once = uwsm-app -- mac-notifications-rs --persist
+    ```
 
-On Arch Linux:
-```bash
-pacman -S gtk4 gtk4-layer-shell
-```
+2. **D-Bus service** — create `~/.local/share/dbus-1/services/org.freedesktop.Notifications.service` so the notification daemon auto-starts when any app sends a notification:
+    ```ini
+    [D-BUS Service]
+    Name=org.freedesktop.Notifications
+    Exec=/home/YOU/.cargo/bin/mac-notifications-rs --persist
+    ```
+
+3. **Disable mako** (if installed):
+    ```bash
+    systemctl --user mask mako
+    ```
+
+4. **Waybar module** (optional) — see [Waybar module](#waybar-module) section below for the notification bell config.
 
 ## Usage
 
