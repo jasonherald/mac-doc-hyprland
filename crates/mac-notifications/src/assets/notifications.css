@@ -1,0 +1,70 @@
+/* macOS-style notification popups */
+
+/* Popup window — rounded, semi-transparent dark, with comfortable padding */
+.notification-popup {
+    background-color: rgba(30, 30, 46, 0.92);
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 14px 16px;
+    color: #e8e8e8;
+    margin: 4px;
+}
+
+/* App name in popup header */
+.popup-app-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* Timestamp in popup header */
+.popup-time {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Notification summary (title) */
+.popup-summary {
+    font-size: 14px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* Notification body text */
+.popup-body {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 2px;
+}
+
+/* Dismiss button on popup */
+.popup-dismiss {
+    min-height: 0;
+    min-width: 0;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.4);
+    border: none;
+    font-size: 11px;
+}
+.popup-dismiss:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* App icon in popup */
+.popup-icon {
+    margin-right: 10px;
+}
+
+/* Critical urgency indicator */
+.urgency-critical {
+    border-color: rgba(255, 77, 77, 0.5);
+    border-width: 2px;
+}
+
+/* Remove GTK4 default window styling for layer-shell popups */
+window.notification-popup-window {
+    background-color: transparent;
+}

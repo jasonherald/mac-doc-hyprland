@@ -17,8 +17,8 @@ pub struct NotificationConfig {
     #[arg(long, value_enum, default_value_t = PopupPosition::TopRight)]
     pub popup_position: PopupPosition,
 
-    /// Default popup timeout in ms
-    #[arg(long, default_value_t = 5000)]
+    /// Default popup timeout in ms (macOS uses ~7 seconds)
+    #[arg(long, default_value_t = 7000)]
     pub popup_timeout: u64,
 
     /// Maximum simultaneous popups
@@ -58,7 +58,7 @@ mod tests {
     fn defaults() {
         let config = NotificationConfig::parse_from(["test"]);
         assert_eq!(config.popup_position, PopupPosition::TopRight);
-        assert_eq!(config.popup_timeout, 5000);
+        assert_eq!(config.popup_timeout, 7000);
         assert_eq!(config.max_history, 200);
         assert!(!config.dnd);
     }
