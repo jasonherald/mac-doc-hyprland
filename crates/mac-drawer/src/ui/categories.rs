@@ -5,8 +5,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Builds the category button bar.
-///
-/// Returns the container box and a callback to set the active category.
+/// Currently unused in the unified well design but kept for future use.
+#[allow(dead_code)]
 pub fn build_category_bar(
     state: &Rc<RefCell<DrawerState>>,
     on_category_selected: Rc<dyn Fn(Option<Vec<String>>)>,

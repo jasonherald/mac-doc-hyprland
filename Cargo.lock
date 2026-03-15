@@ -790,6 +790,7 @@ dependencies = [
  "gtk4-layer-shell",
  "log",
  "nix",
+ "notify",
  "serde",
  "serde_json",
 ]

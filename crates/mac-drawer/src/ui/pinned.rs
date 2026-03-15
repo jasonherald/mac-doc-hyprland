@@ -50,13 +50,12 @@ pub fn build_pinned_flow_box(
         let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
         vbox.set_halign(gtk4::Align::Center);
 
-        if !entry.icon.is_empty() {
-            if let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
+        if !entry.icon.is_empty()
+            && let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
                 image.set_pixel_size(config.icon_size);
                 image.set_halign(gtk4::Align::Center);
                 vbox.append(&image);
             }
-        }
 
         let name = if !entry.name_loc.is_empty() {
             &entry.name_loc

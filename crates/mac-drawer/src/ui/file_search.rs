@@ -5,62 +5,69 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Performs file search across XDG user directories and populates the flow box.
+/// Performs file search across XDG user directories.
+/// Returns a Box with a clean columnar list: icon | filename | path
 pub fn search_files(
     phrase: &str,
-    config: &DrawerConfig,
+    _config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
     on_launch: Rc<dyn Fn()>,
-) -> gtk4::FlowBox {
-    let flow_box = gtk4::FlowBox::new();
-    flow_box.set_selection_mode(gtk4::SelectionMode::None);
-    flow_box.set_orientation(gtk4::Orientation::Vertical);
-    flow_box.set_max_children_per_line(1); // vertical list layout
+) -> gtk4::Box {
+    let container = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
 
     let user_dirs = state.borrow().user_dirs.clone();
     let exclusions = state.borrow().exclusions.clone();
     let preferred_apps = state.borrow().preferred_apps.clone();
 
+    let mut all_results: Vec<(String, std::path::PathBuf, bool)> = Vec::new();
+
     for (dir_name, dir_path) in &user_dirs {
-        if dir_name == "home" {
+        if dir_name == "home" || !dir_path.exists() {
             continue;
         }
-        if !dir_path.exists() {
-            continue;
-        }
-
-        let results = walk_directory(dir_path, phrase, &exclusions);
-        if results.is_empty() {
-            continue;
-        }
-
-        // Add directory header button
-        let header = dir_header_button(dir_name, dir_path, Rc::clone(&on_launch));
-        flow_box.insert(&header, -1);
-
-        // Add result buttons
-        for result in &results {
-            let is_dir = result.is_dir;
-            let display = result
-                .path
+        for result in walk_directory(dir_path, phrase, &exclusions) {
+            let display = result.path
                 .strip_prefix(dir_path)
                 .unwrap_or(&result.path)
                 .to_string_lossy()
                 .to_string();
-
-            let btn = file_result_button(
-                &display,
-                &result.path,
-                is_dir,
-                config,
-                &preferred_apps,
-                Rc::clone(&on_launch),
-            );
-            flow_box.insert(&btn, -1);
+            all_results.push((display, result.path, result.is_dir));
         }
     }
 
-    flow_box
+    // Sort alphabetically by display name
+    all_results.sort_by_key(|a| a.0.to_lowercase());
+
+    // Column header
+    if !all_results.is_empty() {
+        let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+        header.add_css_class("file-list-header");
+
+        let name_col = gtk4::Label::new(Some("Name"));
+        name_col.set_halign(gtk4::Align::Start);
+        name_col.set_hexpand(true);
+        name_col.set_width_request(250);
+        header.append(&name_col);
+
+        let path_col = gtk4::Label::new(Some("Location"));
+        path_col.set_halign(gtk4::Align::Start);
+        path_col.set_hexpand(true);
+        header.append(&path_col);
+
+        container.append(&header);
+
+        let sep = gtk4::Separator::new(gtk4::Orientation::Horizontal);
+        sep.set_margin_bottom(2);
+        container.append(&sep);
+    }
+
+    // Result rows
+    for (display, file_path, is_dir) in &all_results {
+        let row = file_result_row(display, file_path, *is_dir, &preferred_apps, Rc::clone(&on_launch));
+        container.append(&row);
+    }
+
+    container
 }
 
 struct FileResult {
@@ -68,47 +75,27 @@ struct FileResult {
     is_dir: bool,
 }
 
-/// Recursively walks a directory, returning matching file paths.
-fn walk_directory(
-    root: &Path,
-    phrase: &str,
-    exclusions: &[String],
-) -> Vec<FileResult> {
+fn walk_directory(root: &Path, phrase: &str, exclusions: &[String]) -> Vec<FileResult> {
     let mut results = Vec::new();
     let phrase_lower = phrase.to_lowercase();
 
     fn walk_inner(
-        dir: &Path,
-        root: &Path,
-        phrase: &str,
-        exclusions: &[String],
-        results: &mut Vec<FileResult>,
+        dir: &Path, root: &Path, phrase: &str,
+        exclusions: &[String], results: &mut Vec<FileResult>,
     ) {
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => return,
         };
-
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
-
-            // Check exclusions
-            let relative = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy();
+            let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy();
             if exclusions.iter().any(|ex| relative.contains(ex)) {
                 continue;
             }
-
-            // Search relative path (not just filename) — matches Go's behavior
             if relative.to_lowercase().contains(phrase) {
-                results.push(FileResult {
-                    is_dir: path.is_dir(),
-                    path: path.clone(),
-                });
+                results.push(FileResult { is_dir: path.is_dir(), path: path.clone() });
             }
-
             if path.is_dir() {
                 walk_inner(&path, root, phrase, exclusions, results);
             }
@@ -119,61 +106,72 @@ fn walk_directory(
     results
 }
 
-fn dir_header_button(
-    dir_name: &str,
-    dir_path: &Path,
-    on_launch: Rc<dyn Fn()>,
-) -> gtk4::Button {
-    let display = dir_name.chars().next().unwrap_or(' ').to_uppercase().to_string()
-        + &dir_name[1..];
-    let button = gtk4::Button::with_label(&display);
-    button.add_css_class("file-result-header");
-    button.set_has_frame(false);
-    let path = dir_path.to_path_buf();
-    let on_launch = Rc::clone(&on_launch);
-    button.connect_clicked(move |_| {
-        let _ = std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn();
-        on_launch();
-    });
-    button
-}
-
-fn file_result_button(
-    display_name: &str,
+/// Creates a single file result row: [icon] [filename] [path]
+fn file_result_row(
+    display: &str,
     file_path: &Path,
     is_dir: bool,
-    config: &DrawerConfig,
     preferred_apps: &std::collections::HashMap<String, String>,
     on_launch: Rc<dyn Fn()>,
 ) -> gtk4::Button {
-    let label = if display_name.len() > config.fs_name_limit {
-        format!("{}…", &display_name[..config.fs_name_limit.saturating_sub(1)])
-    } else {
-        display_name.to_string()
-    };
-
-    let button = gtk4::Button::with_label(&label);
-    button.add_css_class("file-result-item");
+    let button = gtk4::Button::new();
+    button.add_css_class("file-result-row");
     button.set_has_frame(false);
-    button.set_halign(gtk4::Align::Start);
-    if display_name.len() > config.fs_name_limit {
-        button.set_tooltip_text(Some(display_name));
-    }
 
-    if is_dir {
-        button.add_css_class("file-search-dir");
-    }
+    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
 
-    // Check for preferred app override
+    // Icon — system theme based on file type
+    let icon_name = if is_dir {
+        "folder"
+    } else {
+        file_type_icon(file_path)
+    };
+    let icon = gtk4::Image::from_icon_name(icon_name);
+    icon.set_pixel_size(20);
+    icon.set_valign(gtk4::Align::Center);
+    hbox.append(&icon);
+
+    // Filename column
+    let filename = file_path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let name_label = gtk4::Label::new(Some(&filename));
+    name_label.set_halign(gtk4::Align::Start);
+    name_label.set_hexpand(true);
+    name_label.set_width_request(250);
+    name_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+    name_label.add_css_class("file-result-name");
+    hbox.append(&name_label);
+
+    // Path/location column
+    let parent = file_path.parent()
+        .unwrap_or(file_path)
+        .to_string_lossy()
+        .to_string();
+    // Shorten home prefix
+    let home = std::env::var("HOME").unwrap_or_default();
+    let short_path = if parent.starts_with(&home) {
+        format!("~{}", &parent[home.len()..])
+    } else {
+        parent
+    };
+    let path_label = gtk4::Label::new(Some(&short_path));
+    path_label.set_halign(gtk4::Align::Start);
+    path_label.set_hexpand(true);
+    path_label.set_ellipsize(gtk4::pango::EllipsizeMode::Middle);
+    path_label.add_css_class("file-result-path");
+    hbox.append(&path_label);
+
+    button.set_child(Some(&hbox));
+    button.set_tooltip_text(Some(display));
+
+    // Click → open
     let path = file_path.to_path_buf();
     let path_str = file_path.to_string_lossy().to_string();
     let preferred_cmd = dock_common::desktop::preferred_apps::find_preferred_app(
-        &path_str,
-        preferred_apps,
+        &path_str, preferred_apps,
     );
-
     button.connect_clicked(move |_| {
         if let Some(ref cmd) = preferred_cmd {
             let _ = std::process::Command::new(cmd).arg(&path).spawn();
@@ -184,4 +182,23 @@ fn file_result_button(
     });
 
     button
+}
+
+fn file_type_icon(path: &Path) -> &'static str {
+    let ext = path.extension().unwrap_or_default().to_string_lossy().to_lowercase();
+    match ext.as_str() {
+        "pdf" => "application-pdf",
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "bmp" => "image-x-generic",
+        "mp3" | "flac" | "ogg" | "wav" | "m4a" | "aac" => "audio-x-generic",
+        "mp4" | "mkv" | "avi" | "webm" | "mov" | "wmv" => "video-x-generic",
+        "zip" | "tar" | "gz" | "xz" | "bz2" | "7z" | "rar" | "zst" => "package-x-generic",
+        "txt" | "md" | "log" | "conf" | "cfg" | "ini" => "text-x-generic",
+        "rs" | "py" | "js" | "ts" | "go" | "c" | "cpp" | "h" | "sh" | "lua" => "text-x-script",
+        "html" | "htm" | "css" | "xml" | "json" | "yaml" | "toml" => "text-html",
+        "doc" | "docx" | "odt" | "rtf" => "x-office-document",
+        "xls" | "xlsx" | "ods" | "csv" => "x-office-spreadsheet",
+        "ppt" | "pptx" | "odp" => "x-office-presentation",
+        "3mf" | "stl" | "obj" | "step" | "stp" => "application-x-blender",
+        _ => "text-x-generic",
+    }
 }

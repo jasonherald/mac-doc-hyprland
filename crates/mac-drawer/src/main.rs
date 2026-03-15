@@ -90,36 +90,43 @@ window {
     background-color: rgba(255, 255, 255, 0.12);
 }
 
-/* File search results */
-.file-result-well {
-    background-color: rgba(255, 255, 255, 0.04);
-    border-radius: 12px;
-    padding: 12px;
-    margin: 8px 40px;
-    border: 1px solid rgba(255, 255, 255, 0.06);
+/* File search results — columnar list */
+.file-list-header {
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.35);
+    letter-spacing: 0.5px;
 }
-.file-result-header {
-    font-size: 13px;
-    font-weight: bold;
-    color: rgba(255, 255, 255, 0.6);
+.file-result-row {
     padding: 4px 8px;
-}
-.file-result-item {
-    padding: 6px 12px;
     border-radius: 6px;
-    font-size: 13px;
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.85);
+    min-height: 0;
 }
-.file-result-item:hover {
+.file-result-row:hover {
     background-color: rgba(255, 255, 255, 0.08);
+}
+.file-result-name {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.9);
+}
+.file-result-path {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.4);
 }
 
 /* Power bar */
 .power-bar {
     margin-top: 12px;
     padding: 8px;
+}
+
+/* Section headers inside the well */
+.section-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    letter-spacing: 0.5px;
 }
 
 /* Status label */
@@ -321,15 +328,9 @@ fn main() {
         scrolled.set_hexpand(true);
         main_vbox.append(&scrolled);
 
-        let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
+        let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        content_box.set_margin_top(16);
         scrolled.set_child(Some(&content_box));
-
-        // Pinned section in a well
-        let pinned_well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        pinned_well.add_css_class("section-well");
-        pinned_well.set_halign(gtk4::Align::Center);
-        pinned_well.set_width_request(800);
-        content_box.append(&pinned_well);
 
         // Status label at bottom
         let status_label = gtk4::Label::new(None);
@@ -343,143 +344,107 @@ fn main() {
             if !config_launch.resident {
                 win_launch.close();
             } else {
-                // Restore state and hide
                 search_entry_launch.set_text("");
                 win_launch.set_visible(false);
             }
         });
 
-        // Build pinned flow box
-        let pinned_flow = ui::pinned::build_pinned_flow_box(
-            &config, &state, &pinned_file, Rc::clone(&on_launch),
-        );
-        pinned_well.append(&pinned_flow);
-        // Hide pinned well if no items
-        pinned_well.set_visible(!state.borrow().pinned.is_empty());
+        // Single unified well — favorites → divider → all apps
+        let well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        well.add_css_class("section-well");
+        well.set_halign(gtk4::Align::Center);
+        well.set_width_request(900);
+        content_box.append(&well);
 
-        // Categories + app grid in a well
-        let app_well = gtk4::Box::new(gtk4::Orientation::Vertical, 8);
-        app_well.add_css_class("section-well");
-        app_well.set_halign(gtk4::Align::Center);
-        // Set a reasonable width so the well doesn't collapse during search
-        app_well.set_width_request(800);
-        content_box.append(&app_well);
+        // Helper to build the normal (non-search) well content
+        let build_normal_well = {
+            let config = Rc::clone(&config);
+            let state = Rc::clone(&state);
+            let pinned_file = Rc::clone(&pinned_file);
+            let on_launch = Rc::clone(&on_launch);
 
-        if !config.no_cats {
-            let categories_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-            categories_box.set_halign(gtk4::Align::Center);
-            app_well.append(&categories_box);
-
-            let config_cat = Rc::clone(&config);
-            let state_cat = Rc::clone(&state);
-            let app_well_ref = app_well.clone();
-            let on_launch_cat = Rc::clone(&on_launch);
-            let pinned_file_cat = Rc::clone(&pinned_file);
-
-            let app_flow_holder: Rc<RefCell<Option<gtk4::Box>>> = Rc::new(RefCell::new(None));
-            let holder_ref = Rc::clone(&app_flow_holder);
-
-            let on_cat = Rc::new(move |filter: Option<Vec<String>>| {
-                if let Some(old) = holder_ref.borrow_mut().take() {
-                    app_well_ref.remove(&old);
+            Rc::new(move |well: &gtk4::Box| {
+                // Clear well
+                while let Some(child) = well.first_child() {
+                    well.remove(&child);
                 }
-                let wrapper = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-                wrapper.set_hexpand(true);
+
+                // Favorites section (if any pinned)
+                let pinned = state.borrow().pinned.clone();
+                if !pinned.is_empty() {
+                    let fav_label = gtk4::Label::new(Some("Favorites"));
+                    fav_label.add_css_class("section-header");
+                    fav_label.set_halign(gtk4::Align::Start);
+                    fav_label.set_margin_start(8);
+                    fav_label.set_margin_bottom(4);
+                    well.append(&fav_label);
+
+                    let pinned_flow = ui::pinned::build_pinned_flow_box(
+                        &config, &state, &pinned_file, Rc::clone(&on_launch),
+                    );
+                    pinned_flow.set_halign(gtk4::Align::Center);
+                    well.append(&pinned_flow);
+
+                    // Divider
+                    let sep = gtk4::Separator::new(gtk4::Orientation::Horizontal);
+                    sep.set_margin_top(8);
+                    sep.set_margin_bottom(8);
+                    sep.set_margin_start(16);
+                    sep.set_margin_end(16);
+                    well.append(&sep);
+                }
+
+                // All apps section
+                let apps_label = gtk4::Label::new(Some("Applications"));
+                apps_label.add_css_class("section-header");
+                apps_label.set_halign(gtk4::Align::Start);
+                apps_label.set_margin_start(8);
+                apps_label.set_margin_bottom(4);
+                well.append(&apps_label);
+
                 let flow = ui::app_grid::build_app_flow_box(
-                    &config_cat,
-                    &state_cat,
-                    filter.as_deref(),
-                    "",
-                    &pinned_file_cat,
-                    Rc::clone(&on_launch_cat),
+                    &config, &state, None, "", &pinned_file, Rc::clone(&on_launch),
                 );
                 flow.set_halign(gtk4::Align::Center);
                 flow.set_hexpand(true);
-                wrapper.append(&flow);
-                app_well_ref.append(&wrapper);
-                *holder_ref.borrow_mut() = Some(wrapper);
-            });
+                well.append(&flow);
+            })
+        };
 
-            let cat_bar = ui::categories::build_category_bar(&state, on_cat.clone());
-            categories_box.append(&cat_bar);
+        // Initial build
+        build_normal_well(&well);
 
-            // Initial app grid (all apps)
-            on_cat(None);
-        } else {
-            // No categories — just show all apps in the well, centered
-            let flow = ui::app_grid::build_app_flow_box(
-                &config, &state, None, "", &pinned_file, Rc::clone(&on_launch),
-            );
-            flow.set_halign(gtk4::Align::Center);
-            flow.set_hexpand(true);
-            app_well.append(&flow);
-        }
-
-        // File search results section
-        let file_search_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        file_search_box.set_visible(false);
-        file_search_box.add_css_class("file-result-well");
-        file_search_box.set_halign(gtk4::Align::Center);
-        file_search_box.set_width_request(800);
-        content_box.append(&file_search_box);
-
-        // Search handler — on search, replace app_well contents with filtered results.
-        // On clear, rebuild the full category view.
+        // Search handler — unified results in the same well
         let config_search = Rc::clone(&config);
         let state_search = Rc::clone(&state);
-        let app_well_search = app_well.clone();
-        let pinned_well_search = pinned_well.clone();
-        let file_search_box_ref = file_search_box.clone();
+        let well_search = well.clone();
         let on_launch_search = Rc::clone(&on_launch);
         let pinned_file_search = Rc::clone(&pinned_file);
         let status_label_search = status_label.clone();
-
-        // Track the search-created app grid
-
-        // Track whether we're in search mode (to know when to restore)
+        let build_normal = Rc::clone(&build_normal_well);
         let in_search_mode = Rc::new(RefCell::new(false));
 
         search_entry.connect_search_changed(move |entry| {
             let phrase = entry.text().to_string();
 
             if phrase.is_empty() {
-                // Restore: show pinned, rebuild all apps in well
                 if *in_search_mode.borrow() {
                     *in_search_mode.borrow_mut() = false;
-                    // Clear search results from app well
-                    while let Some(child) = app_well_search.first_child() {
-                        app_well_search.remove(&child);
-                    }
-                    // Rebuild full app grid (all apps)
-                    let flow = ui::app_grid::build_app_flow_box(
-                        &config_search, &state_search, None, "",
-                        &pinned_file_search, Rc::clone(&on_launch_search),
-                    );
-                    flow.set_halign(gtk4::Align::Center);
-                    flow.set_hexpand(true);
-                    app_well_search.append(&flow);
-
-                    pinned_well_search.set_visible(true);
+                    build_normal(&well_search);
                 }
-                file_search_box_ref.set_visible(false);
                 status_label_search.set_text("");
                 return;
             }
 
-            // Enter search mode — clear and replace app well contents
-            if !*in_search_mode.borrow() {
-                *in_search_mode.borrow_mut() = true;
-                pinned_well_search.set_visible(false);
-            }
+            *in_search_mode.borrow_mut() = true;
 
-            // Clear previous search results
-            while let Some(child) = app_well_search.first_child() {
-                app_well_search.remove(&child);
+            // Clear well for search results
+            while let Some(child) = well_search.first_child() {
+                well_search.remove(&child);
             }
 
             // Command mode (: prefix)
             if phrase.starts_with(':') {
-                file_search_box_ref.set_visible(false);
                 if phrase.len() > 1 {
                     let cmd_text = phrase.strip_prefix(':').unwrap_or(&phrase);
                     status_label_search.set_text(&format!("Execute \"{}\"", cmd_text));
@@ -489,29 +454,46 @@ fn main() {
                 return;
             }
 
-            // App search — fill app_well with filtered results
-            let flow = ui::app_grid::build_app_flow_box(
+            // Search header
+            let header = gtk4::Label::new(Some("Search Results"));
+            header.add_css_class("section-header");
+            header.set_halign(gtk4::Align::Start);
+            header.set_margin_start(8);
+            header.set_margin_bottom(4);
+            well_search.append(&header);
+
+            // App results
+            let app_flow = ui::app_grid::build_app_flow_box(
                 &config_search, &state_search, None, &phrase,
                 &pinned_file_search, Rc::clone(&on_launch_search),
             );
-            flow.set_halign(gtk4::Align::Center);
-            flow.set_hexpand(true);
-            app_well_search.append(&flow);
+            app_flow.set_halign(gtk4::Align::Center);
+            app_flow.set_hexpand(true);
+            well_search.append(&app_flow);
 
-            // File search (phrase > 2 chars)
+            // File results (phrase > 2 chars)
             if !config_search.no_fs && phrase.len() > 2 {
-                while let Some(child) = file_search_box_ref.first_child() {
-                    file_search_box_ref.remove(&child);
-                }
+                let sep = gtk4::Separator::new(gtk4::Orientation::Horizontal);
+                sep.set_margin_top(8);
+                sep.set_margin_bottom(8);
+                well_search.append(&sep);
+
+                let files_header = gtk4::Label::new(Some("Files"));
+                files_header.add_css_class("section-header");
+                files_header.set_halign(gtk4::Align::Start);
+                files_header.set_margin_start(8);
+                files_header.set_margin_bottom(4);
+                well_search.append(&files_header);
+
                 let file_flow = ui::file_search::search_files(
                     &phrase, &config_search, &state_search,
                     Rc::clone(&on_launch_search),
                 );
-                file_search_box_ref.append(&file_flow);
-                file_search_box_ref.set_visible(true);
-            } else {
-                file_search_box_ref.set_visible(false);
+                well_search.append(&file_flow);
             }
+
+            let n_apps = app_flow.observe_children().n_items();
+            status_label_search.set_text(&format!("{} results", n_apps));
         });
 
         // Power bar
@@ -573,8 +555,8 @@ fn main() {
                 return glib::ControlFlow::Continue;
             }
 
-            if let Ok(reply) = dock_common::hyprland::ipc::hyprctl("j/activewindow") {
-                if let Ok(val) = serde_json::from_slice::<serde_json::Value>(&reply) {
+            if let Ok(reply) = dock_common::hyprland::ipc::hyprctl("j/activewindow")
+                && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&reply) {
                     let addr = val.get("address")
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
@@ -599,42 +581,30 @@ fn main() {
                         on_launch_focus();
                     }
                 }
-            }
             glib::ControlFlow::Continue
         });
 
         win.present();
 
-        // Start file watcher
+        // Start file watcher — rebuild well when pins or desktop files change
         let watch_rx = watcher::start_watcher(&app_dirs, &pinned_file);
         let state_watch = Rc::clone(&state);
         let pinned_file_watch = Rc::clone(&pinned_file);
-        let config_watch = Rc::clone(&config);
-        let on_launch_watch = Rc::clone(&on_launch);
-        let pinned_well_watch = pinned_well.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+        let well_watch = well.clone();
+        let build_normal_watch = Rc::clone(&build_normal_well);
+        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
             while let Ok(event) = watch_rx.try_recv() {
                 match event {
                     watcher::WatchEvent::DesktopFilesChanged => {
                         log::info!("Desktop files changed, reloading...");
                         desktop_loader::load_desktop_entries(&mut state_watch.borrow_mut());
+                        build_normal_watch(&well_watch);
                     }
                     watcher::WatchEvent::PinnedChanged => {
-                        log::info!("Pinned file changed, rebuilding UI...");
+                        log::info!("Pinned file changed, rebuilding...");
                         state_watch.borrow_mut().pinned =
                             pinning::load_pinned(&pinned_file_watch);
-                        // Rebuild pinned FlowBox visually
-                        while let Some(child) = pinned_well_watch.first_child() {
-                            pinned_well_watch.remove(&child);
-                        }
-                        let new_pinned = ui::pinned::build_pinned_flow_box(
-                            &config_watch,
-                            &state_watch,
-                            &pinned_file_watch,
-                            Rc::clone(&on_launch_watch),
-                        );
-                        pinned_well_watch.append(&new_pinned);
-                        pinned_well_watch.set_visible(!state_watch.borrow().pinned.is_empty());
+                        build_normal_watch(&well_watch);
                     }
                 }
             }

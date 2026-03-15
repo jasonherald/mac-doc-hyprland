@@ -240,14 +240,13 @@ fn main() {
                 let tx = pin_tx;
                 let mut watcher = match notify::recommended_watcher(
                     move |res: Result<notify::Event, _>| {
-                        if let Ok(event) = res {
-                            if matches!(event.kind,
+                        if let Ok(event) = res
+                            && matches!(event.kind,
                                 notify::EventKind::Modify(_) |
                                 notify::EventKind::Create(_)
                             ) {
                                 let _ = tx.send(());
                             }
-                        }
                     },
                 ) {
                     Ok(w) => w,

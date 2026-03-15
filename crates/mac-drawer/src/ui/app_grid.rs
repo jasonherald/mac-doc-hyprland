@@ -85,13 +85,12 @@ fn flow_box_button(
 
     // Icon
     let app_dirs = state.borrow().app_dirs.clone();
-    if !entry.icon.is_empty() {
-        if let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
+    if !entry.icon.is_empty()
+        && let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
             image.set_pixel_size(config.icon_size);
             image.set_halign(gtk4::Align::Center);
             vbox.append(&image);
         }
-    }
 
     // Label below icon
     let name = if !entry.name_loc.is_empty() {
