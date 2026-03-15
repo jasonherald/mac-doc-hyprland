@@ -5,4 +5,6 @@ pub mod math;
 pub mod pinned;
 pub mod power_bar;
 pub mod search;
+pub mod search_handler;
+pub mod well_builder;
 pub mod window;

@@ -39,6 +39,24 @@ pub fn map_outputs(
     result
 }
 
+/// Resolves which monitors to show the dock on, based on the -o flag.
+pub fn resolve_monitors(
+    state: &Rc<RefCell<DockState>>,
+    config: &crate::config::DockConfig,
+) -> Vec<gdk::Monitor> {
+    let output_map = map_outputs(state);
+    if !config.output.is_empty() {
+        if let Some(mon) = output_map.get(&config.output) {
+            vec![mon.clone()]
+        } else {
+            log::warn!("Target output '{}' not found, using all monitors", config.output);
+            list_gdk_monitors()
+        }
+    } else {
+        list_gdk_monitors()
+    }
+}
+
 /// Lists all GDK monitors.
 pub fn list_gdk_monitors() -> Vec<gdk::Monitor> {
     let mut monitors = Vec::new();

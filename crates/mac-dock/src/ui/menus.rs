@@ -76,61 +76,27 @@ pub fn show_context_menu(
         header.add_css_class("heading");
         vbox.append(&header);
 
-        let addr = instance.address.clone();
+        let addr = &instance.address;
         let actions_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
 
-        // Close
-        let btn = gtk4::Button::with_label("Close");
-        btn.add_css_class("flat");
-        let a = addr.clone();
-        let p = popover.clone();
-        btn.connect_clicked(move |_| {
-            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                "dispatch closewindow address:{}", a
-            ));
-            p.popdown();
-        });
-        actions_box.append(&btn);
-
-        // Toggle floating
-        let btn = gtk4::Button::with_label("Toggle Floating");
-        btn.add_css_class("flat");
-        let a = addr.clone();
-        let p = popover.clone();
-        btn.connect_clicked(move |_| {
-            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                "dispatch togglefloating address:{}", a
-            ));
-            p.popdown();
-        });
-        actions_box.append(&btn);
-
-        // Fullscreen
-        let btn = gtk4::Button::with_label("Fullscreen");
-        btn.add_css_class("flat");
-        let a = addr.clone();
-        let p = popover.clone();
-        btn.connect_clicked(move |_| {
-            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                "dispatch fullscreen address:{}", a
-            ));
-            p.popdown();
-        });
-        actions_box.append(&btn);
-
-        // Move to workspace submenu
-        for ws in 1..=config.num_ws {
-            let btn = gtk4::Button::with_label(&format!("-> WS {}", ws));
-            btn.add_css_class("flat");
+        actions_box.append(&action_button("Close", &popover, {
             let a = addr.clone();
-            let p = popover.clone();
-            btn.connect_clicked(move |_| {
-                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                    "dispatch movetoworkspace {},address:{}", ws, a
-                ));
-                p.popdown();
-            });
-            actions_box.append(&btn);
+            move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch closewindow address:{}", a)); }
+        }));
+        actions_box.append(&action_button("Toggle Floating", &popover, {
+            let a = addr.clone();
+            move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch togglefloating address:{}", a)); }
+        }));
+        actions_box.append(&action_button("Fullscreen", &popover, {
+            let a = addr.clone();
+            move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch fullscreen address:{}", a)); }
+        }));
+
+        for ws in 1..=config.num_ws {
+            actions_box.append(&action_button(&format!("-> WS {}", ws), &popover, {
+                let a = addr.clone();
+                move || { let _ = dock_common::hyprland::ipc::hyprctl(&format!("dispatch movetoworkspace {},address:{}", ws, a)); }
+            }));
         }
 
         vbox.append(&actions_box);
@@ -237,6 +203,22 @@ fn focus_window(address: &str, workspace_name: &str) {
         ));
     }
     let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");
+}
+
+/// Creates a flat button that runs an action and closes the popover.
+fn action_button(
+    label: &str,
+    popover: &gtk4::Popover,
+    action: impl Fn() + 'static,
+) -> gtk4::Button {
+    let btn = gtk4::Button::with_label(label);
+    btn.add_css_class("flat");
+    let p = popover.clone();
+    btn.connect_clicked(move |_| {
+        action();
+        p.popdown();
+    });
+    btn
 }
 
 fn truncate_title(title: &str, max: usize) -> String {
