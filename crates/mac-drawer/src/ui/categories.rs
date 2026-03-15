@@ -28,10 +28,10 @@ pub fn build_category_bar(
         let cat_name = cat.name.clone();
         let has_entries = {
             let s = state.borrow();
-            s.category_lists
+            s.apps.category_lists
                 .get(&cat_name)
                 .is_some_and(|list| list.iter().any(|id| {
-                    s.id2entry.get(id).is_some_and(|e| !e.no_display)
+                    s.apps.id2entry.get(id).is_some_and(|e| !e.no_display)
                 }))
         };
 
@@ -48,7 +48,7 @@ pub fn build_category_bar(
         button.connect_clicked(move |_| {
             let list = state_ref
                 .borrow()
-                .category_lists
+                .apps.category_lists
                 .get(&cat_name_click)
                 .cloned()
                 .unwrap_or_default();

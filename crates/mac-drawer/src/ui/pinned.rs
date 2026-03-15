@@ -29,7 +29,7 @@ pub fn build_pinned_flow_box(
     flow_box.set_widget_name("pinned-box");
     flow_box.set_selection_mode(gtk4::SelectionMode::None);
 
-    let id2entry = state.borrow().id2entry.clone();
+    let id2entry = state.borrow().apps.id2entry.clone();
     let app_dirs = state.borrow().app_dirs.clone();
 
     for desktop_id in &pinned {

@@ -2,53 +2,51 @@ use dock_common::desktop::entry::DesktopEntry;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-/// Mutable state for the drawer application.
-#[allow(dead_code)]
-pub struct DrawerState {
+/// Desktop application registry — loaded from .desktop files.
+pub struct AppRegistry {
     /// All parsed desktop entries (id → entry).
     pub id2entry: HashMap<String, DesktopEntry>,
-
     /// Desktop entries sorted by name for display.
-    pub desktop_entries: Vec<DesktopEntry>,
-
+    pub entries: Vec<DesktopEntry>,
     /// Category lists: category_name → vec of desktop IDs.
     pub category_lists: HashMap<String, Vec<String>>,
+}
 
+impl AppRegistry {
+    pub fn new() -> Self {
+        Self {
+            id2entry: HashMap::new(),
+            entries: Vec::new(),
+            category_lists: HashMap::new(),
+        }
+    }
+}
+
+/// Mutable state for the drawer application.
+pub struct DrawerState {
+    /// Application registry (desktop entries, categories).
+    pub apps: AppRegistry,
     /// Pinned item desktop IDs.
     pub pinned: Vec<String>,
-
-    /// App directories.
+    /// App directories for icon/exec resolution.
     pub app_dirs: Vec<PathBuf>,
-
-    /// Current search phrase.
-    pub search_phrase: String,
-
     /// XDG user directory map (e.g. "documents" → "/home/user/Documents").
     pub user_dirs: HashMap<String, PathBuf>,
-
     /// Directories excluded from file search.
     pub exclusions: Vec<String>,
-
-    /// Custom file associations (regex pattern → command).
-    pub preferred_apps: std::collections::HashMap<String, String>,
-
-    /// Whether a scroll happened (prevents accidental launch).
-    pub been_scrolled: bool,
+    /// Custom file associations (pattern → command).
+    pub preferred_apps: HashMap<String, String>,
 }
 
 impl DrawerState {
     pub fn new(app_dirs: Vec<PathBuf>) -> Self {
         Self {
-            id2entry: HashMap::new(),
-            desktop_entries: Vec::new(),
-            category_lists: HashMap::new(),
+            apps: AppRegistry::new(),
             pinned: Vec::new(),
             app_dirs,
-            search_phrase: String::new(),
             user_dirs: map_xdg_user_dirs(),
             exclusions: Vec::new(),
-            preferred_apps: std::collections::HashMap::new(),
-            been_scrolled: false,
+            preferred_apps: HashMap::new(),
         }
     }
 }
@@ -65,7 +63,6 @@ fn map_xdg_user_dirs() -> HashMap<String, PathBuf> {
     result.insert("pictures".into(), PathBuf::from(&home).join("Pictures"));
     result.insert("videos".into(), PathBuf::from(&home).join("Videos"));
 
-    // Try to read XDG user-dirs.dirs config
     let config_home = std::env::var("XDG_CONFIG_HOME")
         .unwrap_or_else(|_| format!("{}/.config", home));
     let user_dirs_file = PathBuf::from(&config_home).join("user-dirs.dirs");
@@ -92,7 +89,6 @@ fn map_xdg_user_dirs() -> HashMap<String, PathBuf> {
     result
 }
 
-/// Parses a line like `XDG_DOCUMENTS_DIR="$HOME/Documents"` into a PathBuf.
 fn parse_user_dir_line(line: &str, home: &str) -> Option<PathBuf> {
     let (_, value) = line.split_once('=')?;
     let value = value.trim().trim_matches('"');

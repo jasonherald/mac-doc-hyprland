@@ -5,9 +5,9 @@ use dock_common::desktop::entry;
 
 /// Scans all app directories, parses .desktop files, and populates state.
 pub fn load_desktop_entries(state: &mut DrawerState) {
-    state.id2entry.clear();
-    state.desktop_entries.clear();
-    state.category_lists.clear();
+    state.apps.id2entry.clear();
+    state.apps.entries.clear();
+    state.apps.category_lists.clear();
 
     let mut seen_ids = std::collections::HashSet::new();
 
@@ -31,15 +31,15 @@ pub fn load_desktop_entries(state: &mut DrawerState) {
                     if !de.no_display {
                         // Assign to ALL matching categories (matches Go behavior)
                         for cat in assign_categories(&de.category) {
-                            state
+                            state.apps
                                 .category_lists
                                 .entry(cat.to_string())
                                 .or_default()
                                 .push(de.desktop_id.clone());
                         }
                     }
-                    state.id2entry.insert(de.desktop_id.clone(), de.clone());
-                    state.desktop_entries.push(de);
+                    state.apps.id2entry.insert(de.desktop_id.clone(), de.clone());
+                    state.apps.entries.push(de);
                 }
                 Err(e) => {
                     log::warn!("Failed to parse {}: {}", path.display(), e);
@@ -49,7 +49,7 @@ pub fn load_desktop_entries(state: &mut DrawerState) {
     }
 
     // Sort by localized name
-    state.desktop_entries.sort_by(|a, b| {
+    state.apps.entries.sort_by(|a, b| {
         a.name_loc
             .to_lowercase()
             .cmp(&b.name_loc.to_lowercase())
@@ -57,7 +57,7 @@ pub fn load_desktop_entries(state: &mut DrawerState) {
 
     log::info!(
         "Loaded {} desktop entries from {} directories",
-        state.desktop_entries.len(),
+        state.apps.entries.len(),
         state.app_dirs.len()
     );
 }

@@ -24,7 +24,7 @@ pub fn build_app_flow_box(
     flow_box.set_homogeneous(true);
     flow_box.set_selection_mode(gtk4::SelectionMode::None);
 
-    let entries = state.borrow().desktop_entries.clone();
+    let entries = state.borrow().apps.entries.clone();
     let needle = search_phrase.to_lowercase();
 
     for entry in &entries {

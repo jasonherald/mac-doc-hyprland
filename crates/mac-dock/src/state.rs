@@ -1,33 +1,21 @@
 use dock_common::hyprland::types::{HyprClient, HyprMonitor};
 use std::path::PathBuf;
 
-/// Mutable state for the dock application.
-#[allow(dead_code)]
+/// Hyprland client/window tracking state.
 pub struct DockState {
     pub clients: Vec<HyprClient>,
-    pub old_clients: Vec<HyprClient>,
     pub active_client: Option<HyprClient>,
     pub monitors: Vec<HyprMonitor>,
     pub pinned: Vec<String>,
     pub app_dirs: Vec<PathBuf>,
 
-    /// Scaled icon size (adjusted when many apps are open)
+    /// Scaled icon size (adjusted when many apps are open).
     pub img_size_scaled: i32,
 
-    /// Last window address seen from socket2 events
+    /// Last window address from socket2 events (used for change detection).
     pub last_win_addr: String,
 
-    /// GLib source handle for the autohide timeout
-    pub close_timeout_src: u32,
-
-    /// Track mouse position for autohide
-    pub mouse_inside_dock: bool,
-    pub mouse_inside_hotspot: bool,
-
-    /// Timestamp when detector was entered (for hotspot delay)
-    pub detector_entered_at: i64,
-
-    /// True when a popover menu is open — prevents autohide
+    /// True when a popover menu is open — prevents autohide.
     pub popover_open: bool,
 }
 
@@ -35,17 +23,12 @@ impl DockState {
     pub fn new(app_dirs: Vec<PathBuf>) -> Self {
         Self {
             clients: Vec::new(),
-            old_clients: Vec::new(),
             active_client: None,
             monitors: Vec::new(),
             pinned: Vec::new(),
             app_dirs,
             img_size_scaled: 48,
             last_win_addr: String::new(),
-            close_timeout_src: 0,
-            mouse_inside_dock: false,
-            mouse_inside_hotspot: false,
-            detector_entered_at: 0,
             popover_open: false,
         }
     }
@@ -57,14 +40,6 @@ impl DockState {
             .filter(|c| c.class.eq_ignore_ascii_case(class))
             .cloned()
             .collect()
-    }
-
-    /// Whether a class is currently running as a task.
-    #[allow(dead_code)]
-    pub fn in_tasks(&self, class: &str) -> bool {
-        self.clients
-            .iter()
-            .any(|c| c.class.trim() == class.trim())
     }
 
     /// Refreshes client list from Hyprland.
