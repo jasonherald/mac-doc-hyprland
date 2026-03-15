@@ -2,8 +2,10 @@ mod config;
 mod dbus;
 mod listeners;
 mod notification;
+mod persistence;
 mod state;
 mod ui;
+mod waybar;
 
 use crate::config::NotificationConfig;
 use crate::state::NotificationState;
@@ -61,8 +63,44 @@ fn main() {
         )));
         state.borrow_mut().dnd = config.dnd;
 
+        // Load persisted history
+        let history_path = persistence::history_path();
+        if config.persist {
+            let loaded = persistence::load_history(&history_path);
+            if !loaded.is_empty() {
+                log::info!("Loaded {} notifications from history", loaded.len());
+                let mut s = state.borrow_mut();
+                for notif in loaded {
+                    s.history.push(notif);
+                }
+                // Ensure newest-first ordering
+                s.history.sort_by_key(|n| std::cmp::Reverse(n.timestamp));
+            }
+        }
+
+        // Write initial waybar status
+        let s = state.borrow();
+        waybar::update_status(s.unread_count(), s.dnd);
+        drop(s);
+
+        // Shared callback for any state change → save history + update waybar
+        let state_sync = Rc::clone(&state);
+        let persist = config.persist;
+        let sync_path = history_path;
+        let on_state_change: Rc<dyn Fn()> = Rc::new(move || {
+            let s = state_sync.borrow();
+            waybar::update_status(s.unread_count(), s.dnd);
+            if persist {
+                persistence::save_history(&sync_path, &s.history);
+            }
+        });
+
         // Popup manager
-        let popup_mgr = Rc::new(RefCell::new(PopupManager::new(app, &config)));
+        let popup_mgr = Rc::new(RefCell::new(PopupManager::new(
+            app,
+            &config,
+            Rc::clone(&on_state_change),
+        )));
 
         // Panel
         let state_panel_click = Rc::clone(&state);
@@ -81,12 +119,14 @@ fn main() {
             app,
             &state,
             on_panel_click,
+            Rc::clone(&on_state_change),
         )));
 
         // D-Bus callbacks
         let state_notify = Rc::clone(&state);
         let popup_mgr_notify = Rc::clone(&popup_mgr);
         let panel_notify = Rc::clone(&panel);
+        let on_change_notify = Rc::clone(&on_state_change);
         let on_notify: dbus::OnNotify = Rc::new(move |notif| {
             log::info!("[{}] {}: {}", notif.app_name, notif.summary, notif.body);
 
@@ -97,16 +137,20 @@ fn main() {
             if panel_notify.borrow().is_visible() {
                 panel_notify.borrow().rebuild();
             }
+
+            on_change_notify();
         });
 
-        let on_close: dbus::OnClose = Rc::new(|id| {
+        let on_change_close = Rc::clone(&on_state_change);
+        let on_close: dbus::OnClose = Rc::new(move |id| {
             log::debug!("Notification {} closed via D-Bus", id);
+            on_change_close();
         });
 
         dbus::register_server(&state, on_notify, on_close);
 
         // Poll signal receiver on GTK main thread
-        listeners::poll_signals(&sig_rx, &panel, &state);
+        listeners::poll_signals(&sig_rx, &panel, &state, &on_state_change);
 
         log::info!("Notification daemon started (panel: SIGRTMIN+4, DND: SIGRTMIN+5)");
     });

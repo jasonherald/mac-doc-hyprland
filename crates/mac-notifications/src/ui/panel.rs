@@ -13,6 +13,7 @@ pub struct NotificationPanel {
     list_box: gtk4::Box,
     state: Rc<RefCell<NotificationState>>,
     on_notification_click: Rc<dyn Fn(u32)>,
+    on_state_change: Rc<dyn Fn()>,
 }
 
 impl NotificationPanel {
@@ -21,6 +22,7 @@ impl NotificationPanel {
         app: &gtk4::Application,
         state: &Rc<RefCell<NotificationState>>,
         on_notification_click: Rc<dyn Fn(u32)>,
+        on_state_change: Rc<dyn Fn()>,
     ) -> Self {
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("notification-panel-window");
@@ -41,7 +43,7 @@ impl NotificationPanel {
         revealer.set_child(Some(&panel_box));
 
         // Header
-        let header = build_header(state);
+        let header = build_header(state, &on_state_change);
         panel_box.append(&header);
 
         // Scrolled list
@@ -60,6 +62,7 @@ impl NotificationPanel {
             list_box,
             state: Rc::clone(state),
             on_notification_click,
+            on_state_change,
         };
 
         panel.rebuild();
@@ -87,10 +90,11 @@ impl NotificationPanel {
             let list = self.list_box.clone();
             let state = Rc::clone(&self.state);
             let on_click = Rc::clone(&self.on_notification_click);
+            let on_change = Rc::clone(&self.on_state_change);
             let win = self.win.clone();
             let revealer = self.revealer.clone();
             gtk4::glib::idle_add_local_once(move || {
-                rebuild_list(&list, &state, on_click);
+                rebuild_list(&list, &state, on_click, on_change);
                 win.set_visible(true);
                 revealer.set_reveal_child(true);
             });
@@ -108,6 +112,7 @@ impl NotificationPanel {
             &self.list_box,
             &self.state,
             Rc::clone(&self.on_notification_click),
+            Rc::clone(&self.on_state_change),
         );
     }
 }
@@ -125,7 +130,10 @@ fn setup_panel_window(win: &gtk4::ApplicationWindow) {
     win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
 }
 
-fn build_header(state: &Rc<RefCell<NotificationState>>) -> gtk4::Box {
+fn build_header(
+    state: &Rc<RefCell<NotificationState>>,
+    on_state_change: &Rc<dyn Fn()>,
+) -> gtk4::Box {
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     header.add_css_class("panel-header");
     header.set_margin_start(12);
@@ -144,6 +152,7 @@ fn build_header(state: &Rc<RefCell<NotificationState>>) -> gtk4::Box {
     dnd_btn.add_css_class("panel-dnd");
     dnd_btn.set_tooltip_text(Some("Do Not Disturb"));
     let state_dnd = Rc::clone(state);
+    let on_change_dnd = Rc::clone(on_state_change);
     dnd_btn.connect_clicked(move |btn| {
         let new_dnd = !state_dnd.borrow().dnd;
         state_dnd.borrow_mut().dnd = new_dnd;
@@ -154,6 +163,7 @@ fn build_header(state: &Rc<RefCell<NotificationState>>) -> gtk4::Box {
         };
         btn.set_icon_name(icon);
         log::info!("DND {}", if new_dnd { "enabled" } else { "disabled" });
+        on_change_dnd();
     });
     header.append(&dnd_btn);
 
@@ -161,9 +171,11 @@ fn build_header(state: &Rc<RefCell<NotificationState>>) -> gtk4::Box {
     let clear_btn = gtk4::Button::with_label("Clear All");
     clear_btn.add_css_class("panel-clear");
     let state_clear = Rc::clone(state);
+    let on_change_clear = Rc::clone(on_state_change);
     clear_btn.connect_clicked(move |_| {
         state_clear.borrow_mut().dismiss_all();
         log::info!("Cleared all notifications");
+        on_change_clear();
     });
     header.append(&clear_btn);
 
@@ -175,18 +187,22 @@ fn rebuild_list(
     list_box: &gtk4::Box,
     state: &Rc<RefCell<NotificationState>>,
     on_click: Rc<dyn Fn(u32)>,
+    on_state_change: Rc<dyn Fn()>,
 ) {
     // Build the on_rebuild callback that re-invokes this function on next idle.
     // Deferred via idle_add to avoid reentrancy during button click handlers.
     let list_rebuild = list_box.clone();
     let state_rebuild = Rc::clone(state);
     let on_click_rebuild = Rc::clone(&on_click);
+    let on_change_rebuild = Rc::clone(&on_state_change);
     let on_rebuild: Rc<dyn Fn()> = Rc::new(move || {
         let list = list_rebuild.clone();
         let state = Rc::clone(&state_rebuild);
         let on_click = Rc::clone(&on_click_rebuild);
+        let on_change = Rc::clone(&on_change_rebuild);
         gtk4::glib::idle_add_local_once(move || {
-            rebuild_list(&list, &state, on_click);
+            rebuild_list(&list, &state, on_click, Rc::clone(&on_change));
+            on_change();
         });
     });
 

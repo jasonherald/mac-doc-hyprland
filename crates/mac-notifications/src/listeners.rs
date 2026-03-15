@@ -86,10 +86,12 @@ pub fn poll_signals(
     sig_rx: &Rc<mpsc::Receiver<NotificationCommand>>,
     panel: &Rc<RefCell<NotificationPanel>>,
     state: &Rc<RefCell<NotificationState>>,
+    on_state_change: &Rc<dyn Fn()>,
 ) {
     let panel = Rc::clone(panel);
     let state = Rc::clone(state);
     let rx = Rc::clone(sig_rx);
+    let on_change = Rc::clone(on_state_change);
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
@@ -105,6 +107,7 @@ pub fn poll_signals(
                         "DND {} via signal",
                         if new_dnd { "enabled" } else { "disabled" }
                     );
+                    on_change();
                 }
             }
         }

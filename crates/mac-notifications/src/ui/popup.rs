@@ -21,14 +21,20 @@ pub struct PopupManager {
     popups: Vec<ActivePopup>,
     config: Rc<NotificationConfig>,
     app: gtk4::Application,
+    on_state_change: Rc<dyn Fn()>,
 }
 
 impl PopupManager {
-    pub fn new(app: &gtk4::Application, config: &Rc<NotificationConfig>) -> Self {
+    pub fn new(
+        app: &gtk4::Application,
+        config: &Rc<NotificationConfig>,
+        on_state_change: Rc<dyn Fn()>,
+    ) -> Self {
         Self {
             popups: Vec::new(),
             config: Rc::clone(config),
             app: app.clone(),
+            on_state_change,
         }
     }
 
@@ -64,6 +70,7 @@ impl PopupManager {
         let notif_id = notif.id;
         let state_click = Rc::clone(state);
         let win_click = win.clone();
+        let on_change_click = Rc::clone(&self.on_state_change);
         let click = gtk4::GestureClick::new();
         click.connect_released(move |gesture, _, _, _| {
             gesture.set_state(gtk4::EventSequenceState::Claimed);
@@ -71,6 +78,7 @@ impl PopupManager {
             state_click.borrow_mut().mark_read(notif_id);
             state_click.borrow_mut().active_popups.remove(&notif_id);
             win_click.close();
+            on_change_click();
         });
         win.add_controller(click);
 
@@ -88,12 +96,14 @@ impl PopupManager {
         if timeout > 0 {
             let state_timer = Rc::clone(state);
             let win_timer = win;
+            let on_change_timer = Rc::clone(&self.on_state_change);
             gtk4::glib::timeout_add_local_once(
                 std::time::Duration::from_millis(timeout),
                 move || {
                     state_timer.borrow_mut().active_popups.remove(&id);
                     state_timer.borrow_mut().mark_read(id);
                     win_timer.close();
+                    on_change_timer();
                 },
             );
         }
