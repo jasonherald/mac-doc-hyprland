@@ -138,3 +138,47 @@ impl DockConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vertical_positions() {
+        let config = DockConfig::parse_from(["test", "-p", "left"]);
+        assert!(config.is_vertical());
+        let config = DockConfig::parse_from(["test", "-p", "right"]);
+        assert!(config.is_vertical());
+        let config = DockConfig::parse_from(["test", "-p", "bottom"]);
+        assert!(!config.is_vertical());
+    }
+
+    #[test]
+    fn resident_mode() {
+        let config = DockConfig::parse_from(["test", "-d"]);
+        assert!(config.is_resident_mode());
+        let config = DockConfig::parse_from(["test", "-r"]);
+        assert!(config.is_resident_mode());
+        let config = DockConfig::parse_from(["test"]);
+        assert!(!config.is_resident_mode());
+    }
+
+    #[test]
+    fn ignored_workspaces() {
+        let config = DockConfig::parse_from(["test", "--ignore-workspaces", "1,special,3"]);
+        assert_eq!(config.ignored_workspaces(), vec!["1", "special", "3"]);
+    }
+
+    #[test]
+    fn ignored_classes() {
+        let config = DockConfig::parse_from(["test", "-g", "steam firefox"]);
+        assert_eq!(config.ignored_classes(), vec!["steam", "firefox"]);
+    }
+
+    #[test]
+    fn empty_defaults() {
+        let config = DockConfig::parse_from(["test"]);
+        assert!(config.ignored_workspaces().is_empty());
+        assert!(config.ignored_classes().is_empty());
+    }
+}

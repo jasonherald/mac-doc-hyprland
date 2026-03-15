@@ -241,4 +241,26 @@ mod tests {
         let result = eval_expression("3.14 * 2").unwrap();
         assert!((result - 6.28).abs() < 1e-10);
     }
+
+    #[test]
+    fn double_dot_rejected() {
+        // "1.2.3" should parse as 1.2 then fail (leftover ".3")
+        assert_eq!(eval_expression("1.2.3"), None);
+    }
+
+    #[test]
+    fn nested_parens() {
+        assert_eq!(eval_expression("(((1 + 2)))"), Some(3.0));
+    }
+
+    #[test]
+    fn trailing_operator() {
+        // "1+" has leftover "+", should fail
+        assert_eq!(eval_expression("1+"), None);
+    }
+
+    #[test]
+    fn whitespace_only() {
+        assert_eq!(eval_expression("   "), None);
+    }
 }
