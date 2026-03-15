@@ -24,7 +24,7 @@ pub fn build_normal_well(
         let pinned_flow = ui::pinned::build_pinned_flow_box(
             config, state, pinned_file, Rc::clone(on_launch),
         );
-        pinned_flow.set_halign(gtk4::Align::Center);
+        pinned_flow.set_hexpand(true);
         well.append(&pinned_flow);
         well.append(&divider());
     }
@@ -35,7 +35,6 @@ pub fn build_normal_well(
     let flow = ui::app_grid::build_app_flow_box(
         config, state, None, "", pinned_file, Rc::clone(on_launch),
     );
-    flow.set_halign(gtk4::Align::Center);
     flow.set_hexpand(true);
     well.append(&flow);
 }
