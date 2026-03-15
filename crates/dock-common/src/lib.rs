@@ -1,0 +1,8 @@
+pub mod config;
+pub mod desktop;
+pub mod error;
+pub mod hyprland;
+pub mod launch;
+pub mod pinning;
+pub mod signals;
+pub mod singleton;
