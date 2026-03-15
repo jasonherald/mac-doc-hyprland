@@ -1,3 +1,4 @@
+use super::constants;
 use crate::config::DrawerConfig;
 use crate::state::DrawerState;
 use gtk4::prelude::*;
@@ -51,7 +52,7 @@ pub fn search_files(
         let name_col = gtk4::Label::new(Some("Name"));
         name_col.set_halign(gtk4::Align::Start);
         name_col.set_hexpand(true);
-        name_col.set_width_request(250);
+        name_col.set_width_request(constants::FILE_NAME_COLUMN_WIDTH);
         header.append(&name_col);
 
         let path_col = gtk4::Label::new(Some("Location"));
@@ -163,7 +164,7 @@ fn file_result_row(
         file_type_icon(file_path)
     };
     let icon = gtk4::Image::from_icon_name(icon_name);
-    icon.set_pixel_size(20);
+    icon.set_pixel_size(constants::FILE_ICON_SIZE);
     icon.set_valign(gtk4::Align::Center);
     hbox.append(&icon);
 
@@ -176,7 +177,7 @@ fn file_result_row(
     let name_label = gtk4::Label::new(Some(&filename));
     name_label.set_halign(gtk4::Align::Start);
     name_label.set_hexpand(true);
-    name_label.set_width_request(250);
+    name_label.set_width_request(constants::FILE_NAME_COLUMN_WIDTH);
     name_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
     name_label.add_css_class("file-result-name");
     hbox.append(&name_label);

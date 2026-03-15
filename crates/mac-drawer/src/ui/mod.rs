@@ -1,4 +1,5 @@
 pub mod app_grid;
+pub mod constants;
 pub mod file_search;
 pub mod math;
 pub mod pinned;

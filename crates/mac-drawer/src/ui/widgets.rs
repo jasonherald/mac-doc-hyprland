@@ -1,3 +1,4 @@
+use super::constants;
 use dock_common::desktop::icons;
 use gtk4::prelude::*;
 
@@ -27,10 +28,10 @@ pub fn app_icon_button(
     }
 
     // Label
-    let label = gtk4::Label::new(Some(&truncate(display_name, 20)));
+    let label = gtk4::Label::new(Some(&truncate(display_name, constants::APP_NAME_MAX_CHARS)));
     label.set_halign(gtk4::Align::Center);
     label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
-    label.set_max_width_chars(14);
+    label.set_max_width_chars(constants::APP_LABEL_MAX_WIDTH_CHARS);
     vbox.append(&label);
 
     button.set_child(Some(&vbox));

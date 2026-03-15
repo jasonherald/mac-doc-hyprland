@@ -20,7 +20,7 @@ pub fn start_cursor_poller(
     state: &Rc<RefCell<DockState>>,
 ) {
     let windows = Rc::clone(dock_windows);
-    let position = config.position.clone();
+    let position = config.position;
     let hide_timeout = config.hide_timeout;
     let state = Rc::clone(state);
     // Track when cursor last left the dock area (for hide delay)
@@ -54,7 +54,7 @@ pub fn start_cursor_poller(
 
         if !any_visible {
             // Dock is hidden — check if cursor is at the screen edge to show
-            if is_cursor_at_edge(&cursor, &monitors, &position) {
+            if is_cursor_at_edge(&cursor, &monitors, position) {
                 if let Some(mon_idx) = find_cursor_monitor(&cursor, &monitors) {
                     let wins = windows.borrow();
                     if mon_idx < wins.len() {
@@ -67,7 +67,7 @@ pub fn start_cursor_poller(
         } else {
             // Dock is visible — check if cursor is inside dock area or at edge
             let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows);
-            let at_edge = is_cursor_at_edge(&cursor, &monitors, &position);
+            let at_edge = is_cursor_at_edge(&cursor, &monitors, position);
 
             // Don't hide while a popover menu is open
             let popover_open = state.borrow().popover_open;
@@ -110,7 +110,11 @@ fn get_cursor_pos() -> Option<CursorPos> {
     })
 }
 
-fn is_cursor_at_edge(cursor: &CursorPos, monitors: &[HyprMonitor], position: &str) -> bool {
+fn is_cursor_at_edge(
+    cursor: &CursorPos,
+    monitors: &[HyprMonitor],
+    position: crate::config::Position,
+) -> bool {
     for mon in monitors {
         let in_x = cursor.x >= mon.x && cursor.x < mon.x + mon.width;
         let in_y = cursor.y >= mon.y && cursor.y < mon.y + mon.height;
@@ -119,11 +123,10 @@ fn is_cursor_at_edge(cursor: &CursorPos, monitors: &[HyprMonitor], position: &st
         }
 
         let at_edge = match position {
-            "bottom" => cursor.y >= mon.y + mon.height - EDGE_THRESHOLD,
-            "top" => cursor.y <= mon.y + EDGE_THRESHOLD,
-            "left" => cursor.x <= mon.x + EDGE_THRESHOLD,
-            "right" => cursor.x >= mon.x + mon.width - EDGE_THRESHOLD,
-            _ => false,
+            crate::config::Position::Bottom => cursor.y >= mon.y + mon.height - EDGE_THRESHOLD,
+            crate::config::Position::Top => cursor.y <= mon.y + EDGE_THRESHOLD,
+            crate::config::Position::Left => cursor.x <= mon.x + EDGE_THRESHOLD,
+            crate::config::Position::Right => cursor.x >= mon.x + mon.width - EDGE_THRESHOLD,
         };
 
         if at_edge {

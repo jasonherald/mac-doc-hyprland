@@ -19,9 +19,9 @@ pub fn build(
     };
     let main_box = gtk4::Box::new(inner_orientation, 0);
 
-    match config.alignment.as_str() {
-        "start" => alignment_box.prepend(&main_box),
-        "end" => alignment_box.append(&main_box),
+    match config.alignment {
+        crate::config::Alignment::Start => alignment_box.prepend(&main_box),
+        crate::config::Alignment::End => alignment_box.append(&main_box),
         _ => {
             if config.full {
                 main_box.set_hexpand(true);
@@ -86,7 +86,7 @@ pub fn build(
     drop(s);
 
     // Launcher at start
-    if config.launcher_pos == "start"
+    if config.launcher_pos == crate::config::Alignment::Start
         && let Some(btn) = buttons::launcher_button(ctx, win)
     {
         main_box.append(&btn);
@@ -142,7 +142,7 @@ pub fn build(
     }
 
     // Launcher at end
-    if config.launcher_pos == "end"
+    if config.launcher_pos == crate::config::Alignment::End
         && let Some(btn) = buttons::launcher_button(ctx, win)
     {
         main_box.append(&btn);

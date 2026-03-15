@@ -67,7 +67,7 @@ fn indicator_image(
 fn pack_button_box(
     button: &gtk4::Button,
     indicator: Option<&gtk4::Image>,
-    position: &str,
+    position: crate::config::Position,
     vertical: bool,
 ) -> gtk4::Box {
     let orientation = if vertical {
@@ -81,7 +81,10 @@ fn pack_button_box(
     bx.set_margin_top(0);
     bx.set_margin_bottom(0);
 
-    let at_start = position == "left" || position == "top";
+    let at_start = matches!(
+        position,
+        crate::config::Position::Left | crate::config::Position::Top
+    );
     if let Some(img) = indicator {
         img.set_margin_start(0);
         img.set_margin_end(0);
@@ -146,7 +149,7 @@ pub fn pinned_button(app_id: &str, ctx: &DockContext) -> gtk4::Box {
     pack_button_box(
         &button,
         indicator.as_ref(),
-        &ctx.config.position,
+        ctx.config.position,
         ctx.config.is_vertical(),
     )
 }
@@ -231,7 +234,7 @@ pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockCont
     pack_button_box(
         &button,
         indicator.as_ref(),
-        &ctx.config.position,
+        ctx.config.position,
         ctx.config.is_vertical(),
     )
 }
@@ -280,7 +283,7 @@ pub fn launcher_button(ctx: &DockContext, win: &gtk4::ApplicationWindow) -> Opti
     Some(pack_button_box(
         &button,
         indicator.as_ref(),
-        &ctx.config.position,
+        ctx.config.position,
         ctx.config.is_vertical(),
     ))
 }

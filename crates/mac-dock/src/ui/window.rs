@@ -1,4 +1,4 @@
-use crate::config::DockConfig;
+use crate::config::{DockConfig, Layer, Position};
 use gtk4_layer_shell::LayerShell;
 
 /// Configures the main dock window with layer-shell properties.
@@ -7,43 +7,41 @@ pub fn setup_dock_window(win: &gtk4::ApplicationWindow, config: &DockConfig) {
     win.set_namespace(Some("mac-dock"));
 
     // Position anchoring
-    match config.position.as_str() {
-        "bottom" => {
+    match config.position {
+        Position::Bottom => {
             win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
             win.set_anchor(gtk4_layer_shell::Edge::Left, config.full);
             win.set_anchor(gtk4_layer_shell::Edge::Right, config.full);
         }
-        "top" => {
+        Position::Top => {
             win.set_anchor(gtk4_layer_shell::Edge::Top, true);
             win.set_anchor(gtk4_layer_shell::Edge::Left, config.full);
             win.set_anchor(gtk4_layer_shell::Edge::Right, config.full);
         }
-        "left" => {
+        Position::Left => {
             win.set_anchor(gtk4_layer_shell::Edge::Left, true);
             win.set_anchor(gtk4_layer_shell::Edge::Top, config.full);
             win.set_anchor(gtk4_layer_shell::Edge::Bottom, config.full);
         }
-        "right" => {
+        Position::Right => {
             win.set_anchor(gtk4_layer_shell::Edge::Right, true);
             win.set_anchor(gtk4_layer_shell::Edge::Top, config.full);
             win.set_anchor(gtk4_layer_shell::Edge::Bottom, config.full);
         }
-        _ => {
-            win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
-        }
     }
 
     // Layer and exclusive zone
-    let mut layer_str = config.layer.clone();
-    if config.exclusive {
+    let layer = if config.exclusive {
         win.auto_exclusive_zone_enable();
-        layer_str = "top".to_string();
-    }
+        Layer::Top
+    } else {
+        config.layer
+    };
 
-    match layer_str.as_str() {
-        "top" => win.set_layer(gtk4_layer_shell::Layer::Top),
-        "bottom" => win.set_layer(gtk4_layer_shell::Layer::Bottom),
-        _ => {
+    match layer {
+        Layer::Top => win.set_layer(gtk4_layer_shell::Layer::Top),
+        Layer::Bottom => win.set_layer(gtk4_layer_shell::Layer::Bottom),
+        Layer::Overlay => {
             win.set_layer(gtk4_layer_shell::Layer::Overlay);
             win.set_exclusive_zone(-1);
         }

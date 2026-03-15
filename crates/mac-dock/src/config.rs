@@ -1,12 +1,37 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
+
+/// Dock position on screen edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Position {
+    Bottom,
+    Top,
+    Left,
+    Right,
+}
+
+/// Content alignment within the dock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Alignment {
+    Start,
+    Center,
+    End,
+}
+
+/// Layer-shell layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Layer {
+    Overlay,
+    Top,
+    Bottom,
+}
 
 /// A macOS-style dock for Hyprland.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "mac-dock", version, about)]
 pub struct DockConfig {
-    /// Alignment in full width/height: "start", "center" or "end"
-    #[arg(short = 'a', long, default_value = "center")]
-    pub alignment: String,
+    /// Alignment in full width/height
+    #[arg(short = 'a', long, value_enum, default_value_t = Alignment::Center)]
+    pub alignment: Alignment,
 
     /// Auto-hide: show dock when hotspot hovered, close when left or button clicked
     #[arg(short = 'd', long)]
@@ -36,13 +61,13 @@ pub struct DockConfig {
     #[arg(long, default_value_t = 20)]
     pub hotspot_delay: i64,
 
+    /// Hotspot layer
+    #[arg(long, value_enum, default_value_t = Layer::Overlay)]
+    pub hotspot_layer: Layer,
+
     /// Auto-hide timeout in ms (how long after cursor leaves before dock hides)
     #[arg(long, default_value_t = 600)]
     pub hide_timeout: u64,
-
-    /// Hotspot layer: "overlay" or "top"
-    #[arg(long, default_value = "overlay")]
-    pub hotspot_layer: String,
 
     /// Alternative name or path for the launcher icon
     #[arg(long, default_value = "")]
@@ -60,13 +85,13 @@ pub struct DockConfig {
     #[arg(short = 'c', long, default_value = "nwg-drawer-rs")]
     pub launcher_cmd: String,
 
-    /// Launcher button position: "start" or "end"
-    #[arg(long, default_value = "end")]
-    pub launcher_pos: String,
+    /// Launcher button position
+    #[arg(long, value_enum, default_value_t = Alignment::End)]
+    pub launcher_pos: Alignment,
 
-    /// Layer: "overlay", "top" or "bottom"
-    #[arg(short = 'l', long, default_value = "overlay")]
-    pub layer: String,
+    /// Layer-shell layer
+    #[arg(short = 'l', long, value_enum, default_value_t = Layer::Overlay)]
+    pub layer: Layer,
 
     /// Margin bottom
     #[arg(long, default_value_t = 0)]
@@ -92,9 +117,9 @@ pub struct DockConfig {
     #[arg(short = 'w', long, default_value_t = 10)]
     pub num_ws: i32,
 
-    /// Position: "bottom", "top", "left" or "right"
-    #[arg(short = 'p', long, default_value = "bottom")]
-    pub position: String,
+    /// Position on screen edge
+    #[arg(short = 'p', long, value_enum, default_value_t = Position::Bottom)]
+    pub position: Position,
 
     /// Leave the program resident, but without hotspot
     #[arg(short = 'r', long)]
@@ -112,7 +137,7 @@ pub struct DockConfig {
 impl DockConfig {
     /// Whether the dock orientation is vertical (left/right position).
     pub fn is_vertical(&self) -> bool {
-        self.position == "left" || self.position == "right"
+        matches!(self.position, Position::Left | Position::Right)
     }
 
     /// Whether this is a resident-mode dock (autohide or resident flag).
@@ -186,5 +211,7 @@ mod tests {
         let config = DockConfig::parse_from(["test"]);
         assert!(config.ignored_workspaces().is_empty());
         assert!(config.ignored_classes().is_empty());
+        assert_eq!(config.position, Position::Bottom);
+        assert_eq!(config.alignment, Alignment::Center);
     }
 }

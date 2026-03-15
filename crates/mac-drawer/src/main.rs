@@ -70,11 +70,7 @@ fn main() {
     }
 
     let app_dirs = get_app_dirs();
-    let exclusions = if config_dir.join("excluded-dirs").exists() {
-        paths::load_text_lines(&config_dir.join("excluded-dirs")).unwrap_or_default()
-    } else {
-        Vec::new()
-    };
+    let exclusions = paths::load_text_lines(&config_dir.join("excluded-dirs")).unwrap_or_default();
 
     let app = gtk4::Application::builder()
         .application_id("com.mac-drawer.hyprland")
@@ -115,8 +111,8 @@ fn main() {
         search_entry.add_css_class("drawer-search");
         search_entry.set_hexpand(false);
         search_entry.set_halign(gtk4::Align::Center);
-        search_entry.set_width_request(500);
-        search_entry.set_margin_top(40);
+        search_entry.set_width_request(ui::constants::SEARCH_ENTRY_WIDTH);
+        search_entry.set_margin_top(ui::constants::SEARCH_TOP_MARGIN);
         main_vbox.append(&search_entry);
 
         let scrolled = gtk4::ScrolledWindow::new();
@@ -125,7 +121,7 @@ fn main() {
         main_vbox.append(&scrolled);
 
         let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        content_box.set_margin_top(16);
+        content_box.set_margin_top(ui::constants::CONTENT_TOP_MARGIN);
         scrolled.set_child(Some(&content_box));
 
         let status_label = gtk4::Label::new(None);
@@ -150,7 +146,7 @@ fn main() {
         let well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         well.add_css_class("section-well");
         well.set_halign(gtk4::Align::Center);
-        well.set_width_request(900);
+        well.set_width_request(ui::constants::WELL_WIDTH);
         content_box.append(&well);
 
         ui::well_builder::build_normal_well(&well, &config, &state, &pinned_file, &on_launch);
