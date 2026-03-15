@@ -42,19 +42,19 @@ impl NotificationPanel {
         panel_box.set_width_request(PANEL_WIDTH);
         revealer.set_child(Some(&panel_box));
 
-        // Header
-        let header = build_header(state, &on_state_change);
-        panel_box.append(&header);
-
-        // Scrolled list
+        // Scrolled list (created before header so Clear All can reference it)
         let scrolled = gtk4::ScrolledWindow::new();
         scrolled.set_vexpand(true);
         scrolled.set_hexpand(true);
-        panel_box.append(&scrolled);
 
         let list_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         list_box.add_css_class("panel-list");
         scrolled.set_child(Some(&list_box));
+
+        // Header (needs list_box ref for Clear All)
+        let header = build_header(state, &on_state_change, &list_box);
+        panel_box.append(&header);
+        panel_box.append(&scrolled);
 
         let panel = Self {
             win,
@@ -133,6 +133,7 @@ fn setup_panel_window(win: &gtk4::ApplicationWindow) {
 fn build_header(
     state: &Rc<RefCell<NotificationState>>,
     on_state_change: &Rc<dyn Fn()>,
+    list_box: &gtk4::Box,
 ) -> gtk4::Box {
     let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
     header.add_css_class("panel-header");
@@ -172,8 +173,17 @@ fn build_header(
     clear_btn.add_css_class("panel-clear");
     let state_clear = Rc::clone(state);
     let on_change_clear = Rc::clone(on_state_change);
+    let list_clear = list_box.clone();
     clear_btn.connect_clicked(move |_| {
         state_clear.borrow_mut().dismiss_all();
+        // Rebuild list to show empty state
+        while let Some(child) = list_clear.first_child() {
+            list_clear.remove(&child);
+        }
+        let empty = gtk4::Label::new(Some("No notifications"));
+        empty.add_css_class("panel-empty");
+        empty.set_margin_top(40);
+        list_clear.append(&empty);
         log::info!("Cleared all notifications");
         on_change_clear();
     });

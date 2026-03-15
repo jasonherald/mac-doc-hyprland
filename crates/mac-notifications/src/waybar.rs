@@ -24,14 +24,14 @@ fn status_path() -> PathBuf {
 pub fn update_status(unread: usize, dnd: bool) {
     let status = if dnd {
         WaybarStatus {
-            text: String::new(),
+            text: "\u{f06d9}".into(), // 󰛙 bell-off
             tooltip: "Do Not Disturb".into(),
             alt: "dnd".into(),
             class: "dnd".into(),
         }
     } else if unread > 0 {
         WaybarStatus {
-            text: format!("{unread}"),
+            text: format!("\u{f009a} {unread}"), // 󰂚 bell-badge + count
             tooltip: format!(
                 "{unread} unread notification{}",
                 if unread == 1 { "" } else { "s" }
@@ -41,7 +41,7 @@ pub fn update_status(unread: usize, dnd: bool) {
         }
     } else {
         WaybarStatus {
-            text: String::new(),
+            text: "\u{f009c}".into(), // 󰂜 bell-outline
             tooltip: "No notifications".into(),
             alt: "empty".into(),
             class: "empty".into(),

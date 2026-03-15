@@ -19,12 +19,16 @@ pub fn build_row(
     row.set_margin_top(2);
     row.set_margin_bottom(2);
 
+    // Clickable area: icon + text (separate from dismiss button to avoid propagation)
+    let clickable = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    clickable.set_hexpand(true);
+
     // App icon (small for panel)
     let icon = resolve_icon(&notif.app_icon, &notif.app_name, app_dirs);
     icon.set_pixel_size(PANEL_ICON_SIZE);
     icon.set_valign(gtk4::Align::Start);
     icon.set_margin_top(4);
-    row.append(&icon);
+    clickable.append(&icon);
 
     // Text column
     let text_box = gtk4::Box::new(gtk4::Orientation::Vertical, 1);
@@ -58,9 +62,20 @@ pub fn build_row(
         text_box.append(&body);
     }
 
-    row.append(&text_box);
+    clickable.append(&text_box);
 
-    // Dismiss button
+    // Click icon/text area → focus app
+    let click_id = notif.id;
+    let gesture = gtk4::GestureClick::new();
+    gesture.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        on_click(click_id);
+    });
+    clickable.add_controller(gesture);
+
+    row.append(&clickable);
+
+    // Dismiss button (outside clickable area — no event propagation conflict)
     let dismiss_btn = gtk4::Button::from_icon_name("window-close-symbolic");
     dismiss_btn.add_css_class("row-dismiss");
     dismiss_btn.set_valign(gtk4::Align::Start);
@@ -68,15 +83,6 @@ pub fn build_row(
     let dismiss_id = notif.id;
     dismiss_btn.connect_clicked(move |_| on_dismiss(dismiss_id));
     row.append(&dismiss_btn);
-
-    // Click row → focus app
-    let click_id = notif.id;
-    let gesture = gtk4::GestureClick::new();
-    gesture.connect_released(move |gesture, _, _, _| {
-        gesture.set_state(gtk4::EventSequenceState::Claimed);
-        on_click(click_id);
-    });
-    row.add_controller(gesture);
 
     row
 }
