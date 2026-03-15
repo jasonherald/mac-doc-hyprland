@@ -17,6 +17,7 @@ pub fn search_files(
 
     let user_dirs = state.borrow().user_dirs.clone();
     let exclusions = state.borrow().exclusions.clone();
+    let preferred_apps = state.borrow().preferred_apps.clone();
 
     for (dir_name, dir_path) in &user_dirs {
         if dir_name == "home" {
@@ -50,6 +51,7 @@ pub fn search_files(
                 &result.path,
                 is_dir,
                 config,
+                &preferred_apps,
                 Rc::clone(&on_launch),
             );
             flow_box.insert(&btn, -1);
@@ -97,13 +99,8 @@ fn walk_directory(
                 continue;
             }
 
-            if path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_lowercase()
-                .contains(phrase)
-            {
+            // Search relative path (not just filename) — matches Go's behavior
+            if relative.to_lowercase().contains(phrase) {
                 results.push(FileResult {
                     is_dir: path.is_dir(),
                     path: path.clone(),
@@ -142,6 +139,7 @@ fn file_result_button(
     file_path: &Path,
     is_dir: bool,
     config: &DrawerConfig,
+    preferred_apps: &std::collections::HashMap<String, String>,
     on_launch: Rc<dyn Fn()>,
 ) -> gtk4::Button {
     let label = if display_name.len() > config.fs_name_limit {
@@ -156,15 +154,23 @@ fn file_result_button(
     }
 
     if is_dir {
-        // Set folder icon via CSS class or widget name
         button.add_css_class("file-search-dir");
     }
 
+    // Check for preferred app override
     let path = file_path.to_path_buf();
+    let path_str = file_path.to_string_lossy().to_string();
+    let preferred_cmd = dock_common::desktop::preferred_apps::find_preferred_app(
+        &path_str,
+        preferred_apps,
+    );
+
     button.connect_clicked(move |_| {
-        let _ = std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn();
+        if let Some(ref cmd) = preferred_cmd {
+            let _ = std::process::Command::new(cmd).arg(&path).spawn();
+        } else {
+            let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+        }
         on_launch();
     });
 

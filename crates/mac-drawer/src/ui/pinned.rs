@@ -58,23 +58,25 @@ pub fn build_pinned_flow_box(
         };
         button.set_label(&truncate(name, 20));
 
-        // Left click → launch
+        // Left click → launch via hyprctl dispatch
         let exec = entry.exec.clone();
         let terminal = entry.terminal;
         let term = config.term.clone();
         let on_launch_ref = Rc::clone(&on_launch);
         button.connect_clicked(move |_| {
             let exec = exec.replace(['"', '\''], "");
-            let full = if terminal {
-                format!("{} -e {}", term, exec)
+            // Strip field codes (%u, %f, etc.)
+            let exec = if let Some(pos) = exec.find('%') {
+                exec[..pos.saturating_sub(1)].trim().to_string()
             } else {
-                exec
+                exec.trim().to_string()
             };
-            let parts: Vec<&str> = full.split_whitespace().collect();
-            if let Some((&prog, args)) = parts.split_first() {
-                let mut cmd = std::process::Command::new(prog);
-                cmd.args(args);
-                let _ = cmd.spawn();
+            if !exec.is_empty() {
+                if terminal {
+                    dock_common::launch::launch_hyprctl_terminal(&exec, &term);
+                } else {
+                    dock_common::launch::launch_hyprctl(&exec);
+                }
             }
             on_launch_ref();
         });

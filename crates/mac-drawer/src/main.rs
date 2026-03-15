@@ -120,6 +120,14 @@ fn main() {
         // Load desktop entries
         desktop_loader::load_desktop_entries(&mut state.borrow_mut());
 
+        // Load preferred-apps.json for file associations
+        let pa_file = paths::config_dir("nwg-drawer").join("preferred-apps.json");
+        if pa_file.exists()
+            && let Some(pa) = dock_common::desktop::preferred_apps::load_preferred_apps(&pa_file) {
+                log::info!("Found {} custom file associations", pa.len());
+                state.borrow_mut().preferred_apps = pa;
+            }
+
         // Load pinned
         state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
 
@@ -152,6 +160,30 @@ fn main() {
         // Main layout
         let main_vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
         win.set_child(Some(&main_vbox));
+
+        // Close button (if configured)
+        if config.closebtn != "none" {
+            let close_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+            let close_btn = gtk4::Button::from_icon_name("window-close-symbolic");
+            close_btn.add_css_class("flat");
+            close_btn.set_widget_name("close-button");
+            let win_close = win.clone();
+            let config_close = Rc::clone(&config);
+            close_btn.connect_clicked(move |_| {
+                if !config_close.resident {
+                    win_close.close();
+                } else {
+                    win_close.set_visible(false);
+                }
+            });
+            if config.closebtn == "left" {
+                close_box.set_halign(gtk4::Align::Start);
+            } else {
+                close_box.set_halign(gtk4::Align::End);
+            }
+            close_box.append(&close_btn);
+            main_vbox.append(&close_box);
+        }
 
         // Search entry
         let search_entry = ui::search::setup_search_entry();
@@ -352,16 +384,9 @@ fn main() {
                 gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
                     let text = search_entry_key.text().to_string();
                     if text.starts_with(':') && text.len() > 1 {
-                        // Execute command
+                        // Execute command via hyprctl dispatch
                         let cmd = &text[1..];
-                        let parts: Vec<&str> = cmd.split_whitespace().collect();
-                        if let Some((&prog, args)) = parts.split_first() {
-                            let mut command = std::process::Command::new(prog);
-                            command.args(args);
-                            if let Err(e) = command.spawn() {
-                                log::error!("Failed to execute '{}': {}", cmd, e);
-                            }
-                        }
+                        dock_common::launch::launch_hyprctl(cmd);
                         on_launch_key();
                     } else if let Some(result) = ui::math::eval_expression(&text) {
                         // Math expression

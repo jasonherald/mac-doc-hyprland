@@ -119,6 +119,10 @@ pub struct DrawerConfig {
     /// Set keyboard interactivity to on-demand
     #[arg(short = 'k', long)]
     pub keyboard_on_demand: bool,
+
+    /// Close button position: "left", "right", or "none"
+    #[arg(long, default_value = "none")]
+    pub closebtn: String,
 }
 
 impl DrawerConfig {

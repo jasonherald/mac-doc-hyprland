@@ -29,6 +29,9 @@ pub struct DrawerState {
     /// Directories excluded from file search.
     pub exclusions: Vec<String>,
 
+    /// Custom file associations (regex pattern → command).
+    pub preferred_apps: std::collections::HashMap<String, String>,
+
     /// Whether a scroll happened (prevents accidental launch).
     pub been_scrolled: bool,
 }
@@ -44,6 +47,7 @@ impl DrawerState {
             search_phrase: String::new(),
             user_dirs: map_xdg_user_dirs(),
             exclusions: Vec::new(),
+            preferred_apps: std::collections::HashMap::new(),
             been_scrolled: false,
         }
     }

@@ -4,16 +4,41 @@ use std::process::Command;
 
 /// Launches an application by its class/app ID.
 ///
-/// Resolves the Exec command from .desktop files and runs it via `hyprctl dispatch exec`.
+/// Resolves the Exec command from .desktop files and runs it.
+/// Uses direct spawn (for dock, which manages its own process lifecycle).
 pub fn launch(app_id: &str, app_dirs: &[PathBuf]) {
     let command = get_exec(app_id, app_dirs).unwrap_or_else(|| app_id.to_string());
+    launch_command(&command);
+}
 
-    // Remove any remaining quotation marks
+/// Launches a command string via `hyprctl dispatch exec`.
+///
+/// This is the preferred method for Hyprland — it ensures proper
+/// window tracking, workspace assignment, and process isolation.
+pub fn launch_hyprctl(command: &str) {
+    let command = command.replace('"', "");
+    if command.trim().is_empty() {
+        log::error!("Empty command to launch");
+        return;
+    }
+    log::info!("Launching via hyprctl: {}", command);
+    let _ = crate::hyprland::ipc::hyprctl(&format!("dispatch exec {}", command));
+}
+
+/// Launches a command string via `hyprctl dispatch exec` with terminal wrapping.
+pub fn launch_hyprctl_terminal(command: &str, term: &str) {
+    let full = format!("{} -e {}", term, command);
+    launch_hyprctl(&full);
+}
+
+/// Launches a raw command string directly (without WM dispatch).
+/// Used by the dock for launcher commands and direct process spawning.
+pub fn launch_command(command: &str) {
     let command = command.replace('"', "");
 
     let elements: Vec<&str> = command.split_whitespace().collect();
     if elements.is_empty() {
-        log::error!("Empty command for {}", app_id);
+        log::error!("Empty command to launch");
         return;
     }
 
@@ -30,18 +55,7 @@ pub fn launch(app_id: &str, app_dirs: &[PathBuf]) {
         }
     }
 
-    let args: Vec<&str> = elements[cmd_idx + 1..]
-        .iter()
-        .filter(|a| !a.contains('='))
-        .copied()
-        .collect();
-
-    log::info!(
-        "env vars: {:?}; command: '{}'; args: {:?}",
-        env_vars,
-        elements[cmd_idx],
-        args
-    );
+    log::info!("Launching: '{}'", elements[cmd_idx..].join(" "));
 
     let mut cmd = Command::new(elements[cmd_idx]);
     cmd.args(&elements[cmd_idx + 1..]);

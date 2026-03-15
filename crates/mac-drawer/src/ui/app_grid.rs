@@ -125,7 +125,7 @@ fn flow_box_button(
     button
 }
 
-/// Launches a desktop entry's Exec command.
+/// Launches a desktop entry's Exec command via hyprctl dispatch exec.
 fn launch_exec(exec: &str, terminal: bool, term_cmd: &str) {
     let exec = exec.replace(['"', '\''], "");
 
@@ -140,18 +140,9 @@ fn launch_exec(exec: &str, terminal: bool, term_cmd: &str) {
         return;
     }
 
-    let full_cmd = if terminal {
-        format!("{} -e {}", term_cmd, exec)
+    if terminal {
+        dock_common::launch::launch_hyprctl_terminal(&exec, term_cmd);
     } else {
-        exec
-    };
-
-    let parts: Vec<&str> = full_cmd.split_whitespace().collect();
-    if let Some((&prog, args)) = parts.split_first() {
-        let mut cmd = std::process::Command::new(prog);
-        cmd.args(args);
-        if let Err(e) = cmd.spawn() {
-            log::error!("Failed to launch '{}': {}", full_cmd, e);
-        }
+        dock_common::launch::launch_hyprctl(&exec);
     }
 }
