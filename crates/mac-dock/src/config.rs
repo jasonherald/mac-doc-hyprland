@@ -53,7 +53,7 @@ pub struct DockConfig {
     pub icon_size: i32,
 
     /// Command assigned to the launcher button
-    #[arg(short = 'c', long, default_value = "mac-drawer")]
+    #[arg(short = 'c', long, default_value = "nwg-drawer-rs")]
     pub launcher_cmd: String,
 
     /// Launcher button position: "start" or "end"
