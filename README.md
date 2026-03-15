@@ -10,6 +10,9 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland) and
 - **Multi-monitor** — dock appears on all monitors simultaneously
 - **Content-width** — floats centered at screen edge, sized to its icons
 - **Auto-hide** — Hyprland IPC cursor tracking with configurable timeout
+- **Drag-to-reorder** — click and drag pinned icons to rearrange, order persists
+- **Drag-to-remove** — drag an icon off the dock to unpin it (like macOS)
+- **Dock settings menu** — right-click dock background to lock/unlock arrangement
 - **Transparency** — semi-transparent background for a modern look
 - **Right-click menus** — pin/unpin, close, toggle floating, fullscreen, move to workspace
 - **Middle-click** — launch new instance of any running app
@@ -110,7 +113,7 @@ mac-dock-hyprland/
 └── original/              # Go source reference (gitignored)
 ```
 
-- **5,200+ lines** of Rust across 53 files
+- **5,500+ lines** of Rust across 55+ files
 - **37 tests** with zero clippy warnings
 - Type-safe enums for all configuration (no stringly-typed APIs)
 - Named constants for all UI dimensions
@@ -118,7 +121,7 @@ mac-dock-hyprland/
 
 ## Shared pin file
 
-Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected instantly via inotify. Pin an app from either the dock (right-click → Pin) or the drawer (right-click any app).
+Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected instantly via inotify. Pin an app from either the dock (right-click → Pin) or the drawer (right-click any app). Drag icons in the dock to reorder; drag off to unpin.
 
 ## Credits
 

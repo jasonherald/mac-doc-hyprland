@@ -50,7 +50,7 @@ Three crates in a Cargo workspace:
   - `rebuild.rs` — self-referential rebuild function (uses Weak to avoid Rc cycle)
   - `listeners.rs` — pin watcher, signal poller, autohide
   - `events.rs` — Hyprland event stream → smart rebuild
-  - `ui/` — window, dock_box, buttons, menus, hotspot (cursor poller), css
+  - `ui/` — window, dock_box, buttons, menus, hotspot (cursor poller), drag, dock_menu, css
 
 - **mac-drawer** — drawer binary
   - `main.rs` — coordinator (~185 lines)
@@ -93,3 +93,6 @@ The dock rebuild function needs to pass itself to buttons (for pin/unpin rebuild
 
 ### Cursor-based autohide
 Replaced GTK hotspot windows with Hyprland IPC `j/cursorpos` polling. Cached monitor list refreshed every ~10s. See `ui/hotspot.rs`.
+
+### Drag-to-reorder
+GTK4 DragSource on each pinned button, single DropTarget on the dock box. Cursor poller tracks `drag_outside_dock` state for unpin-by-drag-off. Preview icon cached to avoid glycin reentrancy crashes. Rebuilds deferred via `idle_add_local_once`. Lock state persisted in `~/.cache/mac-dock-locked`. See `ui/drag.rs`, `ui/dock_menu.rs`.
