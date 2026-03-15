@@ -12,12 +12,24 @@ pub fn build_row(
     on_click: impl Fn(u32) + 'static,
     on_dismiss: impl Fn(u32) + 'static,
 ) -> gtk4::Box {
-    let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+    let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     row.add_css_class("notification-row");
+    if !notif.read {
+        row.add_css_class("unread");
+    }
     row.set_margin_start(4);
     row.set_margin_end(4);
     row.set_margin_top(2);
     row.set_margin_bottom(2);
+
+    // Unread indicator dot
+    let dot = gtk4::Label::new(Some("●"));
+    dot.add_css_class("unread-dot");
+    dot.set_valign(gtk4::Align::Center);
+    if notif.read {
+        dot.set_opacity(0.0);
+    }
+    row.append(&dot);
 
     // Clickable area: icon + text (separate from dismiss button to avoid propagation)
     let clickable = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);

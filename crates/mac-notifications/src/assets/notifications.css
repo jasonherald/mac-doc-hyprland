@@ -160,11 +160,18 @@ window.notification-backdrop {
 
 /* Notification row in panel */
 .notification-row {
-    padding: 6px 8px;
+    padding: 6px 4px 6px 2px;
     border-radius: 8px;
 }
 .notification-row:hover {
     background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Blue dot for unread notifications (macOS style) */
+.unread-dot {
+    font-size: 8px;
+    color: #7aa2f7;
+    min-width: 10px;
 }
 
 .row-summary {

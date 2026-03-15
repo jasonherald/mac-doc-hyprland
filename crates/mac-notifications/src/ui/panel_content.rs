@@ -65,13 +65,20 @@ pub fn build_grouped_list(
         // Notification rows
         for notif in &group.notifications {
             let click_cb = Rc::clone(&on_notification_click);
+            let state_click = Rc::clone(state);
+            let rebuild_click = Rc::clone(&on_rebuild);
             let state_dismiss = Rc::clone(state);
             let rebuild_dismiss = Rc::clone(&on_rebuild);
 
             let row = notification_row::build_row(
                 notif,
                 &app_dirs,
-                move |id| click_cb(id),
+                move |id| {
+                    click_cb(id);
+                    // Remove from history after focusing app (like macOS)
+                    state_click.borrow_mut().remove(id);
+                    rebuild_click();
+                },
                 move |id| {
                     state_dismiss.borrow_mut().remove(id);
                     rebuild_dismiss();
