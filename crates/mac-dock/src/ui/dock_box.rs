@@ -2,6 +2,7 @@ use crate::context::DockContext;
 use crate::ui::buttons;
 use dock_common::pinning;
 use gtk4::prelude::*;
+use std::rc::Rc;
 
 /// Builds the main dock content box with pinned and task buttons.
 ///
@@ -104,13 +105,13 @@ pub fn build(
         .map(|c| c.class.clone())
         .unwrap_or_default();
 
-    for pin in &pinned_snapshot {
+    for (pin_idx, pin) in pinned_snapshot.iter().enumerate() {
         if ignored_classes.contains(pin) {
             continue;
         }
         let instances = ctx.state.borrow().task_instances(pin);
         if instances.is_empty() {
-            main_box.append(&buttons::pinned_button(pin, ctx));
+            main_box.append(&buttons::pinned_button(pin, pin_idx, ctx));
         } else if instances.len() == 1 || !already_added.contains(pin) {
             let btn = buttons::task_button(&instances[0], &instances, ctx);
             if instances[0].class == active_class && !config.autohide {
@@ -146,6 +147,36 @@ pub fn build(
         && let Some(btn) = buttons::launcher_button(ctx, win)
     {
         main_box.append(&btn);
+    }
+
+    // Right-click dock background → dock settings menu
+    let state_bg = Rc::clone(&ctx.state);
+    let rebuild_bg = Rc::clone(&ctx.rebuild);
+    let bg_gesture = gtk4::GestureClick::new();
+    bg_gesture.set_button(3);
+    bg_gesture.connect_released(move |gesture, _, x, y| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        if let Some(widget) = gesture.widget() {
+            crate::ui::dock_menu::show_dock_background_menu(
+                &state_bg,
+                &rebuild_bg,
+                &widget,
+                x as i32,
+                y as i32,
+            );
+        }
+    });
+    main_box.add_controller(bg_gesture);
+
+    // Dock-level drop target for drag-to-reorder (when unlocked)
+    if !config.autohide || !ctx.state.borrow().locked {
+        crate::ui::drag::setup_dock_drop_target(
+            &main_box,
+            ctx.state.borrow().img_size_scaled,
+            &ctx.state,
+            &ctx.pinned_file,
+            &ctx.rebuild,
+        );
     }
 
     main_box

@@ -100,6 +100,7 @@ fn main() {
         // State
         let state = Rc::new(RefCell::new(DockState::new(app_dirs.clone())));
         state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
+        state.borrow_mut().locked = ui::dock_menu::load_lock_state();
         if let Err(e) = state.borrow_mut().refresh_clients() {
             log::error!("Couldn't list clients: {}", e);
         }

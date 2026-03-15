@@ -17,6 +17,12 @@ pub struct DockState {
 
     /// True when a popover menu is open — prevents autohide.
     pub popover_open: bool,
+
+    /// True when dock arrangement is locked (drag-to-reorder disabled).
+    pub locked: bool,
+
+    /// Index of the pinned item currently being dragged (if any).
+    pub drag_source_index: Option<usize>,
 }
 
 impl DockState {
@@ -30,6 +36,8 @@ impl DockState {
             img_size_scaled: 48,
             last_win_addr: String::new(),
             popover_open: false,
+            locked: false,
+            drag_source_index: None,
         }
     }
 

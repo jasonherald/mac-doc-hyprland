@@ -104,7 +104,7 @@ fn pack_button_box(
 }
 
 /// Creates a pinned app button (not currently running).
-pub fn pinned_button(app_id: &str, ctx: &DockContext) -> gtk4::Box {
+pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box {
     let img_size = ctx.state.borrow().img_size_scaled;
     let app_dirs = ctx.state.borrow().app_dirs.clone();
 
@@ -146,12 +146,26 @@ pub fn pinned_button(app_id: &str, ctx: &DockContext) -> gtk4::Box {
     button.add_controller(gesture);
 
     let indicator = indicator_image(&ctx.data_home, 0, ctx.config.is_vertical(), img_size);
-    pack_button_box(
+    let item_box = pack_button_box(
         &button,
         indicator.as_ref(),
         ctx.config.position,
         ctx.config.is_vertical(),
-    )
+    );
+    item_box.add_css_class("dock-item");
+
+    // Drag source (when dock is unlocked) — drop target is on the dock box itself
+    if !ctx.state.borrow().locked {
+        crate::ui::drag::setup_drag_source(
+            &button,
+            index,
+            &ctx.state,
+            &ctx.pinned_file,
+            &ctx.rebuild,
+        );
+    }
+
+    item_box
 }
 
 /// Creates a task button for a running application.

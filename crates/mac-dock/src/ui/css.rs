@@ -21,6 +21,18 @@ window {
     min-height: 0;
     min-width: 0;
 }
+
+/* Drag-to-reorder */
+.dock-item {
+    transition: margin 150ms ease-in-out;
+}
+
+/* Remove ALL GTK4 default drag-over highlighting (green outlines) */
+*:drop(active) {
+    outline: none;
+    border-color: transparent;
+    box-shadow: none;
+}
 "#;
 
 /// Loads the dock's CSS file and applies GTK4 compatibility overrides.
