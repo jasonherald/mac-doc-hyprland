@@ -117,6 +117,17 @@ pub fn build(
             if instances[0].class == active_class && !config.autohide {
                 btn.set_widget_name("active");
             }
+            if !ctx.state.borrow().locked
+                && let Some(inner_btn) = find_child_button(&btn)
+            {
+                crate::ui::drag::setup_drag_source(
+                    &inner_btn,
+                    pin_idx,
+                    &ctx.state,
+                    &ctx.pinned_file,
+                    &ctx.rebuild,
+                );
+            }
             main_box.append(&btn);
             already_added.push(pin.clone());
         }
@@ -180,4 +191,16 @@ pub fn build(
     }
 
     main_box
+}
+
+/// Finds the Button widget inside a dock item box (which may also contain an indicator).
+fn find_child_button(item_box: &gtk4::Box) -> Option<gtk4::Button> {
+    let mut child = item_box.first_child();
+    while let Some(widget) = child {
+        if let Ok(btn) = widget.clone().downcast::<gtk4::Button>() {
+            return Some(btn);
+        }
+        child = widget.next_sibling();
+    }
+    None
 }
