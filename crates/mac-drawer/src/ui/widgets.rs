@@ -55,3 +55,52 @@ pub fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_exec_strips_field_codes() {
+        assert_eq!(clean_exec("firefox %u"), "firefox");
+        assert_eq!(clean_exec("code %F"), "code");
+        assert_eq!(clean_exec("gimp"), "gimp");
+    }
+
+    #[test]
+    fn clean_exec_strips_quotes() {
+        assert_eq!(clean_exec(r#""firefox" %u"#), "firefox");
+        assert_eq!(clean_exec("'brave' --new-window"), "brave --new-window");
+    }
+
+    #[test]
+    fn clean_exec_trims_whitespace() {
+        assert_eq!(clean_exec("  firefox  "), "firefox");
+        assert_eq!(clean_exec(""), "");
+    }
+
+    #[test]
+    fn truncate_short_string() {
+        assert_eq!(truncate("Hi", 20), "Hi");
+    }
+
+    #[test]
+    fn truncate_long_string() {
+        let result = truncate("Very Long Application Name Here", 10);
+        assert!(result.ends_with('…'));
+        assert!(result.chars().count() <= 10);
+    }
+
+    #[test]
+    fn truncate_exact_length() {
+        assert_eq!(truncate("12345", 5), "12345");
+    }
+
+    #[test]
+    fn truncate_unicode() {
+        // Ensure char-based truncation, not byte-based
+        let result = truncate("日本語のアプリケーション名前テスト", 5);
+        assert!(result.ends_with('…'));
+        assert_eq!(result.chars().count(), 5);
+    }
+}

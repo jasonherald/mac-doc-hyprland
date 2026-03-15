@@ -33,7 +33,9 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
     let (tx, rx) = mpsc::channel();
 
     // SIGTERM → quit
-    let _ = unsafe {
+    // SAFETY: sigaction requires unsafe. The handler is a simple extern "C" fn
+    // that calls process::exit — no shared state or complex logic.
+    if let Err(e) = unsafe {
         signal::sigaction(
             Signal::SIGTERM,
             &signal::SigAction::new(
@@ -42,7 +44,9 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
                 signal::SigSet::empty(),
             ),
         )
-    };
+    } {
+        log::warn!("Failed to set SIGTERM handler: {}", e);
+    }
 
     // Use a thread to handle signals via sigwait
     std::thread::spawn(move || {

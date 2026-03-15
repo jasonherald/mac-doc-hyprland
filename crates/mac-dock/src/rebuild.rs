@@ -5,12 +5,12 @@ use crate::state::DockState;
 use crate::ui;
 use gtk4::prelude::*;
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 /// Creates the rebuild function that rebuilds dock content on all monitors.
 ///
-/// The returned `Rc<dyn Fn()>` captures a `DockContext` internally so buttons
-/// inside the dock can trigger a rebuild (e.g. on pin/unpin).
+/// Uses `Weak` for the self-reference to avoid an Rc cycle. Buttons inside
+/// the dock can trigger a rebuild via the `DockContext.rebuild` callback.
 pub fn create_rebuild_fn(
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &Rc<DockConfig>,
@@ -24,20 +24,18 @@ pub fn create_rebuild_fn(
     let data_home = Rc::clone(data_home);
     let pinned_file = Rc::clone(pinned_file);
 
-    type RebuildHolder = Rc<RefCell<Option<Rc<dyn Fn()>>>>;
-    let holder: RebuildHolder = Rc::new(RefCell::new(None));
+    // Use Weak to break the Rc cycle: rebuild_fn → holder → rebuild_fn
+    type RebuildHolder = Rc<RefCell<Weak<dyn Fn()>>>;
+    let holder: RebuildHolder = Rc::new(RefCell::new(Weak::<Box<dyn Fn()>>::new()));
 
     let rebuild_fn = {
         let holder = Rc::clone(&holder);
-        let config = Rc::clone(&config);
-        let state = Rc::clone(&state);
-        let data_home = Rc::clone(&data_home);
-        let pinned_file = Rc::clone(&pinned_file);
 
         Rc::new(move || {
-            let rebuild_ref = holder
+            // Upgrade the weak self-reference for passing to buttons
+            let rebuild_ref: Rc<dyn Fn()> = holder
                 .borrow()
-                .clone()
+                .upgrade()
                 .unwrap_or_else(|| Rc::new(|| {}));
 
             let ctx = DockContext {
@@ -58,6 +56,7 @@ pub fn create_rebuild_fn(
         })
     };
 
-    *holder.borrow_mut() = Some(rebuild_fn.clone() as Rc<dyn Fn()>);
+    // Store a Weak reference — no cycle
+    *holder.borrow_mut() = Rc::downgrade(&rebuild_fn) as Weak<dyn Fn()>;
     rebuild_fn
 }

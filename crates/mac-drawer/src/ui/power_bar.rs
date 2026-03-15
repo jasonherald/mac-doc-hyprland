@@ -24,17 +24,9 @@ pub fn build_power_bar(
         }
 
         let button = gtk4::Button::new();
-
-        if config.pb_use_icon_theme {
-            let image = gtk4::Image::from_icon_name(icon_name);
-            image.set_pixel_size(config.pb_size);
-            button.set_child(Some(&image));
-        } else {
-            // Use icon name from theme as fallback
-            let image = gtk4::Image::from_icon_name(icon_name);
-            image.set_pixel_size(config.pb_size);
-            button.set_child(Some(&image));
-        }
+        let image = gtk4::Image::from_icon_name(icon_name);
+        image.set_pixel_size(config.pb_size);
+        button.set_child(Some(&image));
 
         let cmd = command.to_string();
         let on_launch = Rc::clone(&on_launch);
