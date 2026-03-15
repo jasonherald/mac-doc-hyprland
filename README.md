@@ -1,8 +1,8 @@
 # mac-dock-hyprland
 
-A macOS-style dock and application launcher for [Hyprland](https://hyprland.org/), written in Rust.
+A macOS-style dock, application launcher, and notification center for [Hyprland](https://hyprland.org/), written in Rust.
 
-Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland) and [nwg-drawer](https://github.com/nwg-piotr/nwg-drawer) with a unified, memory-safe implementation that adds inter-app communication, multi-monitor support, and a polished Launchpad-style UI.
+Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [nwg-drawer](https://github.com/nwg-piotr/nwg-drawer), and [mako](https://github.com/emersion/mako) with a unified, memory-safe implementation.
 
 ## Features
 
@@ -10,7 +10,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland) and
 - **Multi-monitor** — dock appears on all monitors simultaneously
 - **Content-width** — floats centered at screen edge, sized to its icons
 - **Auto-hide** — Hyprland IPC cursor tracking with configurable timeout
-- **Drag-to-reorder** — click and drag pinned icons to rearrange, order persists
+- **Drag-to-reorder** — drag any pinned icon (running or not) to rearrange
 - **Drag-to-remove** — drag an icon off the dock to unpin it (like macOS)
 - **Dock settings menu** — right-click dock background to lock/unlock arrangement
 - **Transparency** — semi-transparent background for a modern look
@@ -28,22 +28,33 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland) and
 - **Command execution** — prefix with `:` to run arbitrary commands
 - **Pin sync** — shared pin file with the dock, changes reflect instantly on both
 
+### Notification Center (`mac-notifications-rs`)
+- **D-Bus notification daemon** — replaces mako, claims `org.freedesktop.Notifications`
+- **Popup toasts** — top-right corner, auto-dismiss, click-to-focus sending app
+- **Action buttons** — shows Reply/Open/etc. buttons, emits ActionInvoked D-Bus signal
+- **History panel** — slide-out from right, grouped by app, unread dot indicators
+- **Click-outside-to-close** — backdrop overlay + Escape key
+- **Dismiss controls** — per-notification, per-app group, or clear all
+- **Do Not Disturb** — toggle via panel button, signal, or waybar right-click menu
+- **Timed DND** — 1 hour, 2 hours, until tomorrow with expiry countdown
+- **Waybar integration** — bell icon with unread count, left-click toggles panel, right-click opens DND menu
+- **Persistence** — notification history saved across restarts with `--persist`
+- **Focused monitor** — popups appear on the currently focused monitor
+
 ### Shared (`dock-common`)
 - Custom Hyprland IPC implementation (no external crate dependency)
 - XDG desktop entry parser with locale support
 - Icon resolution with theme fallbacks
 - Pin management with file persistence
-- Signal handling (SIGRTMIN+1/2/3 for show/hide/toggle)
+- Signal handling (real-time signals via raw libc for SIGRTMIN+N support)
 - Single-instance enforcement with stale lock detection
 
 ## Installation
 
-### From source
-
 ```bash
-cargo build --release
-cp target/release/nwg-dock-hyprland-rs ~/.cargo/bin/
-cp target/release/nwg-drawer-rs ~/.cargo/bin/
+cargo install --path crates/mac-dock
+cargo install --path crates/mac-drawer
+cargo install --path crates/mac-notifications
 ```
 
 ### Dependencies
@@ -64,42 +75,68 @@ pacman -S gtk4 gtk4-layer-shell
 ```bash
 # Basic — auto-hide, 48px icons, 10px bottom margin, 400ms hide timeout
 nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
-
-# Full width with exclusive zone
-nwg-dock-hyprland-rs -f -x -i 48
-
-# Specific monitor only
-nwg-dock-hyprland-rs -d -i 48 -o DP-1
 ```
 
 ### Drawer
 
 ```bash
-# Basic launch
-nwg-drawer-rs
-
 # Resident mode (stays in memory, toggle with signals)
 nwg-drawer-rs -r
-
-# Custom icon size and columns
-nwg-drawer-rs --icon-size 72 -c 8
 ```
 
-### Hyprland config
+### Notification Center
+
+```bash
+# With history persistence
+mac-notifications-rs --persist
+```
+
+### Hyprland autostart
 
 ```ini
 # ~/.config/hypr/autostart.conf
 exec-once = uwsm-app -- nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
+exec-once = uwsm-app -- mac-notifications-rs --persist
+```
+
+### D-Bus service (auto-start on first notification)
+
+```ini
+# ~/.local/share/dbus-1/services/org.freedesktop.Notifications.service
+[D-BUS Service]
+Name=org.freedesktop.Notifications
+Exec=/home/YOU/.cargo/bin/mac-notifications-rs --persist
 ```
 
 ### Signal control
 
 ```bash
 # Toggle dock visibility
-pkill -SIGRTMIN+1 nwg-dock-hyprland-rs
+pkill -f -35 nwg-dock-hyprland-rs     # SIGRTMIN+1
 
-# Show/hide drawer
-pkill -SIGUSR1 nwg-drawer-rs
+# Toggle notification panel
+pkill -f -38 mac-notifications-rs      # SIGRTMIN+4
+
+# Toggle DND
+pkill -f -39 mac-notifications-rs      # SIGRTMIN+5
+
+# Open DND menu
+pkill -f -40 mac-notifications-rs      # SIGRTMIN+6
+```
+
+### Waybar module
+
+Add to `~/.config/waybar/config.jsonc`:
+```jsonc
+"custom/notifications": {
+    "exec": "cat $XDG_RUNTIME_DIR/mac-notifications-status.json 2>/dev/null || echo '{\"text\":\"\",\"alt\":\"empty\",\"class\":\"empty\"}'",
+    "return-type": "json",
+    "format": "{}",
+    "on-click": "pkill -f -38 mac-notifications-rs",
+    "on-click-right": "pkill -f -40 mac-notifications-rs",
+    "signal": 11,
+    "interval": "once"
+}
 ```
 
 ## Architecture
@@ -107,17 +144,18 @@ pkill -SIGUSR1 nwg-drawer-rs
 ```
 mac-dock-hyprland/
 ├── crates/
-│   ├── dock-common/       # Shared library (Hyprland IPC, desktop entries, pinning)
-│   ├── mac-dock/          # Dock binary
-│   └── mac-drawer/        # Drawer binary
-└── original/              # Go source reference (gitignored)
+│   ├── dock-common/           # Shared library
+│   ├── mac-dock/              # Dock binary
+│   ├── mac-drawer/            # Drawer binary
+│   └── mac-notifications/     # Notification daemon
 ```
 
-- **5,500+ lines** of Rust across 55+ files
-- **37 tests** with zero clippy warnings
-- Type-safe enums for all configuration (no stringly-typed APIs)
+- **Four crates** in a Cargo workspace
+- **52 tests** with zero clippy warnings
+- Type-safe enums for all configuration
 - Named constants for all UI dimensions
 - GTK4 + gtk4-layer-shell for Wayland layer surfaces
+- Zero new dependencies for notification daemon (gio D-Bus is already in GTK4)
 
 ## Shared pin file
 
