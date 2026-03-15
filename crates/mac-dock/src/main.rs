@@ -78,7 +78,7 @@ fn main() {
     }
 
     let cache_dir = paths::cache_dir().expect("Couldn't determine cache directory");
-    let pinned_file = cache_dir.join("nwg-dock-pinned");
+    let pinned_file = cache_dir.join("mac-dock-pinned");
     let app_dirs = get_app_dirs();
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.is_resident_mode()));
 
@@ -172,34 +172,8 @@ fn main() {
                 win.clone(),
             ));
 
-            // Autohide leave/enter for this window
-            if config.autohide {
-                let win_leave = win.clone();
-                let state_leave = Rc::clone(&state);
-                let leave_ctrl = gtk4::EventControllerMotion::new();
-                leave_ctrl.connect_leave(move |_| {
-                    let win_ref = win_leave.clone();
-                    let state_ref = Rc::clone(&state_leave);
-                    glib::timeout_add_local_once(
-                        std::time::Duration::from_millis(1000),
-                        move || {
-                            state_ref.borrow_mut().mouse_inside_dock = false;
-                            let s = state_ref.borrow();
-                            if !s.mouse_inside_dock && !s.mouse_inside_hotspot {
-                                win_ref.set_visible(false);
-                            }
-                        },
-                    );
-                });
-                win.add_controller(leave_ctrl);
-
-                let state_enter = Rc::clone(&state);
-                let enter_ctrl = gtk4::EventControllerMotion::new();
-                enter_ctrl.connect_enter(move |_, _, _| {
-                    state_enter.borrow_mut().mouse_inside_dock = true;
-                });
-                win.add_controller(enter_ctrl);
-            }
+            // Autohide is handled entirely by the Hyprland IPC cursor poller.
+            // No GTK EventControllerMotion needed — avoids RefCell borrow conflicts.
 
             all_windows.borrow_mut().push(win);
         }
@@ -255,6 +229,48 @@ fn main() {
         // Hyprland event listener — rebuilds all monitors
         let rebuild_for_events = rebuild_holder.borrow().clone().unwrap();
         events::start_event_listener(Rc::clone(&state), rebuild_for_events);
+
+        // Pin file watcher — instant rebuild when pins change (e.g. from drawer)
+        {
+            let pin_path = pinned_file.as_ref().clone();
+            let rebuild_pin = rebuild_holder.borrow().clone().unwrap();
+            let (pin_tx, pin_rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                use notify::{Watcher, RecursiveMode};
+                let tx = pin_tx;
+                let mut watcher = match notify::recommended_watcher(
+                    move |res: Result<notify::Event, _>| {
+                        if let Ok(event) = res {
+                            if matches!(event.kind,
+                                notify::EventKind::Modify(_) |
+                                notify::EventKind::Create(_)
+                            ) {
+                                let _ = tx.send(());
+                            }
+                        }
+                    },
+                ) {
+                    Ok(w) => w,
+                    Err(e) => { log::warn!("Pin watcher failed: {}", e); return; }
+                };
+                // Watch the parent directory to catch file creation
+                if let Some(parent) = pin_path.parent() {
+                    let _ = watcher.watch(parent, RecursiveMode::NonRecursive);
+                }
+                // Block thread forever (watcher dropped = stops watching)
+                std::thread::park();
+            });
+
+            glib::timeout_add_local(std::time::Duration::from_millis(50), move || {
+                if pin_rx.try_recv().is_ok() {
+                    // Drain any extra notifications
+                    while pin_rx.try_recv().is_ok() {}
+                    log::debug!("Pin file changed, rebuilding dock");
+                    rebuild_pin();
+                }
+                glib::ControlFlow::Continue
+            });
+        }
 
         // Signal handler — controls all windows
         let all_win_sig = Rc::clone(&all_windows);

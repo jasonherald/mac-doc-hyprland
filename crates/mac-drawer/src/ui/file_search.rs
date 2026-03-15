@@ -14,6 +14,8 @@ pub fn search_files(
 ) -> gtk4::FlowBox {
     let flow_box = gtk4::FlowBox::new();
     flow_box.set_selection_mode(gtk4::SelectionMode::None);
+    flow_box.set_orientation(gtk4::Orientation::Vertical);
+    flow_box.set_max_children_per_line(1); // vertical list layout
 
     let user_dirs = state.borrow().user_dirs.clone();
     let exclusions = state.borrow().exclusions.clone();
@@ -122,7 +124,11 @@ fn dir_header_button(
     dir_path: &Path,
     on_launch: Rc<dyn Fn()>,
 ) -> gtk4::Button {
-    let button = gtk4::Button::with_label(dir_name);
+    let display = dir_name.chars().next().unwrap_or(' ').to_uppercase().to_string()
+        + &dir_name[1..];
+    let button = gtk4::Button::with_label(&display);
+    button.add_css_class("file-result-header");
+    button.set_has_frame(false);
     let path = dir_path.to_path_buf();
     let on_launch = Rc::clone(&on_launch);
     button.connect_clicked(move |_| {
@@ -149,6 +155,9 @@ fn file_result_button(
     };
 
     let button = gtk4::Button::with_label(&label);
+    button.add_css_class("file-result-item");
+    button.set_has_frame(false);
+    button.set_halign(gtk4::Align::Start);
     if display_name.len() > config.fs_name_limit {
         button.set_tooltip_text(Some(display_name));
     }

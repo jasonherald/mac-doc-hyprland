@@ -26,6 +26,9 @@ pub struct DockState {
 
     /// Timestamp when detector was entered (for hotspot delay)
     pub detector_entered_at: i64,
+
+    /// True when a popover menu is open — prevents autohide
+    pub popover_open: bool,
 }
 
 impl DockState {
@@ -43,6 +46,7 @@ impl DockState {
             mouse_inside_dock: false,
             mouse_inside_hotspot: false,
             detector_entered_at: 0,
+            popover_open: false,
         }
     }
 

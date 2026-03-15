@@ -164,8 +164,9 @@ pub fn task_button(
         });
     } else {
         let insts = instances.to_vec();
+        let state_menu = Rc::clone(state);
         button.connect_clicked(move |btn| {
-            menus::show_client_menu(&insts, btn);
+            menus::show_client_menu(&insts, &state_menu, btn);
         });
     }
 

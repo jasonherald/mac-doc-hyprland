@@ -7,13 +7,32 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
+/// Creates a popover that tracks open/close state to prevent autohide.
+fn create_tracked_popover(
+    parent: &impl IsA<gtk4::Widget>,
+    state: &Rc<RefCell<DockState>>,
+) -> gtk4::Popover {
+    let popover = gtk4::Popover::new();
+    popover.set_parent(parent.upcast_ref());
+
+    let state_open = Rc::clone(state);
+    popover.connect_show(move |_| {
+        state_open.borrow_mut().popover_open = true;
+    });
+    let state_close = Rc::clone(state);
+    popover.connect_closed(move |_| {
+        state_close.borrow_mut().popover_open = false;
+    });
+    popover
+}
+
 /// Creates and shows a popover listing all instances of a class (for multi-instance left-click).
 pub fn show_client_menu(
     instances: &[HyprClient],
+    state: &Rc<RefCell<DockState>>,
     parent: &impl IsA<gtk4::Widget>,
 ) {
-    let popover = gtk4::Popover::new();
-    popover.set_parent(parent.upcast_ref());
+    let popover = create_tracked_popover(parent, state);
 
     let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
     for instance in instances {
@@ -46,8 +65,7 @@ pub fn show_context_menu(
     rebuild: &Rc<dyn Fn()>,
     parent: &impl IsA<gtk4::Widget>,
 ) {
-    let popover = gtk4::Popover::new();
-    popover.set_parent(parent.upcast_ref());
+    let popover = create_tracked_popover(parent, state);
 
     let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 2);
 
@@ -185,8 +203,7 @@ pub fn show_pinned_context_menu(
     rebuild: &Rc<dyn Fn()>,
     parent: &impl IsA<gtk4::Widget>,
 ) {
-    let popover = gtk4::Popover::new();
-    popover.set_parent(parent.upcast_ref());
+    let popover = create_tracked_popover(parent, state);
 
     let btn = gtk4::Button::with_label("Unpin");
     btn.add_css_class("flat");

@@ -43,20 +43,33 @@ pub fn build_pinned_flow_box(
         };
 
         let button = gtk4::Button::new();
+        button.set_has_frame(false);
+        button.add_css_class("app-button");
 
-        // Icon
-        if !entry.icon.is_empty()
-            && let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
-                button.set_child(Some(&image));
+        // Icon above label layout
+        let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+        vbox.set_halign(gtk4::Align::Center);
+
+        if !entry.icon.is_empty() {
+            if let Some(image) = icons::create_image(&entry.icon, config.icon_size, &app_dirs) {
+                image.set_pixel_size(config.icon_size);
+                image.set_halign(gtk4::Align::Center);
+                vbox.append(&image);
             }
+        }
 
-        // Label
         let name = if !entry.name_loc.is_empty() {
             &entry.name_loc
         } else {
             &entry.name
         };
-        button.set_label(&truncate(name, 20));
+        let label = gtk4::Label::new(Some(&truncate(name, 20)));
+        label.set_halign(gtk4::Align::Center);
+        label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
+        label.set_max_width_chars(14);
+        vbox.append(&label);
+
+        button.set_child(Some(&vbox));
 
         // Left click → launch via hyprctl dispatch
         let exec = entry.exec.clone();

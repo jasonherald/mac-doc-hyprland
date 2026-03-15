@@ -17,11 +17,12 @@ const EDGE_THRESHOLD: i32 = 2;
 pub fn start_cursor_poller(
     dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     config: &DockConfig,
-    _state: &Rc<RefCell<DockState>>,
+    state: &Rc<RefCell<DockState>>,
 ) {
     let windows = Rc::clone(dock_windows);
     let position = config.position.clone();
     let hide_timeout = config.hide_timeout;
+    let state = Rc::clone(state);
     // Track when cursor last left the dock area (for hide delay)
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
@@ -55,8 +56,11 @@ pub fn start_cursor_poller(
             let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows);
             let at_edge = is_cursor_at_edge(&cursor, &monitors, &position);
 
-            if in_dock_area || at_edge {
-                // Cursor is in dock or at edge — reset hide timer
+            // Don't hide while a popover menu is open
+            let popover_open = state.borrow().popover_open;
+
+            if in_dock_area || at_edge || popover_open {
+                // Cursor is in dock, at edge, or menu open — reset hide timer
                 *left_at.borrow_mut() = None;
             } else {
                 // Cursor left the dock area — start or check hide timer
