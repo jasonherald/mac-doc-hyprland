@@ -26,14 +26,27 @@ pub fn build(
     };
     let main_box = gtk4::Box::new(inner_orientation, 0);
 
-    // Pack into alignment box
+    // Pack into alignment box — replicate Go's PackStart expand/fill semantics
+    // Go: "start" → PackStart(mainBox, false, true, 0)  expand=false, fill=true
+    // Go: "end"   → PackEnd(mainBox, false, true, 0)    expand=false, fill=true
+    // Go: center  → PackStart(mainBox, true, false, 0)  expand=true,  fill=false
     match config.alignment.as_str() {
-        "start" => alignment_box.prepend(&main_box),
-        "end" => alignment_box.append(&main_box),
-        _ => {
+        "start" => {
+            alignment_box.prepend(&main_box);
+            // expand=false: don't take extra space
+        }
+        "end" => {
             alignment_box.append(&main_box);
-            main_box.set_halign(gtk4::Align::Center);
-            main_box.set_valign(gtk4::Align::Center);
+            // expand=false: don't take extra space
+        }
+        _ => {
+            // Center: when full-width, expand to fill then center content.
+            // When content-width, just append (window shrinks to fit).
+            if config.full {
+                main_box.set_hexpand(true);
+                main_box.set_halign(gtk4::Align::Center);
+            }
+            alignment_box.append(&main_box);
         }
     }
 
@@ -82,6 +95,11 @@ pub fn build(
     } else {
         s.img_size_scaled = config.icon_size;
     }
+
+    log::debug!(
+        "Dock build: {} items, icon_size={}, img_size_scaled={}, pinned={}",
+        all_items.len(), config.icon_size, s.img_size_scaled, s.pinned.len()
+    );
 
     drop(s);
 

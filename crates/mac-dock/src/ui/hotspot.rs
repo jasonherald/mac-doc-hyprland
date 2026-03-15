@@ -1,155 +1,170 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
+use dock_common::hyprland::ipc;
+use dock_common::hyprland::types::HyprMonitor;
+use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Creates a hotspot window for auto-hide mouse detection.
+/// Edge detection threshold in pixels from the screen bottom.
+const EDGE_THRESHOLD: i32 = 2;
+
+/// Starts a cursor position poller that shows/hides dock windows
+/// based on whether the cursor is near the screen edge or inside the dock.
 ///
-/// The hotspot has two regions:
-/// - A detector box that records when the mouse enters
-/// - A hotspot box that triggers the dock to show if the mouse moves fast enough
-pub fn setup_hotspot(
-    monitor: &gtk4::gdk::Monitor,
-    dock_window: &gtk4::ApplicationWindow,
+/// Uses Hyprland IPC cursor tracking instead of GTK hotspot windows.
+pub fn start_cursor_poller(
+    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     config: &DockConfig,
-    state: &Rc<RefCell<DockState>>,
-    app: &gtk4::Application,
-) -> gtk4::ApplicationWindow {
-    let hotspot_win = gtk4::ApplicationWindow::new(app);
-    hotspot_win.init_layer_shell();
-    hotspot_win.set_namespace(Some("hotspot"));
-    hotspot_win.set_monitor(Some(monitor));
+    _state: &Rc<RefCell<DockState>>,
+) {
+    let windows = Rc::clone(dock_windows);
+    let position = config.position.clone();
+    let hide_timeout = config.hide_timeout;
+    // Track when cursor last left the dock area (for hide delay)
+    let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
-    let orientation = if config.position == "bottom" || config.position == "top" {
-        gtk4::Orientation::Vertical
-    } else {
-        gtk4::Orientation::Horizontal
-    };
-    let bx = gtk4::Box::new(orientation, 0);
-    hotspot_win.set_child(Some(&bx));
+    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        let cursor = match get_cursor_pos() {
+            Some(c) => c,
+            None => return glib::ControlFlow::Continue,
+        };
 
-    // Detector box — records entry time
-    let detector = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-    detector.set_widget_name("detector-box");
+        let monitors = match ipc::list_monitors() {
+            Ok(m) => m,
+            Err(_) => return glib::ControlFlow::Continue,
+        };
 
-    // Hotspot box — triggers dock show
-    let hotspot = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-    hotspot.set_widget_name("hotspot-box");
+        let any_visible = windows.borrow().iter().any(|w| w.is_visible());
 
-    // Get dock window size for sizing the hotspot regions
-    let (dock_w, dock_h) = (dock_window.width(), dock_window.height());
-
-    match config.position.as_str() {
-        "bottom" | "top" => {
-            detector.set_size_request(dock_w.max(100), dock_h.max(20) / 3);
-            hotspot.set_size_request(dock_w.max(100), 2);
-
-            if config.position == "bottom" {
-                bx.append(&detector);
-                bx.append(&hotspot);
-                hotspot_win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
-            } else {
-                bx.append(&hotspot);
-                bx.append(&detector);
-                hotspot_win.set_anchor(gtk4_layer_shell::Edge::Top, true);
-            }
-            hotspot_win.set_anchor(gtk4_layer_shell::Edge::Left, config.full);
-            hotspot_win.set_anchor(gtk4_layer_shell::Edge::Right, config.full);
-        }
-        "left" | "right" => {
-            detector.set_size_request(dock_w.max(20) / 3, dock_h.max(100));
-            hotspot.set_size_request(2, dock_h.max(100));
-
-            if config.position == "left" {
-                bx.append(&hotspot);
-                bx.append(&detector);
-                hotspot_win.set_anchor(gtk4_layer_shell::Edge::Left, true);
-            } else {
-                bx.append(&detector);
-                bx.append(&hotspot);
-                hotspot_win.set_anchor(gtk4_layer_shell::Edge::Right, true);
-            }
-            hotspot_win.set_anchor(gtk4_layer_shell::Edge::Top, config.full);
-            hotspot_win.set_anchor(gtk4_layer_shell::Edge::Bottom, config.full);
-        }
-        _ => {}
-    }
-
-    // Layer
-    if config.hotspot_layer == "top" {
-        hotspot_win.set_layer(gtk4_layer_shell::Layer::Top);
-    } else {
-        hotspot_win.set_layer(gtk4_layer_shell::Layer::Overlay);
-    }
-    hotspot_win.set_exclusive_zone(-1);
-
-    // Detector enter → record timestamp
-    let state_detector = Rc::clone(state);
-    let detector_motion = gtk4::EventControllerMotion::new();
-    detector_motion.connect_enter(move |_, _, _| {
-        let now = now_millis();
-        state_detector.borrow_mut().detector_entered_at = now;
-    });
-    detector.add_controller(detector_motion);
-
-    // Hotspot enter → show dock if fast enough
-    let dock_ref = dock_window.clone();
-    let state_hotspot = Rc::clone(state);
-    let delay = config.hotspot_delay;
-    let hotspot_motion = gtk4::EventControllerMotion::new();
-    hotspot_motion.connect_enter(move |_, _, _| {
-        let now = now_millis();
-        let entered_at = state_hotspot.borrow().detector_entered_at;
-        let elapsed = now - entered_at;
-
-        if elapsed <= delay || delay == 0 {
-            log::debug!("Delay {} <= {} ms, showing dock", elapsed, delay);
-            dock_ref.set_visible(false);
-            dock_ref.set_visible(true);
-        } else {
-            log::debug!("Delay {} > {} ms, not showing dock", elapsed, delay);
-        }
-    });
-    hotspot.add_controller(hotspot_motion);
-
-    // Leave hotspot → hide dock after timeout
-    if config.autohide {
-        let dock_hide = dock_window.clone();
-        let state_leave = Rc::clone(state);
-        let leave_motion = gtk4::EventControllerMotion::new();
-        leave_motion.connect_leave(move |_| {
-            state_leave.borrow_mut().mouse_inside_hotspot = false;
-            let dock_ref = dock_hide.clone();
-            let state_ref = Rc::clone(&state_leave);
-            gtk4::glib::timeout_add_local_once(
-                std::time::Duration::from_millis(1000),
-                move || {
-                    let s = state_ref.borrow();
-                    if !s.mouse_inside_dock && !s.mouse_inside_hotspot {
-                        dock_ref.set_visible(false);
+        if !any_visible {
+            // Dock is hidden — check if cursor is at the screen edge to show
+            if is_cursor_at_edge(&cursor, &monitors, &position) {
+                if let Some(mon_idx) = find_cursor_monitor(&cursor, &monitors) {
+                    let wins = windows.borrow();
+                    if mon_idx < wins.len() {
+                        log::debug!("Cursor at edge, showing dock on monitor {}", mon_idx);
+                        wins[mon_idx].set_visible(true);
                     }
-                },
-            );
-        });
-        hotspot_win.add_controller(leave_motion);
+                }
+                *left_at.borrow_mut() = None;
+            }
+        } else {
+            // Dock is visible — check if cursor is inside dock area or at edge
+            let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows);
+            let at_edge = is_cursor_at_edge(&cursor, &monitors, &position);
 
-        let state_enter = Rc::clone(state);
-        let enter_motion = gtk4::EventControllerMotion::new();
-        enter_motion.connect_enter(move |_, _, _| {
-            state_enter.borrow_mut().mouse_inside_hotspot = true;
-        });
-        hotspot_win.add_controller(enter_motion);
-    }
+            if in_dock_area || at_edge {
+                // Cursor is in dock or at edge — reset hide timer
+                *left_at.borrow_mut() = None;
+            } else {
+                // Cursor left the dock area — start or check hide timer
+                let mut left = left_at.borrow_mut();
+                if left.is_none() {
+                    *left = Some(std::time::Instant::now());
+                } else if left.unwrap().elapsed().as_millis() >= hide_timeout as u128 {
+                    // Timer expired — hide all dock windows
+                    log::debug!("Cursor left dock area, hiding");
+                    for win in windows.borrow().iter() {
+                        win.set_visible(false);
+                    }
+                    *left = None;
+                }
+            }
+        }
 
-    hotspot_win
+        glib::ControlFlow::Continue
+    });
 }
 
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
+#[derive(Debug)]
+struct CursorPos {
+    x: i32,
+    y: i32,
+}
+
+fn get_cursor_pos() -> Option<CursorPos> {
+    let reply = ipc::hyprctl("j/cursorpos").ok()?;
+    let val: serde_json::Value = serde_json::from_slice(&reply).ok()?;
+    Some(CursorPos {
+        x: val.get("x")?.as_i64()? as i32,
+        y: val.get("y")?.as_i64()? as i32,
+    })
+}
+
+fn is_cursor_at_edge(cursor: &CursorPos, monitors: &[HyprMonitor], position: &str) -> bool {
+    for mon in monitors {
+        let in_x = cursor.x >= mon.x && cursor.x < mon.x + mon.width;
+        let in_y = cursor.y >= mon.y && cursor.y < mon.y + mon.height;
+        if !in_x || !in_y {
+            continue;
+        }
+
+        let at_edge = match position {
+            "bottom" => cursor.y >= mon.y + mon.height - EDGE_THRESHOLD,
+            "top" => cursor.y <= mon.y + EDGE_THRESHOLD,
+            "left" => cursor.x <= mon.x + EDGE_THRESHOLD,
+            "right" => cursor.x >= mon.x + mon.width - EDGE_THRESHOLD,
+            _ => false,
+        };
+
+        if at_edge {
+            return true;
+        }
+    }
+    false
+}
+
+fn find_cursor_monitor(cursor: &CursorPos, monitors: &[HyprMonitor]) -> Option<usize> {
+    for (i, mon) in monitors.iter().enumerate() {
+        let in_x = cursor.x >= mon.x && cursor.x < mon.x + mon.width;
+        let in_y = cursor.y >= mon.y && cursor.y < mon.y + mon.height;
+        if in_x && in_y {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Checks if the cursor is within the bounds of any visible dock window.
+/// Uses the window's allocated size and its monitor's position to compute bounds.
+fn is_cursor_in_visible_dock(
+    cursor: &CursorPos,
+    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+) -> bool {
+    let wins = windows.borrow();
+    for win in wins.iter() {
+        if !win.is_visible() {
+            continue;
+        }
+        // Get the layer surface geometry from Hyprland
+        // Fall back to a generous check based on monitor bottom area
+        let w = win.width();
+        let h = win.height();
+        if w == 0 || h == 0 {
+            continue;
+        }
+
+        // The dock is centered at the bottom of its monitor.
+        // We need the monitor's geometry to compute absolute position.
+        // Use the surface allocation as an approximation.
+        if win.surface().is_some()
+            && let Ok(monitors) = ipc::list_monitors() {
+                for mon in &monitors {
+                    // Check if this window is on this monitor
+                    // (dock centered at bottom of monitor)
+                    let dock_x = mon.x + (mon.width - w) / 2;
+                    let dock_y = mon.y + mon.height - h;
+
+                    let in_x = cursor.x >= dock_x && cursor.x < dock_x + w;
+                    let in_y = cursor.y >= dock_y && cursor.y <= mon.y + mon.height;
+
+                    if in_x && in_y {
+                        return true;
+                    }
+                }
+            }
+    }
+    false
 }

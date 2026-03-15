@@ -32,9 +32,13 @@ pub struct DockConfig {
     #[arg(short = 'g', long, default_value = "")]
     pub ignore_classes: String,
 
-    /// Hotspot delay in ms (smaller = faster trigger)
+    /// Hotspot delay in ms (smaller = faster trigger to show)
     #[arg(long, default_value_t = 20)]
     pub hotspot_delay: i64,
+
+    /// Auto-hide timeout in ms (how long after cursor leaves before dock hides)
+    #[arg(long, default_value_t = 600)]
+    pub hide_timeout: u64,
 
     /// Hotspot layer: "overlay" or "top"
     #[arg(long, default_value = "overlay")]

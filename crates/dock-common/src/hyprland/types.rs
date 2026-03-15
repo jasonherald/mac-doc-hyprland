@@ -8,8 +8,12 @@ pub struct WorkspaceRef {
 }
 
 /// A Hyprland window/client.
+///
+/// Uses `serde(default)` to handle field differences across Hyprland versions.
+/// Newer Hyprland versions may add/remove fields (e.g. fullscreenMode removed,
+/// fullscreenClient added).
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct HyprClient {
     pub address: String,
     pub mapped: bool,
@@ -35,7 +39,7 @@ pub struct HyprClient {
 
 /// A Hyprland monitor/output.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct HyprMonitor {
     pub id: i32,
     pub name: String,
@@ -59,7 +63,7 @@ pub struct HyprMonitor {
 
 /// A Hyprland workspace.
 #[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct HyprWorkspace {
     pub id: i32,
     pub name: String,

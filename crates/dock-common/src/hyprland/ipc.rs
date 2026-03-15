@@ -33,9 +33,8 @@ pub fn hyprctl(cmd: &str) -> Result<Vec<u8>> {
     let mut conn = UnixStream::connect(&socket_path)?;
     conn.write_all(cmd.as_bytes())?;
 
-    let mut reply = vec![0u8; 102400];
-    let n = conn.read(&mut reply)?;
-    reply.truncate(n);
+    let mut reply = Vec::new();
+    conn.read_to_end(&mut reply)?;
     Ok(reply)
 }
 

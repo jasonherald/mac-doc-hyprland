@@ -32,7 +32,9 @@ fn indicator_image(data_home: &Path, count: usize, vertical: bool, img_size: i32
     let w = img_size / asset.width_divisor;
     let h = img_size / asset.height_divisor;
     let pixbuf = icons::pixbuf_from_file(&path, w, h)?;
-    Some(gtk4::Image::from_pixbuf(Some(&pixbuf)))
+    let image = gtk4::Image::from_pixbuf(Some(&pixbuf));
+    image.add_css_class("dock-indicator");
+    Some(image)
 }
 
 fn pack_button_box(
@@ -47,9 +49,18 @@ fn pack_button_box(
         gtk4::Orientation::Vertical
     };
     let bx = gtk4::Box::new(orientation, 0);
+    bx.set_margin_start(0);
+    bx.set_margin_end(0);
+    bx.set_margin_top(0);
+    bx.set_margin_bottom(0);
+
     let at_start = position == "left" || position == "top";
 
     if let Some(img) = indicator {
+        img.set_margin_start(0);
+        img.set_margin_end(0);
+        img.set_margin_top(0);
+        img.set_margin_bottom(0);
         if at_start {
             bx.append(img);
             bx.append(button);
@@ -76,14 +87,18 @@ pub fn pinned_button(
     let app_dirs = state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
-    if let Some(image) = icons::create_image(app_id, img_size, &app_dirs) {
-        button.set_child(Some(&image));
-    } else {
+    let image = icons::create_image(app_id, img_size, &app_dirs).unwrap_or_else(|| {
         let path = data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
         if let Some(pb) = icons::pixbuf_from_file(&path, img_size, img_size) {
-            button.set_child(Some(&gtk4::Image::from_pixbuf(Some(&pb))));
+            gtk4::Image::from_pixbuf(Some(&pb))
+        } else {
+            gtk4::Image::new()
         }
-    }
+    });
+    image.set_pixel_size(img_size);
+    button.set_child(Some(&image));
+    button.add_css_class("dock-button");
+    button.set_has_frame(false);
     button.set_tooltip_text(Some(&icons::get_name(app_id, &app_dirs)));
 
     // Left-click → launch
@@ -126,14 +141,18 @@ pub fn task_button(
     let app_dirs = state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
-    if let Some(image) = icons::create_image(&client.class, img_size, &app_dirs) {
-        button.set_child(Some(&image));
-    } else {
+    let image = icons::create_image(&client.class, img_size, &app_dirs).unwrap_or_else(|| {
         let path = data_home.join("nwg-dock-hyprland/images/icon-missing.svg");
         if let Some(pb) = icons::pixbuf_from_file(&path, img_size, img_size) {
-            button.set_child(Some(&gtk4::Image::from_pixbuf(Some(&pb))));
+            gtk4::Image::from_pixbuf(Some(&pb))
+        } else {
+            gtk4::Image::new()
         }
-    }
+    });
+    image.set_pixel_size(img_size);
+    button.set_child(Some(&image));
+    button.add_css_class("dock-button");
+    button.set_has_frame(false);
     button.set_tooltip_text(Some(&icons::get_name(&client.class, &app_dirs)));
 
     // Left-click: single instance → focus, multiple → show instance menu
@@ -206,7 +225,11 @@ pub fn launcher_button(
     };
 
     let pb = pixbuf?;
-    button.set_child(Some(&gtk4::Image::from_pixbuf(Some(&pb))));
+    let image = gtk4::Image::from_pixbuf(Some(&pb));
+    image.set_pixel_size(img_size);
+    button.set_child(Some(&image));
+    button.add_css_class("dock-button");
+    button.set_has_frame(false);
 
     let cmd = config.launcher_cmd.clone();
     let autohide = config.autohide;
