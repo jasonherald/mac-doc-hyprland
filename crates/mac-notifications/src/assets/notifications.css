@@ -58,6 +58,25 @@
     margin-right: 10px;
 }
 
+/* Action buttons on popup */
+.popup-actions {
+    margin-left: 58px;
+}
+
+.popup-action-btn {
+    min-height: 0;
+    padding: 3px 12px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+    border: none;
+    font-size: 12px;
+}
+.popup-action-btn:hover {
+    background-color: rgba(255, 255, 255, 0.18);
+    color: rgba(255, 255, 255, 0.95);
+}
+
 /* Critical urgency indicator */
 .urgency-critical {
     border-color: rgba(255, 77, 77, 0.5);
@@ -73,6 +92,30 @@ window.notification-panel-window {
 /* Subtle dim behind the panel — must have content for compositor to deliver input */
 window.notification-backdrop {
     background-color: rgba(0, 0, 0, 0.15);
+}
+
+/* ===== DND Menu ===== */
+
+window.dnd-menu-window {
+    background-color: transparent;
+}
+
+.dnd-menu {
+    background-color: rgba(30, 30, 46, 0.95);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 4px;
+}
+
+.dnd-menu-item {
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.85);
+    min-height: 0;
+}
+.dnd-menu-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* ===== History Panel ===== */

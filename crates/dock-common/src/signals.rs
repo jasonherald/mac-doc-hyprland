@@ -26,6 +26,10 @@ pub fn sig_notification_dnd() -> i32 {
     SIGRTMIN + 5
 }
 
+pub fn sig_notification_dnd_menu() -> i32 {
+    SIGRTMIN + 6
+}
+
 /// Window visibility commands sent via signal handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowCommand {

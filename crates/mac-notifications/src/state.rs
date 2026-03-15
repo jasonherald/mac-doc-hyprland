@@ -1,4 +1,5 @@
 use crate::notification::{Notification, Urgency};
+use gtk4::gio;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -17,12 +18,16 @@ pub struct NotificationState {
     next_id: u32,
     /// Do Not Disturb mode.
     pub dnd: bool,
+    /// When timed DND expires (None = permanent or off).
+    pub dnd_expires: Option<std::time::SystemTime>,
     /// App directories for icon resolution.
     pub app_dirs: Vec<PathBuf>,
     /// IDs of notifications currently showing as popups.
     pub active_popups: HashSet<u32>,
     /// Maximum history entries to retain.
     pub max_history: usize,
+    /// D-Bus connection for emitting ActionInvoked signals.
+    pub dbus_connection: Option<gio::DBusConnection>,
 }
 
 impl NotificationState {
@@ -31,9 +36,11 @@ impl NotificationState {
             history: Vec::new(),
             next_id: 1,
             dnd: false,
+            dnd_expires: None,
             app_dirs,
             active_popups: HashSet::new(),
             max_history,
+            dbus_connection: None,
         }
     }
 

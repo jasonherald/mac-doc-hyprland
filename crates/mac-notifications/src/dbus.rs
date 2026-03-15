@@ -70,6 +70,7 @@ pub fn register_server(
         gio::BusNameOwnerFlags::REPLACE,
         move |connection, _name| {
             log::info!("Acquired D-Bus name: org.freedesktop.Notifications");
+            state.borrow_mut().dbus_connection = Some(connection.clone());
             register_object(&connection, &state, &on_notify, &on_close);
         },
         |_connection, _name| {
@@ -210,6 +211,20 @@ fn handle_server_info(invocation: gio::DBusMethodInvocation) {
     let info = ("mac-notifications", "mac-dock-hyprland", "0.1.0", "1.2");
     let variant = glib::Variant::from(info);
     invocation.return_value(Some(&variant));
+}
+
+/// Emits the ActionInvoked D-Bus signal to the sending app.
+pub fn emit_action_invoked(connection: &gio::DBusConnection, id: u32, action_key: &str) {
+    let params = glib::Variant::from((id, action_key));
+    if let Err(e) = connection.emit_signal(
+        None::<&str>,
+        "/org/freedesktop/Notifications",
+        "org.freedesktop.Notifications",
+        "ActionInvoked",
+        Some(&params),
+    ) {
+        log::warn!("Failed to emit ActionInvoked: {}", e);
+    }
 }
 
 fn extract_urgency(hints: &glib::Variant) -> Urgency {

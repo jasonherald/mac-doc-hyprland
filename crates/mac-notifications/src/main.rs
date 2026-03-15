@@ -149,10 +149,17 @@ fn main() {
 
         dbus::register_server(&state, on_notify, on_close);
 
-        // Poll signal receiver on GTK main thread
-        listeners::poll_signals(&sig_rx, &panel, &state, &on_state_change);
+        // DND menu (right-click waybar bell)
+        let dnd_menu = Rc::new(RefCell::new(ui::dnd_menu::DndMenu::new(
+            app,
+            &state,
+            Rc::clone(&on_state_change),
+        )));
 
-        log::info!("Notification daemon started (panel: SIGRTMIN+4, DND: SIGRTMIN+5)");
+        // Poll signal receiver on GTK main thread
+        listeners::poll_signals(&sig_rx, &panel, &state, &on_state_change, &dnd_menu);
+
+        log::info!("Notification daemon started (panel: SIGRTMIN+4, DND: SIGRTMIN+5, menu: SIGRTMIN+6)");
     });
 
     app.run_with_args::<String>(&[]);

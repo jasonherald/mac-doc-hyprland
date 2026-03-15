@@ -60,7 +60,7 @@ impl PopupManager {
             win.set_monitor(Some(&mon));
         }
 
-        let content = build_popup_content(notif, &state.borrow().app_dirs);
+        let content = build_popup_content(notif, &state.borrow().app_dirs, state, &win);
         win.set_child(Some(&content));
 
         // Click anywhere on popup → focus app + dismiss popup
@@ -154,14 +154,21 @@ impl PopupManager {
     }
 }
 
-/// Builds the popup widget content: icon + text.
-fn build_popup_content(notif: &Notification, app_dirs: &[PathBuf]) -> gtk4::Box {
-    let container = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-    container.add_css_class("notification-popup");
+/// Builds the popup widget content: icon + text + optional action buttons.
+fn build_popup_content(
+    notif: &Notification,
+    app_dirs: &[PathBuf],
+    state: &Rc<RefCell<NotificationState>>,
+    win: &gtk4::ApplicationWindow,
+) -> gtk4::Box {
+    let outer = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    outer.add_css_class("notification-popup");
 
     if notif.urgency == Urgency::Critical {
-        container.add_css_class("urgency-critical");
+        outer.add_css_class("urgency-critical");
     }
+
+    let container = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
 
     let icon = super::icons::resolve_popup_icon(
         &notif.app_icon,
@@ -207,7 +214,45 @@ fn build_popup_content(notif: &Notification, app_dirs: &[PathBuf]) -> gtk4::Box 
     }
 
     container.append(&text_box);
-    container
+    outer.append(&container);
+
+    // Action buttons (e.g. Reply, Open, etc.)
+    let actions: Vec<_> = notif
+        .actions
+        .iter()
+        .filter(|(key, _)| key != "default")
+        .cloned()
+        .collect();
+
+    if !actions.is_empty() {
+        let action_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+        action_box.add_css_class("popup-actions");
+        action_box.set_halign(gtk4::Align::End);
+        action_box.set_margin_top(6);
+
+        let notif_id = notif.id;
+        for (action_key, action_label) in actions {
+            let btn = gtk4::Button::with_label(&action_label);
+            btn.add_css_class("popup-action-btn");
+
+            let state_action = Rc::clone(state);
+            let key = action_key.clone();
+            let win_action = win.clone();
+            btn.connect_clicked(move |_| {
+                let s = state_action.borrow();
+                if let Some(conn) = &s.dbus_connection {
+                    crate::dbus::emit_action_invoked(conn, notif_id, &key);
+                }
+                drop(s);
+                state_action.borrow_mut().active_popups.remove(&notif_id);
+                win_action.close();
+            });
+            action_box.append(&btn);
+        }
+        outer.append(&action_box);
+    }
+
+    outer
 }
 
 /// Finds the GDK monitor that Hyprland reports as focused.
