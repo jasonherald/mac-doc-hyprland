@@ -105,6 +105,25 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_workspace() {
+        // Hyprland sends these fields as all-lowercase (no camelCase)
+        let json = r#"{
+            "id": 1,
+            "name": "1",
+            "monitor": "DP-1",
+            "windows": 3,
+            "hasfullscreen": true,
+            "lastwindow": "0xabc",
+            "lastwindowtitle": "Firefox"
+        }"#;
+        let ws: HyprWorkspace = serde_json::from_str(json).unwrap();
+        assert_eq!(ws.id, 1);
+        assert!(ws.hasfullscreen);
+        assert_eq!(ws.lastwindow, "0xabc");
+        assert_eq!(ws.lastwindowtitle, "Firefox");
+    }
+
+    #[test]
     fn deserialize_monitor() {
         let json = r#"{
             "id": 0,
