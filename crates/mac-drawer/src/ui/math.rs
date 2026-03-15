@@ -179,11 +179,19 @@ impl Parser {
     fn parse_number(&mut self) -> Option<f64> {
         self.skip_spaces();
         let start = self.pos;
-        while self.pos < self.chars.len()
-            && (self.chars[self.pos].is_ascii_digit() || self.chars[self.pos] == '.')
-        {
-            self.pos += 1;
+        let mut has_dot = false;
+
+        while self.pos < self.chars.len() {
+            match self.chars[self.pos] {
+                c if c.is_ascii_digit() => self.pos += 1,
+                '.' if !has_dot => {
+                    has_dot = true;
+                    self.pos += 1;
+                }
+                _ => break,
+            }
         }
+
         if self.pos == start {
             return None;
         }

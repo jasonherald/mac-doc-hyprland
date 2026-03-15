@@ -62,75 +62,51 @@ pub fn list_desktop_files(dir: &Path) -> Vec<PathBuf> {
 /// Handles cases where the window class doesn't exactly match the .desktop filename,
 /// e.g. "gimp-2.9.9" matching "gimp.desktop" or "org.gimp.GIMP.desktop".
 pub fn search_desktop_dirs(app_id: &str, app_dirs: &[PathBuf]) -> Option<PathBuf> {
-    let before_dash = app_id.split('-').next().unwrap_or(app_id);
-    let before_space = app_id.split(' ').next().unwrap_or(app_id);
+    let before_dash = app_id.split('-').next().unwrap_or(app_id).to_string();
+    let before_space = app_id.split(' ').next().unwrap_or(app_id).to_string();
+    let app_id = app_id.to_string();
+    let app_upper = app_id.to_uppercase();
+    let space_upper = before_space.to_uppercase();
+    let wm_class_needle = format!("StartupWMClass={}", before_space);
 
-    // First pass: look for org.*.appid.desktop style matches
-    for dir in app_dirs {
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            let name = entry.file_name();
-            let name_str = name.to_string_lossy();
-            if name_str.contains(before_dash)
-                && name_str.matches('.').count() > 1
-                && name_str.ends_with(&format!("{}.desktop", app_id))
-            {
-                return Some(entry.path());
-            }
-        }
-    }
+    // Multi-pass search with decreasing specificity
+    type MatchFn = Box<dyn Fn(&str, &Path) -> bool>;
+    let desktop_suffix = format!("{}.desktop", app_id);
+    let desktop_upper = format!("{}.DESKTOP", app_upper);
 
-    // Second pass: exact case-insensitive match
-    for dir in app_dirs {
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            let name = entry.file_name();
-            let name_upper = name.to_string_lossy().to_uppercase();
-            if name_upper == format!("{}.DESKTOP", app_id.to_uppercase()) {
-                return Some(entry.path());
-            }
-        }
-    }
+    let searches: Vec<MatchFn> = vec![
+        // 1. org.*.appid.desktop pattern
+        Box::new(move |name: &str, _: &Path| {
+            name.contains(&*before_dash)
+                && name.matches('.').count() > 1
+                && name.ends_with(&desktop_suffix)
+        }),
+        // 2. Exact case-insensitive match
+        Box::new(move |name: &str, _: &Path| {
+            name.to_uppercase() == desktop_upper
+        }),
+        // 3. Contains app name (case-insensitive)
+        Box::new(move |name: &str, _: &Path| {
+            name.to_uppercase().contains(&space_upper)
+        }),
+        // 4. StartupWMClass in file contents
+        Box::new(move |_: &str, path: &Path| {
+            fs::read_to_string(path).is_ok_and(|c| c.contains(&wm_class_needle))
+        }),
+    ];
 
-    // Third pass: contains before_space (case-insensitive)
-    for dir in app_dirs {
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            let name = entry.file_name();
-            if name
-                .to_string_lossy()
-                .to_uppercase()
-                .contains(&before_space.to_uppercase())
-            {
-                return Some(entry.path());
-            }
-        }
-    }
-
-    // Fourth pass: check StartupWMClass in file contents
-    for dir in app_dirs {
-        let entries = match fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            if entry.file_type().is_ok_and(|ft| ft.is_dir()) {
-                continue;
-            }
-            let path = entry.path();
-            if let Ok(content) = fs::read_to_string(&path)
-                && content.contains(&format!("StartupWMClass={}", before_space)) {
-                    return Some(path);
+    for search in &searches {
+        for dir in app_dirs {
+            for entry in fs::read_dir(dir).into_iter().flatten().filter_map(|e| e.ok()) {
+                if entry.file_type().is_ok_and(|ft| ft.is_dir()) {
+                    continue;
                 }
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if search(&name_str, &entry.path()) {
+                    return Some(entry.path());
+                }
+            }
         }
     }
 
