@@ -9,6 +9,7 @@ use std::rc::Rc;
 /// The slide-out notification history panel.
 pub struct NotificationPanel {
     pub win: gtk4::ApplicationWindow,
+    backdrop: gtk4::ApplicationWindow,
     revealer: gtk4::Revealer,
     list_box: gtk4::Box,
     state: Rc<RefCell<NotificationState>>,
@@ -24,6 +25,12 @@ impl NotificationPanel {
         on_notification_click: Rc<dyn Fn(u32)>,
         on_state_change: Rc<dyn Fn()>,
     ) -> Self {
+        // Transparent backdrop — catches clicks outside the panel
+        let backdrop = gtk4::ApplicationWindow::new(app);
+        backdrop.add_css_class("notification-backdrop");
+        setup_backdrop_window(&backdrop);
+
+        // Panel window
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("notification-panel-window");
         win.set_width_request(PANEL_WIDTH);
@@ -56,8 +63,35 @@ impl NotificationPanel {
         panel_box.append(&header);
         panel_box.append(&scrolled);
 
+        // Backdrop click → close panel
+        let backdrop_click = gtk4::GestureClick::new();
+        let revealer_bd = revealer.clone();
+        let win_bd = win.clone();
+        let backdrop_bd = backdrop.clone();
+        backdrop_click.connect_released(move |gesture, _, _, _| {
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+            hide_panel(&revealer_bd, &win_bd, &backdrop_bd);
+        });
+        backdrop.add_controller(backdrop_click);
+
+        // Escape key → close panel
+        let key_ctrl = gtk4::EventControllerKey::new();
+        let revealer_esc = revealer.clone();
+        let win_esc = win.clone();
+        let backdrop_esc = backdrop.clone();
+        key_ctrl.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk4::gdk::Key::Escape {
+                hide_panel(&revealer_esc, &win_esc, &backdrop_esc);
+                gtk4::glib::Propagation::Stop
+            } else {
+                gtk4::glib::Propagation::Proceed
+            }
+        });
+        win.add_controller(key_ctrl);
+
         let panel = Self {
             win,
+            backdrop,
             revealer,
             list_box,
             state: Rc::clone(state),
@@ -69,6 +103,8 @@ impl NotificationPanel {
         // Present once at startup then immediately hide — establishes the layer surface
         panel.win.present();
         panel.win.set_visible(false);
+        panel.backdrop.present();
+        panel.backdrop.set_visible(false);
 
         panel
     }
@@ -76,25 +112,19 @@ impl NotificationPanel {
     /// Toggles panel visibility with slide animation.
     pub fn toggle(&self) {
         if self.revealer.reveals_child() {
-            // Slide out, then hide window after animation completes
-            self.revealer.set_reveal_child(false);
-            let win = self.win.clone();
-            gtk4::glib::timeout_add_local_once(
-                std::time::Duration::from_millis(PANEL_REVEAL_DURATION_MS as u64),
-                move || {
-                    win.set_visible(false);
-                },
-            );
+            hide_panel(&self.revealer, &self.win, &self.backdrop);
         } else {
-            // Rebuild, show window, then slide in
+            // Rebuild, show backdrop + window, then slide in
             let list = self.list_box.clone();
             let state = Rc::clone(&self.state);
             let on_click = Rc::clone(&self.on_notification_click);
             let on_change = Rc::clone(&self.on_state_change);
             let win = self.win.clone();
+            let backdrop = self.backdrop.clone();
             let revealer = self.revealer.clone();
             gtk4::glib::idle_add_local_once(move || {
                 rebuild_list(&list, &state, on_click, on_change);
+                backdrop.set_visible(true);
                 win.set_visible(true);
                 revealer.set_reveal_child(true);
             });
@@ -117,6 +147,23 @@ impl NotificationPanel {
     }
 }
 
+/// Hides the panel with slide animation and removes the backdrop.
+fn hide_panel(
+    revealer: &gtk4::Revealer,
+    win: &gtk4::ApplicationWindow,
+    backdrop: &gtk4::ApplicationWindow,
+) {
+    revealer.set_reveal_child(false);
+    backdrop.set_visible(false);
+    let win = win.clone();
+    gtk4::glib::timeout_add_local_once(
+        std::time::Duration::from_millis(PANEL_REVEAL_DURATION_MS as u64),
+        move || {
+            win.set_visible(false);
+        },
+    );
+}
+
 fn setup_panel_window(win: &gtk4::ApplicationWindow) {
     win.init_layer_shell();
     win.set_namespace(Some("mac-notification-panel"));
@@ -128,6 +175,20 @@ fn setup_panel_window(win: &gtk4::ApplicationWindow) {
     win.set_anchor(gtk4_layer_shell::Edge::Top, true);
     win.set_anchor(gtk4_layer_shell::Edge::Right, true);
     win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
+}
+
+fn setup_backdrop_window(win: &gtk4::ApplicationWindow) {
+    win.init_layer_shell();
+    win.set_namespace(Some("mac-notification-backdrop"));
+    win.set_layer(gtk4_layer_shell::Layer::Overlay);
+    win.set_exclusive_zone(-1);
+    win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
+
+    // Full screen — anchor all edges
+    win.set_anchor(gtk4_layer_shell::Edge::Top, true);
+    win.set_anchor(gtk4_layer_shell::Edge::Right, true);
+    win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
+    win.set_anchor(gtk4_layer_shell::Edge::Left, true);
 }
 
 fn build_header(

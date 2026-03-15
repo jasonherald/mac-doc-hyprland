@@ -70,6 +70,11 @@ window.notification-panel-window {
     background-color: transparent;
 }
 
+/* Subtle dim behind the panel — must have content for compositor to deliver input */
+window.notification-backdrop {
+    background-color: rgba(0, 0, 0, 0.15);
+}
+
 /* ===== History Panel ===== */
 
 .notification-panel {

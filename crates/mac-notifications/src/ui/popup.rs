@@ -101,7 +101,8 @@ impl PopupManager {
                 std::time::Duration::from_millis(timeout),
                 move || {
                     state_timer.borrow_mut().active_popups.remove(&id);
-                    state_timer.borrow_mut().mark_read(id);
+                    // Don't mark_read here — auto-dismiss doesn't mean the user saw it.
+                    // Only explicit clicks mark notifications as read.
                     win_timer.close();
                     on_change_timer();
                 },
