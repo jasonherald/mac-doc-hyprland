@@ -67,7 +67,7 @@ impl PopupManager {
         let click = gtk4::GestureClick::new();
         click.connect_released(move |gesture, _, _, _| {
             gesture.set_state(gtk4::EventSequenceState::Claimed);
-            focus_notification_app(&notif_app, notif_desktop.as_deref(), &state_click);
+            focus_app(&notif_app, notif_desktop.as_deref(), &state_click);
             state_click.borrow_mut().mark_read(notif_id);
             state_click.borrow_mut().active_popups.remove(&notif_id);
             win_click.close();
@@ -257,7 +257,7 @@ fn focused_gdk_monitor() -> Option<gtk4::gdk::Monitor> {
 ///
 /// Matches by: exact class, class contains app_name, or app_name contains class.
 /// This handles cases like app_name="Brave" matching class="brave-browser".
-fn focus_notification_app(
+pub fn focus_app(
     app_name: &str,
     desktop_entry: Option<&str>,
     state: &Rc<RefCell<NotificationState>>,

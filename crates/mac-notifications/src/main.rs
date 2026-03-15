@@ -1,11 +1,13 @@
 mod config;
 mod dbus;
+mod listeners;
 mod notification;
 mod state;
 mod ui;
 
 use crate::config::NotificationConfig;
 use crate::state::NotificationState;
+use crate::ui::panel::NotificationPanel;
 use crate::ui::popup::PopupManager;
 use clap::Parser;
 use dock_common::desktop::dirs::get_app_dirs;
@@ -36,20 +38,19 @@ fn main() {
         }
     };
 
+    // Signal listener — BEFORE GTK, same pattern as the dock
+    let sig_rx = listeners::start_signal_listener();
+
     let app = gtk4::Application::builder()
         .application_id("com.mac-notifications.hyprland")
         .build();
 
     let config = Rc::new(config);
-
-    // Keep app alive (no visible windows initially)
     let hold_guard: Rc<RefCell<Option<gio::ApplicationHoldGuard>>> = Rc::new(RefCell::new(None));
     let hold_ref = Rc::clone(&hold_guard);
 
     app.connect_activate(move |app| {
         *hold_ref.borrow_mut() = Some(app.hold());
-
-        // CSS
         ui::css::load_notification_css();
 
         // State
@@ -63,26 +64,51 @@ fn main() {
         // Popup manager
         let popup_mgr = Rc::new(RefCell::new(PopupManager::new(app, &config)));
 
-        // D-Bus callbacks
-        let state_notify = Rc::clone(&state);
-        let popup_mgr_notify = Rc::clone(&popup_mgr);
-        let on_notify: dbus::OnNotify = Rc::new(move |notif| {
-            log::info!("[{}] {}: {}", notif.app_name, notif.summary, notif.body);
-
-            // Show popup if not suppressed by DND
-            if state_notify.borrow().should_show_popup(notif.urgency) {
-                popup_mgr_notify.borrow_mut().show(notif, &state_notify);
+        // Panel
+        let state_panel_click = Rc::clone(&state);
+        let on_panel_click: Rc<dyn Fn(u32)> = Rc::new(move |id| {
+            let s = state_panel_click.borrow();
+            if let Some(notif) = s.history.iter().find(|n| n.id == id) {
+                let app_name = notif.app_name.clone();
+                let desktop_entry = notif.desktop_entry.clone();
+                drop(s);
+                ui::popup::focus_app(&app_name, desktop_entry.as_deref(), &state_panel_click);
+                state_panel_click.borrow_mut().mark_read(id);
             }
         });
 
-        let on_close: dbus::OnClose = Rc::new(move |id| {
+        let panel = Rc::new(RefCell::new(NotificationPanel::new(
+            app,
+            &state,
+            on_panel_click,
+        )));
+
+        // D-Bus callbacks
+        let state_notify = Rc::clone(&state);
+        let popup_mgr_notify = Rc::clone(&popup_mgr);
+        let panel_notify = Rc::clone(&panel);
+        let on_notify: dbus::OnNotify = Rc::new(move |notif| {
+            log::info!("[{}] {}: {}", notif.app_name, notif.summary, notif.body);
+
+            if state_notify.borrow().should_show_popup(notif.urgency) {
+                popup_mgr_notify.borrow_mut().show(notif, &state_notify);
+            }
+
+            if panel_notify.borrow().is_visible() {
+                panel_notify.borrow().rebuild();
+            }
+        });
+
+        let on_close: dbus::OnClose = Rc::new(|id| {
             log::debug!("Notification {} closed via D-Bus", id);
         });
 
-        // Register D-Bus server
         dbus::register_server(&state, on_notify, on_close);
 
-        log::info!("Notification daemon started");
+        // Poll signal receiver on GTK main thread
+        listeners::poll_signals(&sig_rx, &panel, &state);
+
+        log::info!("Notification daemon started (panel: SIGRTMIN+4, DND: SIGRTMIN+5)");
     });
 
     app.run_with_args::<String>(&[]);

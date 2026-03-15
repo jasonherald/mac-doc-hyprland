@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 nix = { workspace = true }
+libc = "0.2"
 dirs = { workspace = true }
 
 [dev-dependencies]

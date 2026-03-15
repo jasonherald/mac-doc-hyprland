@@ -1,7 +1,7 @@
 use nix::sys::signal::{self, Signal};
 use std::sync::mpsc;
 
-/// SIGRTMIN value on Linux (typically 34).
+/// SIGRTMIN value on Linux (glibc = 34).
 const SIGRTMIN: i32 = 34;
 
 /// Signal numbers used by dock/drawer for control.
@@ -28,13 +28,13 @@ pub enum WindowCommand {
 
 /// Sets up signal handlers and returns a receiver for window commands.
 ///
-/// Handles SIGTERM, SIGUSR1 (deprecated toggle), and SIGRTMIN+1/2/3.
+/// Handles SIGTERM via sigaction, and SIGUSR1 + SIGRTMIN+1/2/3 via
+/// raw libc sigwait (nix's Signal enum doesn't support real-time signals).
 pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand> {
     let (tx, rx) = mpsc::channel();
 
     // SIGTERM → quit
-    // SAFETY: sigaction requires unsafe. The handler is a simple extern "C" fn
-    // that calls process::exit — no shared state or complex logic.
+    // SAFETY: sigaction requires unsafe. The handler calls process::exit.
     if let Err(e) = unsafe {
         signal::sigaction(
             Signal::SIGTERM,
@@ -48,69 +48,65 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
         log::warn!("Failed to set SIGTERM handler: {}", e);
     }
 
-    // Use a thread to handle signals via sigwait
-    std::thread::spawn(move || {
-        use nix::sys::signal::SigSet;
-
-        let mut set = SigSet::empty();
-        set.add(Signal::SIGUSR1);
-
-        // Add SIGRTMIN+1/2/3
-        for sig_num in [sig_toggle(), sig_show(), sig_hide()] {
-            if let Ok(sig) = Signal::try_from(sig_num) {
-                set.add(sig);
-            }
+    // Block SIGUSR1 and SIGRTMIN+1/2/3 in the main thread BEFORE spawning.
+    // Uses raw libc because nix's Signal enum doesn't support RT signals.
+    let rt_signals = [sig_toggle(), sig_show(), sig_hide()];
+    unsafe {
+        let mut set: libc::sigset_t = std::mem::zeroed();
+        libc::sigemptyset(&mut set);
+        libc::sigaddset(&mut set, libc::SIGUSR1);
+        for &sig in &rt_signals {
+            libc::sigaddset(&mut set, sig);
         }
+        libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
+    }
 
-        // Block these signals so sigwait can catch them
-        let _ = nix::sys::signal::sigprocmask(
-            nix::sys::signal::SigmaskHow::SIG_BLOCK,
-            Some(&set),
-            None,
-        );
-
+    // Sigwait thread — inherits the blocked signal mask
+    std::thread::spawn(move || {
         loop {
-            match set.wait() {
-                Ok(sig) => {
-                    let sig_num = sig as i32;
-                    let cmd = if sig == Signal::SIGUSR1 {
-                        log::warn!("SIGUSR1 for toggling is deprecated, use SIGRTMIN+1");
-                        if is_resident {
-                            Some(WindowCommand::Toggle)
-                        } else {
-                            log::debug!("SIGUSR1 received but not resident, ignoring");
-                            None
-                        }
-                    } else if sig_num == sig_toggle() {
-                        if is_resident {
-                            Some(WindowCommand::Toggle)
-                        } else {
-                            None
-                        }
-                    } else if sig_num == sig_show() {
-                        if is_resident {
-                            Some(WindowCommand::Show)
-                        } else {
-                            None
-                        }
-                    } else if sig_num == sig_hide() {
-                        if is_resident {
-                            Some(WindowCommand::Hide)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-
-                    if let Some(cmd) = cmd
-                        && tx.send(cmd).is_err()
-                    {
-                        break;
-                    }
+            let mut sig: i32 = 0;
+            // SAFETY: sigwait blocks until a signal from the set is pending.
+            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+            unsafe {
+                libc::sigemptyset(&mut set);
+                libc::sigaddset(&mut set, libc::SIGUSR1);
+                for &s in &rt_signals {
+                    libc::sigaddset(&mut set, s);
                 }
-                Err(e) => {
-                    log::error!("sigwait error: {}", e);
+                libc::sigwait(&set, &mut sig);
+            }
+
+            let cmd = if sig == libc::SIGUSR1 {
+                log::warn!("SIGUSR1 for toggling is deprecated, use SIGRTMIN+1");
+                if is_resident {
+                    Some(WindowCommand::Toggle)
+                } else {
+                    None
+                }
+            } else if sig == sig_toggle() {
+                if is_resident {
+                    Some(WindowCommand::Toggle)
+                } else {
+                    None
+                }
+            } else if sig == sig_show() {
+                if is_resident {
+                    Some(WindowCommand::Show)
+                } else {
+                    None
+                }
+            } else if sig == sig_hide() {
+                if is_resident {
+                    Some(WindowCommand::Hide)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(cmd) = cmd {
+                if tx.send(cmd).is_err() {
                     break;
                 }
             }
@@ -122,12 +118,8 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
 
 /// Sends a signal to a running instance by PID.
 pub fn send_signal_to_pid(pid: u32, sig_num: i32) -> bool {
-    if let Ok(sig) = Signal::try_from(sig_num) {
-        let pid = nix::unistd::Pid::from_raw(pid as i32);
-        signal::kill(pid, sig).is_ok()
-    } else {
-        false
-    }
+    // Use raw libc for RT signals since nix doesn't support them
+    unsafe { libc::kill(pid as i32, sig_num) == 0 }
 }
 
 extern "C" fn sigterm_handler(_: i32) {

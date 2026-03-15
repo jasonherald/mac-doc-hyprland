@@ -64,7 +64,130 @@
     border-width: 2px;
 }
 
-/* Remove GTK4 default window styling for layer-shell popups */
-window.notification-popup-window {
+/* Remove GTK4 default window styling for layer-shell surfaces */
+window.notification-popup-window,
+window.notification-panel-window {
     background-color: transparent;
+}
+
+/* ===== History Panel ===== */
+
+.notification-panel {
+    background-color: rgba(22, 22, 30, 0.92);
+    border-left: 1px solid rgba(255, 255, 255, 0.08);
+    color: #e8e8e8;
+}
+
+.panel-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 8px;
+}
+
+.panel-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.panel-dnd {
+    min-height: 0;
+    min-width: 0;
+    padding: 4px 8px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: none;
+}
+.panel-dnd:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.panel-clear {
+    min-height: 0;
+    padding: 4px 12px;
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: none;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+}
+.panel-clear:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.panel-empty {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+/* Group header */
+.group-header {
+    padding: 8px 8px 4px 8px;
+}
+
+.group-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.group-count {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.35);
+    background-color: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 1px 7px;
+    min-height: 0;
+}
+
+.group-dismiss {
+    min-height: 0;
+    min-width: 0;
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.3);
+}
+.group-dismiss:hover {
+    background-color: rgba(255, 77, 77, 0.15);
+    color: rgba(255, 77, 77, 0.8);
+}
+
+/* Notification row in panel */
+.notification-row {
+    padding: 6px 8px;
+    border-radius: 8px;
+}
+.notification-row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.row-summary {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.row-time {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.row-body {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.row-dismiss {
+    min-height: 0;
+    min-width: 0;
+    padding: 2px;
+    border-radius: 10px;
+    background: transparent;
+    border: none;
+    opacity: 0.3;
+}
+.row-dismiss:hover {
+    background-color: rgba(255, 77, 77, 0.15);
+    opacity: 1.0;
 }
