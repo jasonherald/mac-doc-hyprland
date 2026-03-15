@@ -229,9 +229,14 @@ fn resolve_target_monitor(config: &DrawerConfig) -> Option<gtk4::gdk::Monitor> {
 }
 
 fn setup_close_button(main_vbox: &gtk4::Box, win: &gtk4::ApplicationWindow, config: &DrawerConfig) {
-    if config.closebtn == "none" {
-        return;
-    }
+    use crate::config::CloseButton;
+
+    let align = match config.closebtn {
+        CloseButton::None => return,
+        CloseButton::Left => gtk4::Align::Start,
+        CloseButton::Right => gtk4::Align::End,
+    };
+
     let close_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     let close_btn = gtk4::Button::from_icon_name("window-close-symbolic");
     close_btn.add_css_class("flat");
@@ -247,11 +252,7 @@ fn setup_close_button(main_vbox: &gtk4::Box, win: &gtk4::ApplicationWindow, conf
         }
     });
 
-    close_box.set_halign(if config.closebtn == "left" {
-        gtk4::Align::Start
-    } else {
-        gtk4::Align::End
-    });
+    close_box.set_halign(align);
     close_box.append(&close_btn);
     main_vbox.append(&close_box);
 }

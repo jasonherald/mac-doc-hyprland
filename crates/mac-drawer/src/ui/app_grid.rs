@@ -87,7 +87,7 @@ fn flow_box_button(
     });
 
     // Tooltip
-    let desc = widgets::truncate(&entry.comment_loc, 120);
+    let desc = widgets::truncate(&entry.comment_loc, 120); // max tooltip length
     if !desc.is_empty() {
         button.set_tooltip_text(Some(&desc));
     }

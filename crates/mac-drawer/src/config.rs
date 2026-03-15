@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 /// A macOS-style application drawer/launcher for Hyprland.
 #[derive(Parser, Debug, Clone)]
@@ -124,9 +124,17 @@ pub struct DrawerConfig {
     #[arg(short = 'k', long)]
     pub keyboard_on_demand: bool,
 
-    /// Close button position: "left", "right", or "none"
-    #[arg(long, default_value = "none")]
-    pub closebtn: String,
+    /// Close button position
+    #[arg(long, value_enum, default_value_t = CloseButton::None)]
+    pub closebtn: CloseButton,
+}
+
+/// Close button position in the drawer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CloseButton {
+    Left,
+    Right,
+    None,
 }
 
 impl DrawerConfig {
