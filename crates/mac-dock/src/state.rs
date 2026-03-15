@@ -23,6 +23,10 @@ pub struct DockState {
 
     /// Index of the pinned item currently being dragged (if any).
     pub drag_source_index: Option<usize>,
+
+    /// True when a drag is active and cursor is outside the dock area.
+    /// Used to show a "remove" indicator on the dragged item's slot.
+    pub drag_outside_dock: bool,
 }
 
 impl DockState {
@@ -38,6 +42,7 @@ impl DockState {
             popover_open: false,
             locked: false,
             drag_source_index: None,
+            drag_outside_dock: false,
         }
     }
 

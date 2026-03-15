@@ -69,10 +69,22 @@ pub fn start_cursor_poller(
             let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows);
             let at_edge = is_cursor_at_edge(&cursor, &monitors, position);
 
-            // Don't hide while a popover menu is open
-            let popover_open = state.borrow().popover_open;
+            // Don't hide while a popover menu is open or a drag is in progress
+            let s = state.borrow();
+            let dragging = s.drag_source_index.is_some();
+            let keep_visible = s.popover_open || dragging;
+            drop(s);
 
-            if in_dock_area || at_edge || popover_open {
+            // Track whether cursor is outside dock during a drag
+            if dragging {
+                let was_outside = state.borrow().drag_outside_dock;
+                let now_outside = !in_dock_area && !at_edge;
+                if was_outside != now_outside {
+                    state.borrow_mut().drag_outside_dock = now_outside;
+                }
+            }
+
+            if in_dock_area || at_edge || keep_visible {
                 // Cursor is in dock, at edge, or menu open — reset hide timer
                 *left_at.borrow_mut() = None;
             } else {
