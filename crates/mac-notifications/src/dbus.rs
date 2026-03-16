@@ -1,4 +1,4 @@
-use crate::notification::{Notification, Urgency, parse_actions};
+use crate::notification::{Notification, Urgency, clean_markup, parse_actions};
 use crate::state::NotificationState;
 use gtk4::gio;
 use gtk4::glib;
@@ -160,8 +160,8 @@ fn handle_notify(
         id: 0, // assigned by state.add/replace
         app_name,
         app_icon,
-        summary,
-        body,
+        summary: clean_markup(&summary),
+        body: clean_markup(&body),
         actions: parse_actions(&actions),
         urgency,
         timeout_ms: timeout,
