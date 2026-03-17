@@ -15,6 +15,7 @@ pub fn build_app_flow_box(
     search_phrase: &str,
     pinned_file: &std::path::Path,
     on_launch: Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) -> gtk4::FlowBox {
     let flow_box = gtk4::FlowBox::new();
     flow_box.set_min_children_per_line(config.columns);
@@ -45,7 +46,14 @@ pub fn build_app_flow_box(
         };
 
         if show {
-            let button = flow_box_button(entry, config, state, pinned_file, Rc::clone(&on_launch));
+            let button = flow_box_button(
+                entry,
+                config,
+                state,
+                pinned_file,
+                Rc::clone(&on_launch),
+                status_label,
+            );
             flow_box.insert(&button, -1);
         }
     }
@@ -59,6 +67,7 @@ fn flow_box_button(
     state: &Rc<RefCell<DrawerState>>,
     pinned_file: &std::path::Path,
     on_launch: Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) -> gtk4::Button {
     let app_dirs = state.borrow().app_dirs.clone();
     let name = if !entry.name_loc.is_empty() {
@@ -67,7 +76,20 @@ fn flow_box_button(
         &entry.name
     };
 
-    let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, &app_dirs);
+    let desc = if !entry.comment_loc.is_empty() {
+        &entry.comment_loc
+    } else {
+        &entry.comment
+    };
+
+    let button = widgets::app_icon_button(
+        &entry.icon,
+        name,
+        config.icon_size,
+        &app_dirs,
+        status_label,
+        desc,
+    );
 
     // Click → launch
     let exec = entry.exec.clone();
@@ -91,10 +113,10 @@ fn flow_box_button(
         }
     });
 
-    // Tooltip
-    let desc = widgets::truncate(&entry.comment_loc, 120); // max tooltip length
-    if !desc.is_empty() {
-        button.set_tooltip_text(Some(&desc));
+    // Tooltip (keep for accessibility)
+    let tooltip = widgets::truncate(desc, 120);
+    if !tooltip.is_empty() {
+        button.set_tooltip_text(Some(&tooltip));
     }
 
     // Right-click → pin

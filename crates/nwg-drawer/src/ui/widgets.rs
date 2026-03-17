@@ -5,11 +5,17 @@ use nwg_dock_common::desktop::icons;
 /// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
 ///
 /// Shared between app_grid and pinned modules to eliminate duplication.
+/// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
+///
+/// If `status_label` and `description` are provided, the button updates the
+/// status bar on hover/focus with the app description (matching Go behavior).
 pub fn app_icon_button(
     icon_name: &str,
     display_name: &str,
     icon_size: i32,
     app_dirs: &[std::path::PathBuf],
+    status_label: &gtk4::Label,
+    description: &str,
 ) -> gtk4::Button {
     let button = gtk4::Button::new();
     button.set_has_frame(false);
@@ -35,6 +41,35 @@ pub fn app_icon_button(
     vbox.append(&label);
 
     button.set_child(Some(&vbox));
+
+    // Status label: show description on hover/focus, clear on leave
+    if !description.is_empty() {
+        let desc = description.to_string();
+        let label_enter = status_label.clone();
+        let motion = gtk4::EventControllerMotion::new();
+        let desc_enter = desc.clone();
+        motion.connect_enter(move |_, _, _| {
+            label_enter.set_text(&desc_enter);
+        });
+        let label_leave = status_label.clone();
+        motion.connect_leave(move |_| {
+            label_leave.set_text("");
+        });
+        button.add_controller(motion);
+
+        // Also update on keyboard focus
+        let label_focus = status_label.clone();
+        let focus_ctrl = gtk4::EventControllerFocus::new();
+        focus_ctrl.connect_enter(move |_| {
+            label_focus.set_text(&desc);
+        });
+        let label_unfocus = status_label.clone();
+        focus_ctrl.connect_leave(move |_| {
+            label_unfocus.set_text("");
+        });
+        button.add_controller(focus_ctrl);
+    }
+
     button
 }
 

@@ -14,6 +14,7 @@ pub fn build_pinned_flow_box(
     state: &Rc<RefCell<DrawerState>>,
     pinned_file: &Path,
     on_launch: Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) -> gtk4::FlowBox {
     let flow_box = gtk4::FlowBox::new();
 
@@ -47,6 +48,7 @@ pub fn build_pinned_flow_box(
             desktop_id,
             &app_dirs,
             &on_launch,
+            status_label,
         );
         flow_box.insert(&button, -1);
     }
@@ -55,6 +57,7 @@ pub fn build_pinned_flow_box(
 }
 
 /// Creates a single pinned app button with launch (left-click) and unpin (right-click) actions.
+#[allow(clippy::too_many_arguments)]
 fn create_pinned_button(
     entry: &DesktopEntry,
     config: &DrawerConfig,
@@ -63,13 +66,26 @@ fn create_pinned_button(
     desktop_id: &str,
     app_dirs: &[PathBuf],
     on_launch: &Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) -> gtk4::Button {
     let name = if !entry.name_loc.is_empty() {
         &entry.name_loc
     } else {
         &entry.name
     };
-    let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, app_dirs);
+    let desc = if !entry.comment_loc.is_empty() {
+        &entry.comment_loc
+    } else {
+        &entry.comment
+    };
+    let button = widgets::app_icon_button(
+        &entry.icon,
+        name,
+        config.icon_size,
+        app_dirs,
+        status_label,
+        desc,
+    );
 
     // Left click → launch
     let exec = entry.exec.clone();

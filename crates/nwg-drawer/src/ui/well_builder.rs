@@ -13,6 +13,7 @@ pub fn build_normal_well(
     state: &Rc<RefCell<DrawerState>>,
     pinned_file: &Path,
     on_launch: &Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) {
     clear_well(well);
 
@@ -21,8 +22,13 @@ pub fn build_normal_well(
     if !pinned.is_empty() {
         well.append(&section_header("Favorites"));
 
-        let pinned_flow =
-            ui::pinned::build_pinned_flow_box(config, state, pinned_file, Rc::clone(on_launch));
+        let pinned_flow = ui::pinned::build_pinned_flow_box(
+            config,
+            state,
+            pinned_file,
+            Rc::clone(on_launch),
+            status_label,
+        );
         pinned_flow.set_hexpand(true);
         well.append(&pinned_flow);
         well.append(&divider());
@@ -38,6 +44,7 @@ pub fn build_normal_well(
         "",
         pinned_file,
         Rc::clone(on_launch),
+        status_label,
     );
     flow.set_hexpand(true);
     well.append(&flow);
@@ -51,6 +58,7 @@ pub fn build_search_results(
     state: &Rc<RefCell<DrawerState>>,
     pinned_file: &Path,
     on_launch: &Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) {
     clear_well(well);
 
@@ -64,6 +72,7 @@ pub fn build_search_results(
         phrase,
         pinned_file,
         Rc::clone(on_launch),
+        status_label,
     );
     app_flow.set_halign(gtk4::Align::Center);
     app_flow.set_hexpand(true);
@@ -76,6 +85,16 @@ pub fn build_search_results(
 
         let file_results =
             ui::file_search::search_files(phrase, config, state, Rc::clone(on_launch));
+
+        // Update status with result count
+        let count = count_children(&file_results);
+        if count > 0 {
+            status_label.set_text(&format!(
+                "{} file results | LMB: open | RMB: file manager",
+                count
+            ));
+        }
+
         well.append(&file_results);
     }
 }
@@ -102,4 +121,15 @@ fn divider() -> gtk4::Separator {
     sep.set_margin_start(16);
     sep.set_margin_end(16);
     sep
+}
+
+/// Counts direct children of a widget (for file result count display).
+fn count_children(widget: &impl IsA<gtk4::Widget>) -> i32 {
+    let mut count = 0;
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        count += 1;
+        child = c.next_sibling();
+    }
+    count
 }

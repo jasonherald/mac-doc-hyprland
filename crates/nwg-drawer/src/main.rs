@@ -189,7 +189,28 @@ fn activate_drawer(
     well.set_width_request(ui::constants::WELL_WIDTH);
     content_box.append(&well);
 
-    ui::well_builder::build_normal_well(&well, &config, &state, &pinned_file, &on_launch);
+    ui::well_builder::build_normal_well(
+        &well,
+        &config,
+        &state,
+        &pinned_file,
+        &on_launch,
+        &status_label,
+    );
+
+    // Categories
+    if !config.no_cats {
+        let cat_bar = ui::categories::build_category_bar(
+            &config,
+            &state,
+            &well,
+            &pinned_file,
+            &on_launch,
+            &status_label,
+        );
+        // Insert category bar between search and scrolled content
+        main_vbox.insert_child_after(&cat_bar, Some(&search_entry));
+    }
 
     // Search
     ui::search_handler::connect_search(
@@ -208,6 +229,7 @@ fn activate_drawer(
             &config,
             Rc::clone(&on_launch),
             data_home.as_deref(),
+            &status_label,
         ));
     }
     main_vbox.append(&status_label);
@@ -215,7 +237,15 @@ fn activate_drawer(
     // Listeners
     listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app, compositor);
     listeners::setup_focus_detector(&win, &on_launch, compositor);
-    listeners::setup_file_watcher(app_dirs, &pinned_file, &well, &config, &state, &on_launch);
+    listeners::setup_file_watcher(
+        app_dirs,
+        &pinned_file,
+        &well,
+        &config,
+        &state,
+        &on_launch,
+        &status_label,
+    );
     listeners::setup_signal_poller(&win, sig_rx);
 
     win.present();

@@ -12,7 +12,15 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-/// Sets up keyboard handler for Escape (close/clear) and Enter (command/math).
+/// Sets up keyboard handler for the drawer window.
+///
+/// - Navigation keys (arrows, Tab, Page Up/Down, Home/End) propagate to
+///   FlowBox children for keyboard navigation between app icons
+/// - Escape clears search or closes the drawer
+/// - Return handles `:command` execution and math evaluation (only when
+///   the search entry has focus — otherwise it propagates to the focused
+///   button, launching the app via GTK4's button activate)
+/// - Any other key auto-focuses the search entry so typing starts a search
 pub fn setup_keyboard(
     win: &gtk4::ApplicationWindow,
     search_entry: &gtk4::SearchEntry,
@@ -30,29 +38,54 @@ pub fn setup_keyboard(
     let compositor = Rc::clone(compositor);
 
     let key_ctrl = gtk4::EventControllerKey::new();
-    key_ctrl.connect_key_released(move |_, keyval, _, _| match keyval {
-        gtk4::gdk::Key::Escape => {
-            let text = search_entry.text();
-            if !text.is_empty() {
-                search_entry.set_text("");
-            } else if !config.resident {
-                win.close();
-            } else {
-                search_entry.set_text("");
-                win.set_visible(false);
+    key_ctrl.connect_key_released(move |_, keyval, _, _| {
+        match keyval {
+            // Navigation keys — let them propagate to FlowBox for keyboard nav
+            gtk4::gdk::Key::Up
+            | gtk4::gdk::Key::Down
+            | gtk4::gdk::Key::Left
+            | gtk4::gdk::Key::Right
+            | gtk4::gdk::Key::Tab
+            | gtk4::gdk::Key::ISO_Left_Tab
+            | gtk4::gdk::Key::Page_Up
+            | gtk4::gdk::Key::Page_Down
+            | gtk4::gdk::Key::Home
+            | gtk4::gdk::Key::End => {}
+
+            gtk4::gdk::Key::Escape => {
+                let text = search_entry.text();
+                if !text.is_empty() {
+                    search_entry.set_text("");
+                } else if !config.resident {
+                    win.close();
+                } else {
+                    search_entry.set_text("");
+                    win.set_visible(false);
+                }
+            }
+
+            gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
+                // Only handle :command and math when search entry has focus.
+                // Otherwise let Enter propagate to the focused button (launches app).
+                if search_entry.has_focus() {
+                    let text = search_entry.text().to_string();
+                    if text.starts_with(':') && text.len() > 1 {
+                        let cmd = &text[1..];
+                        nwg_dock_common::launch::launch_via_compositor(cmd, &*compositor);
+                        on_launch();
+                    } else if let Some(result) = crate::ui::math::eval_expression(&text) {
+                        crate::ui::math::show_result_window(&text, result, &app);
+                    }
+                }
+            }
+
+            // Any other key — auto-focus search entry so typing starts a search
+            _ => {
+                if !search_entry.has_focus() {
+                    search_entry.grab_focus();
+                }
             }
         }
-        gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-            let text = search_entry.text().to_string();
-            if text.starts_with(':') && text.len() > 1 {
-                let cmd = &text[1..];
-                nwg_dock_common::launch::launch_via_compositor(cmd, &*compositor);
-                on_launch();
-            } else if let Some(result) = crate::ui::math::eval_expression(&text) {
-                crate::ui::math::show_result_window(&text, result, &app);
-            }
-        }
-        _ => {}
     });
     win_ctrl.add_controller(key_ctrl);
 }
@@ -104,6 +137,7 @@ pub fn setup_file_watcher(
     config: &Rc<DrawerConfig>,
     state: &Rc<RefCell<DrawerState>>,
     on_launch: &Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
 ) {
     let watch_rx = watcher::start_watcher(app_dirs, pinned_file);
     let state = Rc::clone(state);
@@ -111,6 +145,7 @@ pub fn setup_file_watcher(
     let well = well.clone();
     let config = Rc::clone(config);
     let on_launch = Rc::clone(on_launch);
+    let status_label = status_label.clone();
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(event) = watch_rx.try_recv() {
@@ -124,6 +159,7 @@ pub fn setup_file_watcher(
                         &state,
                         &pinned_file,
                         &on_launch,
+                        &status_label,
                     );
                 }
                 watcher::WatchEvent::PinnedChanged => {
@@ -135,6 +171,7 @@ pub fn setup_file_watcher(
                         &state,
                         &pinned_file,
                         &on_launch,
+                        &status_label,
                     );
                 }
             }

@@ -42,6 +42,7 @@ pub fn build_power_bar(
     config: &DrawerConfig,
     on_launch: Rc<dyn Fn()>,
     data_home: Option<&Path>,
+    status_label: &gtk4::Label,
 ) -> gtk4::Box {
     let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     hbox.set_halign(gtk4::Align::Center);
@@ -78,6 +79,21 @@ pub fn build_power_bar(
         });
 
         button.set_tooltip_text(Some(command));
+
+        // Status label: show command on hover/focus
+        let cmd_desc = command.to_string();
+        let label_enter = status_label.clone();
+        let motion = gtk4::EventControllerMotion::new();
+        let cmd_enter = cmd_desc.clone();
+        motion.connect_enter(move |_, _, _| {
+            label_enter.set_text(&cmd_enter);
+        });
+        let label_leave = status_label.clone();
+        motion.connect_leave(move |_| {
+            label_leave.set_text("");
+        });
+        button.add_controller(motion);
+
         hbox.append(&button);
     }
 

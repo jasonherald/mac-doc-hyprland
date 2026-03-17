@@ -30,7 +30,14 @@ pub fn connect_search(
         if phrase.is_empty() {
             if *in_search_mode.borrow() {
                 *in_search_mode.borrow_mut() = false;
-                well_builder::build_normal_well(&well, &config, &state, &pinned_file, &on_launch);
+                well_builder::build_normal_well(
+                    &well,
+                    &config,
+                    &state,
+                    &pinned_file,
+                    &on_launch,
+                    &status_label,
+                );
             }
             status_label.set_text("");
             return;
@@ -61,7 +68,7 @@ pub fn connect_search(
             &state,
             &pinned_file,
             &on_launch,
+            &status_label,
         );
-        status_label.set_text("");
     });
 }
