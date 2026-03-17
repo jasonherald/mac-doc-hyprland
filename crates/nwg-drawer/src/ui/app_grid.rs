@@ -23,6 +23,9 @@ pub fn build_app_flow_box(
     flow_box.set_column_spacing(config.spacing);
     flow_box.set_row_spacing(config.spacing);
     flow_box.set_homogeneous(true);
+    // SelectionMode::None + non-focusable FlowBoxChild = GTK's standard
+    // focus chain moves between the focusable buttons inside, crossing
+    // section boundaries naturally (matches Go nwg-drawer approach).
     flow_box.set_selection_mode(gtk4::SelectionMode::None);
 
     let entries = state.borrow().apps.entries.clone();
@@ -55,6 +58,12 @@ pub fn build_app_flow_box(
                 status_label,
             );
             flow_box.insert(&button, -1);
+
+            // Non-focusable FlowBoxChild — the Button inside is focusable,
+            // so GTK's Tab/arrow focus chain targets the button directly.
+            if let Some(child) = flow_box.last_child() {
+                child.set_focusable(false);
+            }
         }
     }
 

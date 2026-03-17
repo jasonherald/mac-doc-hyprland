@@ -27,7 +27,7 @@ pub fn build_pinned_flow_box(
     flow_box.set_row_spacing(config.spacing);
     flow_box.set_homogeneous(true);
     flow_box.set_widget_name("pinned-box");
-    flow_box.set_selection_mode(gtk4::SelectionMode::None);
+    flow_box.set_selection_mode(gtk4::SelectionMode::Single);
 
     let id2entry = state.borrow().apps.id2entry.clone();
     let app_dirs = state.borrow().app_dirs.clone();
@@ -53,6 +53,15 @@ pub fn build_pinned_flow_box(
         );
         flow_box.insert(&button, -1);
     }
+
+    // Enter on a focused FlowBoxChild activates the button inside (launches app)
+    flow_box.connect_child_activated(|_, child| {
+        if let Some(button) = child.child() {
+            if let Ok(btn) = button.downcast::<gtk4::Button>() {
+                btn.emit_clicked();
+            }
+        }
+    });
 
     flow_box
 }

@@ -6,7 +6,12 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Builds the normal (non-search) well content: favorites → divider → all apps.
+/// Builds the normal (non-search) well content: pinned → divider → all apps.
+///
+/// Both FlowBoxes use SelectionMode::None with non-focusable FlowBoxChildren.
+/// The buttons inside are focusable, so GTK4's standard Tab/arrow focus chain
+/// moves naturally between all buttons across both sections — no custom
+/// cross-boundary navigation needed (matches Go nwg-drawer behavior).
 pub fn build_normal_well(
     well: &gtk4::Box,
     config: &DrawerConfig,
@@ -17,20 +22,23 @@ pub fn build_normal_well(
 ) {
     clear_well(well);
 
-    // Favorites section (if any pinned)
     let pinned = state.borrow().pinned.clone();
+
+    // Favorites section
     if !pinned.is_empty() {
         well.append(&section_header("Favorites"));
 
-        let pinned_flow = ui::pinned::build_pinned_flow_box(
+        let pf = ui::app_grid::build_app_flow_box(
             config,
             state,
+            Some(&pinned),
+            "",
             pinned_file,
             Rc::clone(on_launch),
             status_label,
         );
-        pinned_flow.set_hexpand(true);
-        well.append(&pinned_flow);
+        pf.set_hexpand(true);
+        well.append(&pf);
         well.append(&divider());
     }
 
