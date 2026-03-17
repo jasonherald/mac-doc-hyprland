@@ -7,54 +7,28 @@ pub struct Category {
 }
 
 /// The standard freedesktop main categories.
+/// (name, display_name, icon) tuples for each standard category.
+const CATEGORY_DEFS: &[(&str, &str, &str)] = &[
+    ("AudioVideo", "Audio & Video", "applications-multimedia"),
+    ("Development", "Development", "applications-development"),
+    ("Game", "Games", "applications-games"),
+    ("Graphics", "Graphics", "applications-graphics"),
+    ("Network", "Internet", "applications-internet"),
+    ("Office", "Office", "applications-office"),
+    ("System", "System", "applications-system"),
+    ("Utility", "Utilities", "applications-utilities"),
+    ("Other", "Other", "applications-other"),
+];
+
 pub fn default_categories() -> Vec<Category> {
-    vec![
-        Category {
-            name: "AudioVideo".into(),
-            display_name: "Audio & Video".into(),
-            icon: "applications-multimedia".into(),
-        },
-        Category {
-            name: "Development".into(),
-            display_name: "Development".into(),
-            icon: "applications-development".into(),
-        },
-        Category {
-            name: "Game".into(),
-            display_name: "Games".into(),
-            icon: "applications-games".into(),
-        },
-        Category {
-            name: "Graphics".into(),
-            display_name: "Graphics".into(),
-            icon: "applications-graphics".into(),
-        },
-        Category {
-            name: "Network".into(),
-            display_name: "Internet".into(),
-            icon: "applications-internet".into(),
-        },
-        Category {
-            name: "Office".into(),
-            display_name: "Office".into(),
-            icon: "applications-office".into(),
-        },
-        Category {
-            name: "System".into(),
-            display_name: "System".into(),
-            icon: "applications-system".into(),
-        },
-        Category {
-            name: "Utility".into(),
-            display_name: "Utilities".into(),
-            icon: "applications-utilities".into(),
-        },
-        Category {
-            name: "Other".into(),
-            display_name: "Other".into(),
-            icon: "applications-other".into(),
-        },
-    ]
+    CATEGORY_DEFS
+        .iter()
+        .map(|(name, display, icon)| Category {
+            name: (*name).into(),
+            display_name: (*display).into(),
+            icon: (*icon).into(),
+        })
+        .collect()
 }
 
 /// Assigns an entry to ALL matching main categories based on its Categories field.

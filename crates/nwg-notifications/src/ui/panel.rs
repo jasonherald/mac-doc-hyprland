@@ -178,17 +178,7 @@ fn setup_panel_window(win: &gtk4::ApplicationWindow) {
 }
 
 fn setup_backdrop_window(win: &gtk4::ApplicationWindow) {
-    win.init_layer_shell();
-    win.set_namespace(Some("mac-notification-backdrop"));
-    win.set_layer(gtk4_layer_shell::Layer::Overlay);
-    win.set_exclusive_zone(-1);
-    win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
-
-    // Full screen — anchor all edges
-    win.set_anchor(gtk4_layer_shell::Edge::Top, true);
-    win.set_anchor(gtk4_layer_shell::Edge::Right, true);
-    win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
-    win.set_anchor(gtk4_layer_shell::Edge::Left, true);
+    super::window::setup_fullscreen_backdrop(win, "mac-notification-backdrop");
 }
 
 fn build_header(
