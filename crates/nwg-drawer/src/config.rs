@@ -92,6 +92,10 @@ pub struct DrawerConfig {
     #[arg(long, default_value_t = 0)]
     pub mb: i32,
 
+    /// Auto-detect power bar buttons from system capabilities
+    #[arg(long, alias = "pbauto")]
+    pub pb_auto: bool,
+
     /// Power bar exit command
     #[arg(long, alias = "pbexit", default_value = "")]
     pub pb_exit: String,

@@ -21,7 +21,7 @@ use std::rc::Rc;
 const DRAWER_CSS: &str = include_str!("assets/drawer.css");
 
 fn main() {
-    let config = DrawerConfig::parse();
+    let mut config = DrawerConfig::parse();
 
     if config.debug {
         env_logger::Builder::from_default_env()
@@ -29,6 +29,10 @@ fn main() {
             .init();
     } else {
         env_logger::init();
+    }
+
+    if config.pb_auto {
+        auto_detect_power_bar(&mut config);
     }
 
     handle_open_close(&config);
@@ -392,4 +396,78 @@ fn acquire_singleton_lock(config: &DrawerConfig) -> singleton::LockFile {
             std::process::exit(0);
         }
     }
+}
+
+/// Auto-detects power bar commands from system capabilities.
+///
+/// Only fills in empty slots — explicit --pb-* flags take priority.
+fn auto_detect_power_bar(config: &mut DrawerConfig) {
+    log::info!("Auto-detecting power bar buttons...");
+
+    // Lock screen: try hyprlock, swaylock, swaylock-effects
+    if config.pb_lock.is_empty() {
+        for cmd in &["hyprlock", "swaylock", "swaylock-effects"] {
+            if command_on_path(cmd) {
+                config.pb_lock = cmd.to_string();
+                log::info!("  Lock: {}", cmd);
+                break;
+            }
+        }
+    }
+
+    // Exit session
+    if config.pb_exit.is_empty() && command_on_path("loginctl") {
+        config.pb_exit = "loginctl terminate-session".to_string();
+        log::info!("  Exit: loginctl terminate-session");
+    }
+
+    // Poweroff
+    if config.pb_poweroff.is_empty() {
+        if command_on_path("loginctl") {
+            config.pb_poweroff = "loginctl poweroff".to_string();
+            log::info!("  Poweroff: loginctl poweroff");
+        } else if command_on_path("systemctl") {
+            config.pb_poweroff = "systemctl poweroff".to_string();
+            log::info!("  Poweroff: systemctl poweroff");
+        }
+    }
+
+    // Reboot
+    if config.pb_reboot.is_empty() {
+        if command_on_path("loginctl") {
+            config.pb_reboot = "loginctl reboot".to_string();
+            log::info!("  Reboot: loginctl reboot");
+        } else if command_on_path("systemctl") {
+            config.pb_reboot = "systemctl reboot".to_string();
+            log::info!("  Reboot: systemctl reboot");
+        }
+    }
+
+    // Suspend — only if the system actually supports it
+    if config.pb_sleep.is_empty() && can_suspend() && command_on_path("systemctl") {
+        config.pb_sleep = "systemctl suspend".to_string();
+        log::info!("  Suspend: systemctl suspend");
+    }
+}
+
+/// Checks if a command exists on PATH.
+fn command_on_path(cmd: &str) -> bool {
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in path.split(':') {
+            let full = std::path::Path::new(dir).join(cmd);
+            if full.is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Checks if the system supports suspend via systemctl.
+fn can_suspend() -> bool {
+    std::process::Command::new("systemctl")
+        .arg("can-suspend")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "yes")
+        .unwrap_or(false)
 }
