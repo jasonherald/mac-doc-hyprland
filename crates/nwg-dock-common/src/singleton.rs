@@ -92,3 +92,46 @@ fn stable_hash(text: &str) -> String {
     }
     format!("{:016x}", hash)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_stability() {
+        let h1 = stable_hash("testuser");
+        let h2 = stable_hash("testuser");
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn hash_different_inputs() {
+        let h_alice = stable_hash("alice");
+        let h_bob = stable_hash("bob");
+        assert_ne!(h_alice, h_bob);
+    }
+
+    #[test]
+    fn acquire_and_release() {
+        // Use a unique app name to avoid interference with other tests.
+        let unique_suffix = std::process::id();
+        let app_name = format!("test-singleton-{}", unique_suffix);
+        let lock = acquire_lock(&app_name).expect("should acquire lock");
+        let lock_path = lock.path().to_path_buf();
+        assert!(lock_path.exists(), "lock file should exist after acquire");
+
+        // Drop the LockFile RAII guard, which should remove the file.
+        drop(lock);
+        assert!(
+            !lock_path.exists(),
+            "lock file should be removed after drop"
+        );
+    }
+
+    #[test]
+    fn find_running_pid_no_lock() {
+        // A non-existent app name should return None.
+        let result = find_running_pid("nonexistent-app-zzz-test-12345");
+        assert!(result.is_none());
+    }
+}

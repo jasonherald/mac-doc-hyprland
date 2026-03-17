@@ -13,6 +13,7 @@ BINARIES := nwg-dock-hyprland nwg-drawer nwg-notifications
 .PHONY: all build install install-bin install-data install-dbus \
         uninstall upgrade stop start restart \
         deps check-deps check-rust setup-hyprland setup-sway \
+        test test-integration test-all \
         help clean
 
 # ─────────────────────────────────────────────────────────────────────
@@ -276,6 +277,20 @@ uninstall:
 	@echo ""
 	@echo "Uninstall complete."
 	@echo "Config files in ~/.config/ and cache in ~/.cache/ were left in place."
+
+# ─────────────────────────────────────────────────────────────────────
+# Testing
+# ─────────────────────────────────────────────────────────────────────
+
+test:
+	$(CARGO) test --workspace
+	$(CARGO) clippy --all-targets
+
+test-integration: build
+	@echo "Running headless Sway integration tests..."
+	@bash tests/integration/test_runner.sh
+
+test-all: test test-integration
 
 # ─────────────────────────────────────────────────────────────────────
 # Clean

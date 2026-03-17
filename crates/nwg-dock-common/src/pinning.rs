@@ -80,4 +80,70 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
     }
+
+    #[test]
+    fn empty_file_loads_empty() {
+        let dir = std::env::temp_dir().join("dock-common-test-pinning-empty");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test-pinned-empty");
+
+        let pinned: Vec<String> = vec![];
+        save_pinned(&pinned, &path).unwrap();
+
+        let loaded = load_pinned(&path);
+        assert!(loaded.is_empty());
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn whitespace_only_lines_filtered() {
+        let dir = std::env::temp_dir().join("dock-common-test-pinning-ws");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test-pinned-ws");
+
+        // Write a file with blank lines and whitespace-only lines mixed in.
+        std::fs::write(&path, "firefox\n\n   \nalacritty\n  \ngimp\n").unwrap();
+
+        let loaded = load_pinned(&path);
+        assert_eq!(loaded, vec!["firefox", "alacritty", "gimp"]);
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn duplicate_pin_rejected() {
+        let mut pinned = Vec::new();
+        assert!(pin_item(&mut pinned, "firefox"));
+        assert!(!pin_item(&mut pinned, "firefox"));
+        assert_eq!(pinned.len(), 1);
+    }
+
+    #[test]
+    fn large_pin_list_roundtrip() {
+        let dir = std::env::temp_dir().join("dock-common-test-pinning-large");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("test-pinned-large");
+
+        let pinned: Vec<String> = (0..500).map(|i| format!("app-{}", i)).collect();
+        save_pinned(&pinned, &path).unwrap();
+
+        let loaded = load_pinned(&path);
+        assert_eq!(loaded.len(), 500);
+        assert_eq!(loaded, pinned);
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn load_nonexistent_file_returns_empty() {
+        let path = std::env::temp_dir().join("dock-common-test-pinning-nonexistent-file-xyz");
+        // Ensure the file does not exist.
+        let _ = std::fs::remove_file(&path);
+        let loaded = load_pinned(&path);
+        assert!(loaded.is_empty());
+    }
 }

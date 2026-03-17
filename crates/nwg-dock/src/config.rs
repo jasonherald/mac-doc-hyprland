@@ -218,4 +218,56 @@ mod tests {
         assert_eq!(config.position, Position::Bottom);
         assert_eq!(config.alignment, Alignment::Center);
     }
+
+    #[test]
+    fn wm_flag_parsing() {
+        let config = DockConfig::parse_from(["test", "--wm", "hyprland"]);
+        assert_eq!(config.wm, "hyprland");
+    }
+
+    #[test]
+    fn hide_timeout_default() {
+        let config = DockConfig::parse_from(["test"]);
+        assert_eq!(config.hide_timeout, 600);
+    }
+
+    #[test]
+    fn icon_size_default() {
+        let config = DockConfig::parse_from(["test"]);
+        assert_eq!(config.icon_size, 48);
+    }
+
+    #[test]
+    fn launcher_cmd_default() {
+        let config = DockConfig::parse_from(["test"]);
+        assert_eq!(config.launcher_cmd, "nwg-drawer");
+    }
+
+    #[test]
+    fn all_positions() {
+        let bottom = DockConfig::parse_from(["test", "-p", "bottom"]);
+        assert_eq!(bottom.position, Position::Bottom);
+        let top = DockConfig::parse_from(["test", "-p", "top"]);
+        assert_eq!(top.position, Position::Top);
+        let left = DockConfig::parse_from(["test", "-p", "left"]);
+        assert_eq!(left.position, Position::Left);
+        let right = DockConfig::parse_from(["test", "-p", "right"]);
+        assert_eq!(right.position, Position::Right);
+    }
+
+    #[test]
+    fn all_layers() {
+        let overlay = DockConfig::parse_from(["test", "-l", "overlay"]);
+        assert_eq!(overlay.layer, Layer::Overlay);
+        let top = DockConfig::parse_from(["test", "-l", "top"]);
+        assert_eq!(top.layer, Layer::Top);
+        let bottom = DockConfig::parse_from(["test", "-l", "bottom"]);
+        assert_eq!(bottom.layer, Layer::Bottom);
+    }
+
+    #[test]
+    fn hotspot_delay_default() {
+        let config = DockConfig::parse_from(["test"]);
+        assert_eq!(config.hotspot_delay, 20);
+    }
 }

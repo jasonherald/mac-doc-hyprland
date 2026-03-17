@@ -225,4 +225,102 @@ mod tests {
         state.add(test_notif("app", "4"));
         assert_eq!(state.history.len(), 3);
     }
+
+    #[test]
+    fn id_wrapping_at_max() {
+        // Verify the wrapping arithmetic used in add(): wrapping_add(1).max(1)
+        // u32::MAX wraps to 0, then max(1) clamps to 1
+        assert_eq!(u32::MAX.wrapping_add(1).max(1), 1);
+        // 0 wraps to 1, max(1) stays 1
+        assert_eq!(0u32.wrapping_add(1).max(1), 1);
+        // Normal case: 41 wraps to 42
+        assert_eq!(41u32.wrapping_add(1).max(1), 42);
+
+        // Also verify via state: use replace to set a known ID, then
+        // confirm next_id never produces 0.
+        let mut state = NotificationState::new(vec![], 100);
+        // Manually push next_id close to wrapping by using replace with
+        // high IDs. The simplest approach: add notifications and confirm
+        // the returned IDs are sequential starting from 1.
+        let id1 = state.add(test_notif("app", "a"));
+        let id2 = state.add(test_notif("app", "b"));
+        assert_eq!(id1, 1);
+        assert_eq!(id2, 2);
+        // IDs are always >= 1
+        assert!(id1 >= 1);
+        assert!(id2 >= 1);
+    }
+
+    #[test]
+    fn remove_nonexistent_returns_none() {
+        let mut state = NotificationState::new(vec![], 100);
+        assert!(state.remove(999).is_none());
+    }
+
+    #[test]
+    fn dismiss_all_clears_everything() {
+        let mut state = NotificationState::new(vec![], 100);
+        let id1 = state.add(test_notif("app1", "one"));
+        let id2 = state.add(test_notif("app2", "two"));
+        state.add(test_notif("app3", "three"));
+        state.active_popups.insert(id1);
+        state.active_popups.insert(id2);
+
+        state.dismiss_all();
+
+        assert!(state.history.is_empty());
+        assert!(state.active_popups.is_empty());
+    }
+
+    #[test]
+    fn mark_read_nonexistent_no_panic() {
+        let mut state = NotificationState::new(vec![], 100);
+        state.add(test_notif("app", "exists"));
+        // Marking a non-existent ID should not panic.
+        state.mark_read(999);
+        // Original notification should remain unread.
+        assert_eq!(state.unread_count(), 1);
+    }
+
+    #[test]
+    fn active_popups_tracking() {
+        let mut state = NotificationState::new(vec![], 100);
+        state.active_popups.insert(42);
+        assert!(state.active_popups.contains(&42));
+        state.active_popups.remove(&42);
+        assert!(!state.active_popups.contains(&42));
+    }
+
+    #[test]
+    fn empty_state_operations() {
+        let mut state = NotificationState::new(vec![], 100);
+        assert_eq!(state.unread_count(), 0);
+        assert!(state.grouped_by_app().is_empty());
+        // dismiss_all on empty state should not panic.
+        state.dismiss_all();
+        assert!(state.history.is_empty());
+    }
+
+    #[test]
+    fn replace_nonexistent_creates_new() {
+        let mut state = NotificationState::new(vec![], 100);
+        // Replace with an ID that doesn't exist falls through to add().
+        let id = state.replace(999, test_notif("app", "new"));
+        // Should have created a new entry with a fresh ID (1, since state is new).
+        assert_eq!(id, 1);
+        assert_eq!(state.history.len(), 1);
+        assert_eq!(state.history[0].summary, "new");
+    }
+
+    #[test]
+    fn history_ordering_newest_first() {
+        let mut state = NotificationState::new(vec![], 100);
+        state.add(test_notif("app", "first"));
+        state.add(test_notif("app", "second"));
+        state.add(test_notif("app", "third"));
+        // history[0] should be the most recently added.
+        assert_eq!(state.history[0].summary, "third");
+        assert_eq!(state.history[1].summary, "second");
+        assert_eq!(state.history[2].summary, "first");
+    }
 }

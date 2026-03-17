@@ -174,4 +174,107 @@ mod tests {
         assert_eq!(entry.name, "Spaced App");
         assert_eq!(entry.icon, "spaced-icon");
     }
+
+    #[test]
+    fn missing_name_returns_empty() {
+        let desktop = "[Desktop Entry]\n\
+            Icon=myicon\n\
+            Exec=myapp --start\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("myapp", reader);
+        assert_eq!(entry.name, "");
+        assert_eq!(entry.icon, "myicon");
+        assert_eq!(entry.exec, "myapp --start");
+    }
+
+    #[test]
+    fn nodisplay_true() {
+        let desktop = "[Desktop Entry]\n\
+            Name=Hidden App\n\
+            NoDisplay=true\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("hidden-app", reader);
+        assert!(entry.no_display);
+    }
+
+    #[test]
+    fn only_show_in_matching() {
+        // OnlyShowIn lists desktops that will never match the test
+        // environment (which is either Hyprland or unset). In both
+        // cases "Unity;MATE;" won't contain a match, so no_display
+        // should be true.
+        let desktop = "[Desktop Entry]\n\
+            Name=Unity Only\n\
+            OnlyShowIn=Unity;MATE;\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("unity-only", reader);
+        assert!(entry.no_display);
+    }
+
+    #[test]
+    fn not_show_in_matching() {
+        // NotShowIn=GNOME; should NOT set no_display because the guard
+        // requires current_desktop to be non-empty — and in the test
+        // environment XDG_CURRENT_DESKTOP is typically unset.
+        let desktop = "[Desktop Entry]\n\
+            Name=Not GNOME\n\
+            NotShowIn=GNOME;\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("not-gnome", reader);
+        assert!(!entry.no_display);
+    }
+
+    #[test]
+    fn exec_quotes_stripped() {
+        let desktop = "[Desktop Entry]\n\
+            Name=Browser\n\
+            Exec=\"firefox\" %u\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("firefox", reader);
+        assert_eq!(entry.exec, "firefox %u");
+    }
+
+    #[test]
+    fn malformed_lines_skipped() {
+        let desktop = "[Desktop Entry]\n\
+            NoEquals\n\
+            =ValueOnly\n\
+            \n\
+            Name=Test\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("test", reader);
+        assert_eq!(entry.name, "Test");
+        // The other malformed lines should not cause any fields to be set
+        assert_eq!(entry.icon, "");
+        assert_eq!(entry.exec, "");
+    }
+
+    #[test]
+    fn terminal_flag_parsing() {
+        let desktop_true = "[Desktop Entry]\n\
+            Name=Term App\n\
+            Terminal=true\n";
+        let reader = Cursor::new(desktop_true);
+        let entry = parse_desktop_entry("term", reader);
+        assert!(entry.terminal);
+
+        let desktop_false = "[Desktop Entry]\n\
+            Name=GUI App\n\
+            Terminal=false\n";
+        let reader = Cursor::new(desktop_false);
+        let entry = parse_desktop_entry("gui", reader);
+        assert!(!entry.terminal);
+    }
+
+    #[test]
+    fn locale_name_fallback() {
+        let desktop = "[Desktop Entry]\n\
+            Name=English\n\
+            Name[zz]=Zzz\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("loc", reader);
+        // LANG is unlikely to start with "zz", so name_loc should
+        // fall back to the base Name value.
+        assert_eq!(entry.name_loc, "English");
+    }
 }

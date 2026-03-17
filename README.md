@@ -210,7 +210,7 @@ mac-dock-hyprland/
 ```
 
 - **Four crates** in a Cargo workspace
-- **68 tests** with zero clippy warnings
+- **118 tests** with zero clippy warnings
 - Type-safe enums for all configuration
 - Named constants for all UI dimensions
 - GTK4 + gtk4-layer-shell for Wayland layer surfaces
