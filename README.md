@@ -216,6 +216,25 @@ mac-dock-hyprland/
 - GTK4 + gtk4-layer-shell for Wayland layer surfaces
 - Zero new dependencies for notification daemon (gio D-Bus is already in GTK4)
 
+## Code Quality
+
+This project maintains high standards through automated analysis:
+
+| Tool | Status | What it checks |
+|------|--------|---------------|
+| **Cargo Clippy** | Zero warnings | Rust idioms, correctness, performance |
+| **SonarQube** | 0 issues, 0% duplication | Cognitive complexity, code smells, duplications, security |
+| **CodeRabbit** | 4 rounds, all findings addressed | AI-driven code review, security patterns, best practices |
+| **Unit Tests** | 118 passing | Sway tree traversal, notification state, pinning, parsing, config |
+| **Integration Tests** | 18 passing | Headless Sway: IPC, window management, signals, multi-monitor |
+
+Run locally:
+```bash
+make test              # Unit tests + clippy
+make test-integration  # Headless Sway integration tests (requires sway, foot)
+make sonar             # SonarQube scan (requires sonar-scanner + .env token)
+```
+
 ## Shared pin file
 
 Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected instantly via inotify. Pin an app from either the dock (right-click → Pin) or the drawer (right-click any app). Drag icons in the dock to reorder; drag off to unpin.
