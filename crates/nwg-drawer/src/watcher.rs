@@ -37,22 +37,7 @@ pub fn start_watcher(
             }
         };
 
-        // Watch app directories
-        for dir in &app_dir_list {
-            if dir.exists()
-                && let Err(e) = watcher.watch(dir, RecursiveMode::Recursive)
-            {
-                log::warn!("Failed to watch {}: {}", dir.display(), e);
-            }
-        }
-
-        // Watch pin file's parent directory (to catch creation)
-        if let Some(parent) = pin_path.parent()
-            && parent.exists()
-            && let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive)
-        {
-            log::warn!("Failed to watch {}: {}", parent.display(), e);
-        }
+        register_watch_paths(&mut watcher, &app_dir_list, &pin_path);
 
         for event in notify_rx {
             if let Some(watch_event) = classify_watch_event(&event, &pin_path) {
@@ -62,6 +47,24 @@ pub fn start_watcher(
     });
 
     rx
+}
+
+/// Registers all app directories and the pin file's parent with the watcher.
+fn register_watch_paths(watcher: &mut impl Watcher, app_dirs: &[PathBuf], pin_path: &Path) {
+    for dir in app_dirs {
+        if dir.exists()
+            && let Err(e) = watcher.watch(dir, RecursiveMode::Recursive)
+        {
+            log::warn!("Failed to watch {}: {}", dir.display(), e);
+        }
+    }
+
+    if let Some(parent) = pin_path.parent()
+        && parent.exists()
+        && let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive)
+    {
+        log::warn!("Failed to watch {}: {}", parent.display(), e);
+    }
 }
 
 /// Determines if a file-system event corresponds to a desktop file change or pin file change.

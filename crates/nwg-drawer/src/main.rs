@@ -105,110 +105,136 @@ fn main() {
     let data_home = Rc::new(data_home);
 
     app.connect_activate(move |app| {
-        let config = Rc::clone(&config);
-        let pinned_file = Rc::clone(&pinned_file);
-
-        // CSS
-        nwg_dock_common::config::css::load_css(&css_path);
-        nwg_dock_common::config::css::load_css_from_data(DRAWER_CSS);
-        apply_theme_settings(&config);
-
-        // State
-        let state = Rc::new(RefCell::new(DrawerState::new(
-            app_dirs.clone(),
-            Rc::clone(&compositor),
-        )));
-        state.borrow_mut().exclusions = exclusions.clone();
-        desktop_loader::load_desktop_entries(&mut state.borrow_mut());
-        load_preferred_apps(&mut state.borrow_mut());
-        state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
-
-        // Window
-        let win = gtk4::ApplicationWindow::new(app);
-        let target_monitor = resolve_target_monitor(&config, &compositor);
-        ui::window::setup_drawer_window(&win, &config, target_monitor.as_ref());
-
-        // Layout
-        let main_vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        win.set_child(Some(&main_vbox));
-
-        setup_close_button(&main_vbox, &win, &config);
-
-        let search_entry = ui::search::setup_search_entry();
-        search_entry.add_css_class("drawer-search");
-        search_entry.set_hexpand(false);
-        search_entry.set_halign(gtk4::Align::Center);
-        search_entry.set_width_request(ui::constants::SEARCH_ENTRY_WIDTH);
-        search_entry.set_margin_top(ui::constants::SEARCH_TOP_MARGIN);
-        main_vbox.append(&search_entry);
-
-        let scrolled = gtk4::ScrolledWindow::new();
-        scrolled.set_vexpand(true);
-        scrolled.set_hexpand(true);
-        main_vbox.append(&scrolled);
-
-        let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        content_box.set_margin_top(ui::constants::CONTENT_TOP_MARGIN);
-        scrolled.set_child(Some(&content_box));
-
-        let status_label = gtk4::Label::new(None);
-        status_label.add_css_class("status-label");
-
-        // On-launch callback
-        let on_launch: Rc<dyn Fn()> = {
-            let win = win.clone();
-            let config = Rc::clone(&config);
-            let search_entry = search_entry.clone();
-            Rc::new(move || {
-                if !config.resident {
-                    win.close();
-                } else {
-                    search_entry.set_text("");
-                    win.set_visible(false);
-                }
-            })
-        };
-
-        // Well
-        let well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        well.add_css_class("section-well");
-        well.set_halign(gtk4::Align::Center);
-        well.set_width_request(ui::constants::WELL_WIDTH);
-        content_box.append(&well);
-
-        ui::well_builder::build_normal_well(&well, &config, &state, &pinned_file, &on_launch);
-
-        // Search
-        ui::search_handler::connect_search(
-            &search_entry,
-            &well,
-            &status_label,
+        activate_drawer(
+            app,
+            &css_path,
             &config,
-            &state,
+            &app_dirs,
+            &compositor,
             &pinned_file,
-            &on_launch,
+            &exclusions,
+            &data_home,
+            &sig_rx,
         );
-
-        // Power bar + status
-        if config.has_power_bar() {
-            main_vbox.append(&ui::power_bar::build_power_bar(
-                &config,
-                Rc::clone(&on_launch),
-                data_home.as_deref(),
-            ));
-        }
-        main_vbox.append(&status_label);
-
-        // Listeners
-        listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app, &compositor);
-        listeners::setup_focus_detector(&win, &on_launch, &compositor);
-        listeners::setup_file_watcher(&app_dirs, &pinned_file, &well, &config, &state, &on_launch);
-        listeners::setup_signal_poller(&win, &sig_rx);
-
-        win.present();
     });
 
     app.run_with_args::<String>(&[]);
+}
+
+/// Sets up the drawer UI: CSS, state, window, layout, search, and listeners.
+#[allow(clippy::too_many_arguments)]
+fn activate_drawer(
+    app: &gtk4::Application,
+    css_path: &Rc<std::path::PathBuf>,
+    config: &Rc<DrawerConfig>,
+    app_dirs: &[std::path::PathBuf],
+    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    pinned_file: &Rc<std::path::PathBuf>,
+    exclusions: &[String],
+    data_home: &Rc<Option<std::path::PathBuf>>,
+    sig_rx: &Rc<std::sync::mpsc::Receiver<nwg_dock_common::signals::WindowCommand>>,
+) {
+    let config = Rc::clone(config);
+    let pinned_file = Rc::clone(pinned_file);
+
+    // CSS
+    nwg_dock_common::config::css::load_css(css_path);
+    nwg_dock_common::config::css::load_css_from_data(DRAWER_CSS);
+    apply_theme_settings(&config);
+
+    // State
+    let state = Rc::new(RefCell::new(DrawerState::new(
+        app_dirs.to_vec(),
+        Rc::clone(compositor),
+    )));
+    state.borrow_mut().exclusions = exclusions.to_vec();
+    desktop_loader::load_desktop_entries(&mut state.borrow_mut());
+    load_preferred_apps(&mut state.borrow_mut());
+    state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
+
+    // Window
+    let win = gtk4::ApplicationWindow::new(app);
+    let target_monitor = resolve_target_monitor(&config, compositor);
+    ui::window::setup_drawer_window(&win, &config, target_monitor.as_ref());
+
+    // Layout
+    let main_vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    win.set_child(Some(&main_vbox));
+
+    setup_close_button(&main_vbox, &win, &config);
+
+    let search_entry = ui::search::setup_search_entry();
+    search_entry.add_css_class("drawer-search");
+    search_entry.set_hexpand(false);
+    search_entry.set_halign(gtk4::Align::Center);
+    search_entry.set_width_request(ui::constants::SEARCH_ENTRY_WIDTH);
+    search_entry.set_margin_top(ui::constants::SEARCH_TOP_MARGIN);
+    main_vbox.append(&search_entry);
+
+    let scrolled = gtk4::ScrolledWindow::new();
+    scrolled.set_vexpand(true);
+    scrolled.set_hexpand(true);
+    main_vbox.append(&scrolled);
+
+    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    content_box.set_margin_top(ui::constants::CONTENT_TOP_MARGIN);
+    scrolled.set_child(Some(&content_box));
+
+    let status_label = gtk4::Label::new(None);
+    status_label.add_css_class("status-label");
+
+    // On-launch callback
+    let on_launch: Rc<dyn Fn()> = {
+        let win = win.clone();
+        let config = Rc::clone(&config);
+        let search_entry = search_entry.clone();
+        Rc::new(move || {
+            if !config.resident {
+                win.close();
+            } else {
+                search_entry.set_text("");
+                win.set_visible(false);
+            }
+        })
+    };
+
+    // Well
+    let well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    well.add_css_class("section-well");
+    well.set_halign(gtk4::Align::Center);
+    well.set_width_request(ui::constants::WELL_WIDTH);
+    content_box.append(&well);
+
+    ui::well_builder::build_normal_well(&well, &config, &state, &pinned_file, &on_launch);
+
+    // Search
+    ui::search_handler::connect_search(
+        &search_entry,
+        &well,
+        &status_label,
+        &config,
+        &state,
+        &pinned_file,
+        &on_launch,
+    );
+
+    // Power bar + status
+    if config.has_power_bar() {
+        main_vbox.append(&ui::power_bar::build_power_bar(
+            &config,
+            Rc::clone(&on_launch),
+            data_home.as_deref(),
+        ));
+    }
+    main_vbox.append(&status_label);
+
+    // Listeners
+    listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app, compositor);
+    listeners::setup_focus_detector(&win, &on_launch, compositor);
+    listeners::setup_file_watcher(app_dirs, &pinned_file, &well, &config, &state, &on_launch);
+    listeners::setup_signal_poller(&win, sig_rx);
+
+    win.present();
 }
 
 /// Detects the compositor kind and creates the compositor instance.

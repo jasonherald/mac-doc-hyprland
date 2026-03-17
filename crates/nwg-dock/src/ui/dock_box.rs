@@ -121,8 +121,6 @@ pub fn build(
         main_box.append(&btn);
     }
 
-    // Pinned items
-    let mut already_added: Vec<String> = Vec::new();
     let pinned_snapshot = ctx.state.borrow().pinned.clone();
     let clients_snapshot = ctx.state.borrow().clients.clone();
     let active_class = ctx
@@ -133,65 +131,21 @@ pub fn build(
         .map(|c| c.class.clone())
         .unwrap_or_default();
 
-    for (pin_idx, pin) in pinned_snapshot.iter().enumerate() {
-        if ignored_classes.contains(pin) {
-            continue;
-        }
-        let instances = ctx.state.borrow().task_instances(pin);
-        if instances.is_empty() {
-            main_box.append(&buttons::pinned_button(pin, pin_idx, ctx));
-        } else if instances.len() == 1 || !already_added.contains(pin) {
-            let btn = buttons::task_button(&instances[0], &instances, ctx);
-            if instances[0].class == active_class && !config.autohide {
-                btn.set_widget_name("active");
-            }
-            if !ctx.state.borrow().locked
-                && let Some(inner_btn) = find_child_button(&btn)
-            {
-                crate::ui::drag::setup_drag_source(
-                    &inner_btn,
-                    pin_idx,
-                    &ctx.state,
-                    &ctx.pinned_file,
-                    &ctx.rebuild,
-                );
-            }
-            main_box.append(&btn);
-            already_added.push(pin.clone());
-        }
-    }
-
-    // Running tasks (not pinned)
-    already_added.clear();
-    for task in &clients_snapshot {
-        if task.class.is_empty()
-            || pinning::is_pinned(&pinned_snapshot, &task.class)
-            || ignored_classes.contains(&task.class)
-        {
-            continue;
-        }
-        // Skip child windows whose initial_class is already shown
-        // (e.g., Playwright Chromium windows spawned by VSCode)
-        if !task.initial_class.is_empty()
-            && task.initial_class != task.class
-            && (pinning::is_pinned(&pinned_snapshot, &task.initial_class)
-                || already_added
-                    .iter()
-                    .any(|a| a.eq_ignore_ascii_case(&task.initial_class)))
-        {
-            continue;
-        }
-
-        let instances = ctx.state.borrow().task_instances(&task.class);
-        if instances.len() == 1 || !already_added.contains(&task.class) {
-            let btn = buttons::task_button(task, &instances, ctx);
-            if task.class == active_class && !config.autohide {
-                btn.set_widget_name("active");
-            }
-            main_box.append(&btn);
-            already_added.push(task.class.clone());
-        }
-    }
+    build_pinned_items(
+        &main_box,
+        ctx,
+        &pinned_snapshot,
+        &active_class,
+        &ignored_classes,
+    );
+    build_running_items(
+        &main_box,
+        ctx,
+        &clients_snapshot,
+        &pinned_snapshot,
+        &active_class,
+        &ignored_classes,
+    );
 
     // Launcher at end
     if config.launcher_pos == crate::config::Alignment::End
@@ -231,6 +185,90 @@ pub fn build(
     }
 
     main_box
+}
+
+/// Adds pinned items to the dock box, with drag-source support when unlocked.
+fn build_pinned_items(
+    main_box: &gtk4::Box,
+    ctx: &DockContext,
+    pinned: &[String],
+    active_class: &str,
+    ignored_classes: &[String],
+) {
+    let mut already_added: Vec<String> = Vec::new();
+    for (pin_idx, pin) in pinned.iter().enumerate() {
+        if ignored_classes.contains(pin) {
+            continue;
+        }
+        let instances = ctx.state.borrow().task_instances(pin);
+        if instances.is_empty() {
+            main_box.append(&buttons::pinned_button(pin, pin_idx, ctx));
+        } else if instances.len() == 1 || !already_added.contains(pin) {
+            let btn = buttons::task_button(&instances[0], &instances, ctx);
+            if instances[0].class == active_class && !ctx.config.autohide {
+                btn.set_widget_name("active");
+            }
+            if !ctx.state.borrow().locked
+                && let Some(inner_btn) = find_child_button(&btn)
+            {
+                crate::ui::drag::setup_drag_source(
+                    &inner_btn,
+                    pin_idx,
+                    &ctx.state,
+                    &ctx.pinned_file,
+                    &ctx.rebuild,
+                );
+            }
+            main_box.append(&btn);
+            already_added.push(pin.clone());
+        }
+    }
+}
+
+/// Adds running (non-pinned) tasks to the dock box, skipping grouped child windows.
+fn build_running_items(
+    main_box: &gtk4::Box,
+    ctx: &DockContext,
+    clients: &[nwg_dock_common::compositor::WmClient],
+    pinned: &[String],
+    active_class: &str,
+    ignored_classes: &[String],
+) {
+    let mut already_added: Vec<String> = Vec::new();
+    for task in clients {
+        if task.class.is_empty()
+            || pinning::is_pinned(pinned, &task.class)
+            || ignored_classes.contains(&task.class)
+        {
+            continue;
+        }
+        if is_child_already_shown(task, pinned, &already_added) {
+            continue;
+        }
+        let instances = ctx.state.borrow().task_instances(&task.class);
+        if instances.len() == 1 || !already_added.contains(&task.class) {
+            let btn = buttons::task_button(task, &instances, ctx);
+            if task.class == active_class && !ctx.config.autohide {
+                btn.set_widget_name("active");
+            }
+            main_box.append(&btn);
+            already_added.push(task.class.clone());
+        }
+    }
+}
+
+/// Returns true if a child window's initial_class is already represented by a pinned or added item.
+fn is_child_already_shown(
+    task: &nwg_dock_common::compositor::WmClient,
+    pinned: &[String],
+    already_added: &[String],
+) -> bool {
+    !task.initial_class.is_empty()
+        && task.initial_class != task.class
+        && (pinning::is_pinned(pinned, &task.initial_class)
+            || already_added
+                .iter()
+                .any(|a| a.eq_ignore_ascii_case(&task.initial_class)))
 }
 
 /// Finds the Button widget inside a dock item box (which may also contain an indicator).

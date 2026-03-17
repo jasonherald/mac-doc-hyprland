@@ -395,7 +395,7 @@ fn is_cursor_in_visible_dock(
 ) -> bool {
     let wins = windows.borrow();
     for win in wins.iter() {
-        if !win.is_visible() {
+        if !win.is_visible() || win.surface().is_none() {
             continue;
         }
         let w = win.width();
@@ -403,19 +403,23 @@ fn is_cursor_in_visible_dock(
         if w == 0 || h == 0 {
             continue;
         }
-
-        if win.surface().is_some() {
-            for mon in monitors {
-                let (dock_x, dock_y) = dock_bounds_for_position(mon, w, h, position);
-
-                let in_x = cursor.x >= dock_x && cursor.x < dock_x + w;
-                let in_y = cursor.y >= dock_y && cursor.y < dock_y + h;
-
-                if in_x && in_y {
-                    return true;
-                }
-            }
+        if cursor_in_any_monitor_bounds(cursor, monitors, w, h, position) {
+            return true;
         }
     }
     false
+}
+
+/// Returns true if the cursor falls within the dock bounds on any monitor.
+fn cursor_in_any_monitor_bounds(
+    cursor: &CursorPos,
+    monitors: &[WmMonitor],
+    w: i32,
+    h: i32,
+    position: crate::config::Position,
+) -> bool {
+    monitors.iter().any(|mon| {
+        let (dock_x, dock_y) = dock_bounds_for_position(mon, w, h, position);
+        cursor.x >= dock_x && cursor.x < dock_x + w && cursor.y >= dock_y && cursor.y < dock_y + h
+    })
 }

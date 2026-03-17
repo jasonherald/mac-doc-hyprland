@@ -122,56 +122,75 @@ fn main() {
     let css_path = Rc::new(css_path);
 
     app.connect_activate(move |app| {
-        ui::css::load_dock_css(&css_path);
-        let _hold = app.hold();
-
-        // State
-        let state = Rc::new(RefCell::new(DockState::new(
-            app_dirs.clone(),
-            Rc::clone(&compositor),
-        )));
-        state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
-        state.borrow_mut().locked = ui::dock_menu::load_lock_state();
-        if let Err(e) = state.borrow_mut().refresh_clients() {
-            log::error!("Couldn't list clients: {}", e);
-        }
-
-        // Monitors
-        let monitors = monitor::resolve_monitors(&state, &config);
-
-        // Windows
-        let (per_monitor, all_windows) = dock_windows::create_dock_windows(app, &monitors, &config);
-        let per_monitor = Rc::new(RefCell::new(per_monitor));
-
-        // Rebuild function
-        let rebuild = rebuild::create_rebuild_fn(
-            &per_monitor,
+        activate_dock(
+            app,
+            &css_path,
             &config,
-            &state,
-            &data_home,
-            &pinned_file,
+            &app_dirs,
             &compositor,
+            &pinned_file,
+            &data_home,
+            &sig_rx,
         );
-        rebuild();
-
-        for win in all_windows.borrow().iter() {
-            win.present();
-        }
-
-        // Listeners
-        if config.autohide {
-            listeners::setup_autohide(&all_windows, &config, &state, &compositor, app, &monitors);
-        }
-        events::start_event_listener(
-            Rc::clone(&state),
-            Rc::clone(&rebuild),
-            Rc::clone(&compositor),
-        );
-        listeners::setup_pin_watcher(&pinned_file, &rebuild);
-        listeners::setup_signal_poller(&all_windows, &sig_rx);
     });
 
     app.run_with_args::<String>(&[]);
+}
+
+/// Sets up the dock UI: state, monitors, windows, rebuild function, and listeners.
+#[allow(clippy::too_many_arguments)]
+fn activate_dock(
+    app: &gtk4::Application,
+    css_path: &Rc<std::path::PathBuf>,
+    config: &Rc<DockConfig>,
+    app_dirs: &[std::path::PathBuf],
+    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    pinned_file: &Rc<std::path::PathBuf>,
+    data_home: &Rc<std::path::PathBuf>,
+    sig_rx: &Rc<std::sync::mpsc::Receiver<signals::WindowCommand>>,
+) {
+    ui::css::load_dock_css(css_path);
+    let _hold = app.hold();
+
+    let state = Rc::new(RefCell::new(DockState::new(
+        app_dirs.to_vec(),
+        Rc::clone(compositor),
+    )));
+    state.borrow_mut().pinned = pinning::load_pinned(pinned_file);
+    state.borrow_mut().locked = ui::dock_menu::load_lock_state();
+    if let Err(e) = state.borrow_mut().refresh_clients() {
+        log::error!("Couldn't list clients: {}", e);
+    }
+
+    let monitors = monitor::resolve_monitors(&state, config);
+
+    let (per_monitor, all_windows) = dock_windows::create_dock_windows(app, &monitors, config);
+    let per_monitor = Rc::new(RefCell::new(per_monitor));
+
+    let rebuild = rebuild::create_rebuild_fn(
+        &per_monitor,
+        config,
+        &state,
+        data_home,
+        pinned_file,
+        compositor,
+    );
+    rebuild();
+
+    for win in all_windows.borrow().iter() {
+        win.present();
+    }
+
+    if config.autohide {
+        listeners::setup_autohide(&all_windows, config, &state, compositor, app, &monitors);
+    }
+    events::start_event_listener(
+        Rc::clone(&state),
+        Rc::clone(&rebuild),
+        Rc::clone(compositor),
+    );
+    listeners::setup_pin_watcher(pinned_file, &rebuild);
+    listeners::setup_signal_poller(&all_windows, sig_rx);
 }
 
 /// Checks if a command exists on PATH.

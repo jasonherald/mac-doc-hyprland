@@ -104,21 +104,10 @@ fn apply_key_value(
             entry.no_display = value.parse().unwrap_or(false);
         }
         "OnlyShowIn" if !entry.no_display => {
-            entry.no_display = true;
-            if !current_desktop.is_empty() {
-                for item in value.split(';') {
-                    if !item.is_empty() && item == current_desktop {
-                        entry.no_display = false;
-                    }
-                }
-            }
+            entry.no_display = !desktop_list_contains(value, current_desktop);
         }
         "NotShowIn" if !entry.no_display && !current_desktop.is_empty() => {
-            for item in value.split(';') {
-                if !item.is_empty() && item == current_desktop {
-                    entry.no_display = true;
-                }
-            }
+            entry.no_display = desktop_list_contains(value, current_desktop);
         }
         "Exec" => {
             entry.exec = value.replace(['"', '\''], "");
@@ -127,6 +116,14 @@ fn apply_key_value(
         k if k == localized_comment => entry.comment_loc = value.to_string(),
         _ => {}
     }
+}
+
+/// Returns true if the semicolon-separated desktop list contains the given desktop name.
+fn desktop_list_contains(list: &str, desktop: &str) -> bool {
+    !desktop.is_empty()
+        && list
+            .split(';')
+            .any(|item| !item.is_empty() && item == desktop)
 }
 
 /// Splits a line at the first `=` into (key, value), both trimmed.

@@ -95,43 +95,6 @@ fn walk_directory(
 ) -> Vec<FileResult> {
     let mut results = Vec::new();
     let phrase_lower = phrase.to_lowercase();
-
-    fn walk_inner(
-        dir: &Path,
-        root: &Path,
-        phrase: &str,
-        exclusions: &[String],
-        results: &mut Vec<FileResult>,
-        max_results: usize,
-    ) {
-        if results.len() >= max_results {
-            return;
-        }
-        let entries = match std::fs::read_dir(dir) {
-            Ok(e) => e,
-            Err(_) => return,
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            if results.len() >= max_results {
-                return;
-            }
-            let path = entry.path();
-            let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy();
-            if is_excluded(&relative, exclusions) {
-                continue;
-            }
-            if relative.to_lowercase().contains(phrase) {
-                results.push(FileResult {
-                    is_dir: path.is_dir(),
-                    path: path.clone(),
-                });
-            }
-            if path.is_dir() {
-                walk_inner(&path, root, phrase, exclusions, results, max_results);
-            }
-        }
-    }
-
     walk_inner(
         root,
         root,
@@ -141,6 +104,53 @@ fn walk_directory(
         max_results,
     );
     results
+}
+
+fn walk_inner(
+    dir: &Path,
+    root: &Path,
+    phrase: &str,
+    exclusions: &[String],
+    results: &mut Vec<FileResult>,
+    max_results: usize,
+) {
+    if results.len() >= max_results {
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.filter_map(|e| e.ok()) {
+        if results.len() >= max_results {
+            return;
+        }
+        process_dir_entry(&entry, root, phrase, exclusions, results, max_results);
+    }
+}
+
+fn process_dir_entry(
+    entry: &std::fs::DirEntry,
+    root: &Path,
+    phrase: &str,
+    exclusions: &[String],
+    results: &mut Vec<FileResult>,
+    max_results: usize,
+) {
+    let path = entry.path();
+    let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy();
+    if is_excluded(&relative, exclusions) {
+        return;
+    }
+    if relative.to_lowercase().contains(phrase) {
+        results.push(FileResult {
+            is_dir: path.is_dir(),
+            path: path.clone(),
+        });
+    }
+    if path.is_dir() {
+        walk_inner(&path, root, phrase, exclusions, results, max_results);
+    }
 }
 
 /// Checks whether a relative path matches any exclusion pattern.

@@ -5,6 +5,19 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
+/// Drains pending window-change events and returns true if a new relevant event was seen.
+fn drain_new_events(receiver: &mpsc::Receiver<String>, state: &Rc<RefCell<DockState>>) -> bool {
+    let mut changed = false;
+    while let Ok(win_addr) = receiver.try_recv() {
+        let last = state.borrow().last_win_addr.clone();
+        if win_addr != last && !win_addr.contains(">>") {
+            state.borrow_mut().last_win_addr = win_addr;
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// Snapshots old client state, refreshes from compositor, and returns
 /// whether the client list or active window changed (requiring a rebuild).
 fn needs_rebuild(state: &Rc<RefCell<DockState>>) -> bool {
@@ -78,20 +91,9 @@ pub fn start_event_listener(
     });
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-        let mut should_rebuild = false;
-
-        while let Ok(win_addr) = receiver.try_recv() {
-            let last = state.borrow().last_win_addr.clone();
-            if win_addr != last && !win_addr.contains(">>") {
-                state.borrow_mut().last_win_addr = win_addr;
-                should_rebuild = true;
-            }
-        }
-
-        if should_rebuild && needs_rebuild(&state) {
+        if drain_new_events(&receiver, &state) && needs_rebuild(&state) {
             rebuild_fn();
         }
-
         glib::ControlFlow::Continue
     });
 }

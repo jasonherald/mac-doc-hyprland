@@ -92,6 +92,11 @@ pub fn setup_drag_source(
 ///
 /// Shows a semi-transparent copy of the dragged icon at the calculated
 /// drop position, so the user can see exactly where it will land.
+///
+/// Complexity is inherent: GTK4 signal closures each capture their own
+/// Rc-cloned state and cannot be meaningfully extracted into separate
+/// functions without fighting the borrow checker or inflating parameter counts.
+#[allow(clippy::cognitive_complexity)]
 pub fn setup_dock_drop_target(
     dock_box: &gtk4::Box,
     icon_size: i32,
