@@ -39,7 +39,9 @@ impl PopupManager {
 
     /// Shows a popup for a notification. Respects max_popups limit.
     pub fn show(&mut self, notif: &Notification, state: &Rc<RefCell<NotificationState>>) {
-        // Enforce max popups — dismiss oldest if at limit
+        // Remove stale entries (windows closed by timer or click)
+        self.popups.retain(|p| p.win.is_visible());
+
         while self.popups.len() >= self.config.max_popups {
             if let Some(old) = self.popups.first() {
                 let old_id = old.id;
