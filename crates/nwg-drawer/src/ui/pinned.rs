@@ -19,9 +19,10 @@ pub fn build_pinned_flow_box(
     let flow_box = gtk4::FlowBox::new();
 
     let pinned = state.borrow().pinned.clone();
-    // Always use same column count as app grid for consistent well width
-    flow_box.set_min_children_per_line(config.columns);
-    flow_box.set_max_children_per_line(config.columns);
+    // Use fewer columns if there are fewer pinned items (matches Go behavior)
+    let cols = config.columns.min(pinned.len() as u32).max(1);
+    flow_box.set_min_children_per_line(cols);
+    flow_box.set_max_children_per_line(cols);
     flow_box.set_column_spacing(config.spacing);
     flow_box.set_row_spacing(config.spacing);
     flow_box.set_homogeneous(true);
