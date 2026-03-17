@@ -404,49 +404,51 @@ fn acquire_singleton_lock(config: &DrawerConfig) -> singleton::LockFile {
 fn auto_detect_power_bar(config: &mut DrawerConfig) {
     log::info!("Auto-detecting power bar buttons...");
 
-    // Lock screen: try hyprlock, swaylock, swaylock-effects
-    if config.pb_lock.is_empty() {
-        for cmd in &["hyprlock", "swaylock", "swaylock-effects"] {
-            if command_on_path(cmd) {
-                config.pb_lock = cmd.to_string();
-                log::info!("  Lock: {}", cmd);
-                break;
-            }
-        }
-    }
-
-    // Exit session
-    if config.pb_exit.is_empty() && command_on_path("loginctl") {
-        config.pb_exit = "loginctl terminate-session".to_string();
-        log::info!("  Exit: loginctl terminate-session");
-    }
-
-    // Poweroff
-    if config.pb_poweroff.is_empty() {
-        if command_on_path("loginctl") {
-            config.pb_poweroff = "loginctl poweroff".to_string();
-            log::info!("  Poweroff: loginctl poweroff");
-        } else if command_on_path("systemctl") {
-            config.pb_poweroff = "systemctl poweroff".to_string();
-            log::info!("  Poweroff: systemctl poweroff");
-        }
-    }
-
-    // Reboot
-    if config.pb_reboot.is_empty() {
-        if command_on_path("loginctl") {
-            config.pb_reboot = "loginctl reboot".to_string();
-            log::info!("  Reboot: loginctl reboot");
-        } else if command_on_path("systemctl") {
-            config.pb_reboot = "systemctl reboot".to_string();
-            log::info!("  Reboot: systemctl reboot");
-        }
-    }
+    detect_lock(&mut config.pb_lock);
+    detect_command(&mut config.pb_exit, "Exit", &["loginctl terminate-session"]);
+    detect_command(
+        &mut config.pb_poweroff,
+        "Poweroff",
+        &["loginctl poweroff", "systemctl poweroff"],
+    );
+    detect_command(
+        &mut config.pb_reboot,
+        "Reboot",
+        &["loginctl reboot", "systemctl reboot"],
+    );
 
     // Suspend — only if the system actually supports it
-    if config.pb_sleep.is_empty() && can_suspend() && command_on_path("systemctl") {
-        config.pb_sleep = "systemctl suspend".to_string();
-        log::info!("  Suspend: systemctl suspend");
+    if config.pb_sleep.is_empty() && can_suspend() {
+        detect_command(&mut config.pb_sleep, "Suspend", &["systemctl suspend"]);
+    }
+}
+
+/// Tries each candidate lock command and uses the first found on PATH.
+fn detect_lock(slot: &mut String) {
+    if !slot.is_empty() {
+        return;
+    }
+    for cmd in &["hyprlock", "swaylock", "swaylock-effects"] {
+        if command_on_path(cmd) {
+            *slot = cmd.to_string();
+            log::info!("  Lock: {}", cmd);
+            return;
+        }
+    }
+}
+
+/// Tries each candidate command (checks the first word on PATH) and uses the first found.
+fn detect_command(slot: &mut String, label: &str, candidates: &[&str]) {
+    if !slot.is_empty() {
+        return;
+    }
+    for cmd in candidates {
+        let bin = cmd.split_whitespace().next().unwrap_or("");
+        if command_on_path(bin) {
+            *slot = cmd.to_string();
+            log::info!("  {}: {}", label, cmd);
+            return;
+        }
     }
 }
 

@@ -53,30 +53,11 @@ pub fn setup_keyboard(
             | gtk4::gdk::Key::End => {}
 
             gtk4::gdk::Key::Escape => {
-                let text = search_entry.text();
-                if !text.is_empty() {
-                    search_entry.set_text("");
-                } else if !config.resident {
-                    win.close();
-                } else {
-                    search_entry.set_text("");
-                    win.set_visible(false);
-                }
+                handle_escape(&search_entry, &win, config.resident);
             }
 
             gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                // Only handle :command and math when search entry has focus.
-                // Otherwise let Enter propagate to the focused button (launches app).
-                if search_entry.has_focus() {
-                    let text = search_entry.text().to_string();
-                    if text.starts_with(':') && text.len() > 1 {
-                        let cmd = &text[1..];
-                        nwg_dock_common::launch::launch_via_compositor(cmd, &*compositor);
-                        on_launch();
-                    } else if let Some(result) = crate::ui::math::eval_expression(&text) {
-                        crate::ui::math::show_result_window(&text, result, &app);
-                    }
-                }
+                handle_return(&search_entry, &*compositor, &on_launch, &app);
             }
 
             // Any other key — auto-focus search entry so typing starts a search
@@ -199,4 +180,37 @@ pub fn setup_signal_poller(
         }
         glib::ControlFlow::Continue
     });
+}
+
+/// Handles Escape key: clear search, or close/hide drawer.
+fn handle_escape(search_entry: &gtk4::SearchEntry, win: &gtk4::ApplicationWindow, resident: bool) {
+    let text = search_entry.text();
+    if !text.is_empty() {
+        search_entry.set_text("");
+    } else if !resident {
+        win.close();
+    } else {
+        search_entry.set_text("");
+        win.set_visible(false);
+    }
+}
+
+/// Handles Return key: execute `:command` or evaluate math (only when search has focus).
+fn handle_return(
+    search_entry: &gtk4::SearchEntry,
+    compositor: &dyn Compositor,
+    on_launch: &Rc<dyn Fn()>,
+    app: &gtk4::Application,
+) {
+    if !search_entry.has_focus() {
+        return;
+    }
+    let text = search_entry.text().to_string();
+    if text.starts_with(':') && text.len() > 1 {
+        let cmd = &text[1..];
+        nwg_dock_common::launch::launch_via_compositor(cmd, compositor);
+        on_launch();
+    } else if let Some(result) = crate::ui::math::eval_expression(&text) {
+        crate::ui::math::show_result_window(&text, result, app);
+    }
 }
