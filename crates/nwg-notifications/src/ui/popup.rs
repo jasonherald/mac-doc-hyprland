@@ -60,6 +60,7 @@ impl PopupManager {
         window::setup_popup_window(&win, self.config.popup_position, top_offset);
         win.add_css_class("notification-popup-window");
         win.set_width_request(POPUP_WIDTH);
+        win.set_default_size(POPUP_WIDTH, -1);
 
         // Show on the focused monitor
         if let Some(mon) = focused_gdk_monitor(&*self.compositor) {
@@ -200,6 +201,7 @@ fn build_popup_content(
     app_label.add_css_class("popup-app-name");
     app_label.set_halign(gtk4::Align::Start);
     app_label.set_hexpand(true);
+    app_label.set_ellipsize(gtk4::pango::EllipsizeMode::End);
     header.append(&app_label);
 
     let time_label = gtk4::Label::new(Some("now"));
@@ -212,6 +214,9 @@ fn build_popup_content(
     summary.set_halign(gtk4::Align::Start);
     summary.set_ellipsize(gtk4::pango::EllipsizeMode::End);
     summary.set_max_width_chars(POPUP_SUMMARY_CHARS);
+    summary.set_wrap(true);
+    summary.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
+    summary.set_lines(1);
     text_box.append(&summary);
 
     if !notif.body.is_empty() {
@@ -222,6 +227,7 @@ fn build_popup_content(
         body.set_max_width_chars(POPUP_BODY_CHARS);
         body.set_lines(POPUP_MAX_BODY_LINES);
         body.set_wrap(true);
+        body.set_wrap_mode(gtk4::pango::WrapMode::WordChar);
         text_box.append(&body);
     }
 
