@@ -102,7 +102,7 @@ fn activate_dock(
     data_home: &Rc<std::path::PathBuf>,
     sig_rx: &Rc<std::sync::mpsc::Receiver<signals::WindowCommand>>,
 ) {
-    ui::css::load_dock_css(css_path);
+    ui::css::load_dock_css(css_path, config.opacity);
     let _hold = app.hold();
 
     let state = Rc::new(RefCell::new(DockState::new(

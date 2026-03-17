@@ -49,10 +49,19 @@ window {
 
 /// Loads the dock's CSS file and applies GTK4 compatibility overrides.
 /// Returns true if the user's CSS was loaded successfully.
-pub fn load_dock_css(css_path: &Path) -> bool {
+pub fn load_dock_css(css_path: &Path, opacity: u8) -> bool {
     let result = css::load_css(css_path);
     // Apply GTK4 button overrides at higher priority so they take effect
     // after the user's style.css
     css::load_css_from_data(GTK4_COMPAT_CSS);
+
+    // Apply user-configurable opacity (overrides both user CSS and compat CSS)
+    let alpha = opacity.min(100) as f64 / 100.0;
+    let opacity_css = format!(
+        "window {{ background-color: rgba(54, 54, 79, {:.2}); }}",
+        alpha
+    );
+    css::load_css_from_data(&opacity_css);
+
     result
 }

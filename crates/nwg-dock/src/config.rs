@@ -133,6 +133,10 @@ pub struct DockConfig {
     #[arg(short = 'm', long)]
     pub multi: bool,
 
+    /// Window background opacity 0-100 (default: 100, fully opaque)
+    #[arg(long, default_value_t = 100)]
+    pub opacity: u8,
+
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, default_value = "")]
     pub wm: String,
