@@ -182,11 +182,12 @@ fn activate_drawer(
         })
     };
 
-    // Well
+    // Well — fills available width with padding (no fixed width constraint)
     let well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     well.add_css_class("section-well");
-    well.set_halign(gtk4::Align::Center);
-    well.set_width_request(ui::constants::WELL_WIDTH);
+    well.set_hexpand(true);
+    well.set_margin_start(ui::constants::WELL_SIDE_MARGIN);
+    well.set_margin_end(ui::constants::WELL_SIDE_MARGIN);
     content_box.append(&well);
 
     ui::well_builder::build_normal_well(

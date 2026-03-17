@@ -5,10 +5,10 @@
 pub const SEARCH_ENTRY_WIDTH: i32 = 500;
 
 /// Top margin above the search entry.
-pub const SEARCH_TOP_MARGIN: i32 = 40;
+pub const SEARCH_TOP_MARGIN: i32 = 24;
 
-/// Width of the main content well.
-pub const WELL_WIDTH: i32 = 900;
+/// Side margin for the main content well (left and right padding).
+pub const WELL_SIDE_MARGIN: i32 = 48;
 
 /// Maximum characters shown in an app label.
 pub const APP_NAME_MAX_CHARS: usize = 20;
@@ -23,4 +23,4 @@ pub const FILE_NAME_COLUMN_WIDTH: i32 = 250;
 pub const FILE_ICON_SIZE: i32 = 20;
 
 /// Top margin for the content area below the search bar.
-pub const CONTENT_TOP_MARGIN: i32 = 16;
+pub const CONTENT_TOP_MARGIN: i32 = 8;
