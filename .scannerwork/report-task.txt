@@ -1,6 +1,0 @@
-projectKey=nwg-dock
-serverUrl=https://sonar.aaru.network
-serverVersion=26.1.0.118079
-dashboardUrl=https://sonar.aaru.network/dashboard?id=nwg-dock
-ceTaskId=7059895f-3953-43a8-b20a-989bbed71024
-ceTaskUrl=https://sonar.aaru.network/api/ce/task?id=7059895f-3953-43a8-b20a-989bbed71024
