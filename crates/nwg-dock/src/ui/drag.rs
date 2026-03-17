@@ -135,6 +135,7 @@ pub fn setup_dock_drop_target(
                     let s = state_motion.borrow();
                     *cache = Some(create_icon_preview(&s, size));
                 }
+                // Safe: we just ensured cache is Some above
                 cache.as_ref().unwrap().clone()
             };
 
