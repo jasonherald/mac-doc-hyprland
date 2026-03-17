@@ -142,6 +142,22 @@ fn activate_drawer(
     let scrolled = gtk4::ScrolledWindow::new();
     scrolled.set_vexpand(true);
     scrolled.set_hexpand(true);
+
+    // Right-click on scrolled area → close drawer (matches Go behavior)
+    let right_click = gtk4::GestureClick::new();
+    right_click.set_button(3);
+    let win_rc = win.clone();
+    let config_rc = Rc::clone(&config);
+    right_click.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        if !config_rc.resident {
+            win_rc.close();
+        } else {
+            win_rc.set_visible(false);
+        }
+    });
+    scrolled.add_controller(right_click);
+
     main_vbox.append(&scrolled);
 
     let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
