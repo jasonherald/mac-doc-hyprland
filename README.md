@@ -1,6 +1,6 @@
 # mac-dock-hyprland
 
-A macOS-style dock, application launcher, and notification center for [Hyprland](https://hyprland.org/), written in Rust.
+A macOS-style dock, application launcher, and notification center for [Hyprland](https://hyprland.org/) and [Sway](https://swaywm.org/), written in Rust.
 
 Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [nwg-drawer](https://github.com/nwg-piotr/nwg-drawer), and [mako](https://github.com/emersion/mako) with a unified, memory-safe implementation.
 
@@ -42,7 +42,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Focused monitor** — popups appear on the currently focused monitor
 
 ### Shared (`nwg-dock-common`)
-- Compositor abstraction layer (Hyprland supported, Sway planned)
+- Compositor abstraction layer (Hyprland and Sway supported)
 - Custom IPC implementation (no external crate dependency)
 - XDG desktop entry parser with locale support
 - Icon resolution with theme fallbacks
@@ -105,6 +105,10 @@ These print the autostart entries and optional keybindings for you to add to you
 
 ```bash
 make build           # Build without installing
+make upgrade         # Rebuild + stop running instances + reinstall + restart
+make stop            # Stop all running instances
+make start           # Start dock and notification daemon
+make restart         # Stop then start
 make uninstall       # Remove all installed files
 make deps            # Install system dependencies (requires sudo)
 make clean           # Remove build artifacts
@@ -206,7 +210,7 @@ mac-dock-hyprland/
 ```
 
 - **Four crates** in a Cargo workspace
-- **52 tests** with zero clippy warnings
+- **68 tests** with zero clippy warnings
 - Type-safe enums for all configuration
 - Named constants for all UI dimensions
 - GTK4 + gtk4-layer-shell for Wayland layer surfaces
