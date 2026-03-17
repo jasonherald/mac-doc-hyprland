@@ -1,11 +1,11 @@
-use crate::config::paths::load_text_lines;
 use crate::desktop::dirs::search_desktop_dirs;
+use crate::desktop::entry::parse_desktop_file;
 use gtk4::prelude::*;
 use std::path::{Path, PathBuf};
 
 /// Resolves the icon name for an application.
 ///
-/// Searches .desktop files in the given app directories to find the Icon= field.
+/// Searches .desktop files in the given app directories to find the Icon field.
 pub fn get_icon(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
     let app_name = app_name.split(' ').next().unwrap_or(app_name);
 
@@ -14,20 +14,13 @@ pub fn get_icon(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
         return Some("gimp".to_string());
     }
 
-    // Try direct match first
     let desktop_path = find_desktop_file(app_name, app_dirs)?;
-
-    // Read the Icon= line from the .desktop file
-    let lines = load_text_lines(&desktop_path).ok()?;
-    for line in &lines {
-        if line.to_uppercase().starts_with("ICON")
-            && let Some(value) = line.split('=').nth(1)
-        {
-            return Some(value.to_string());
-        }
+    let entry = parse_desktop_file(app_name, &desktop_path).ok()?;
+    if entry.icon.is_empty() {
+        None
+    } else {
+        Some(entry.icon)
     }
-
-    None
 }
 
 /// Resolves the Exec command for an application.
@@ -39,33 +32,36 @@ pub fn get_exec(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
     };
 
     let desktop_path = find_desktop_file(app_name, app_dirs)?;
-    let lines = load_text_lines(&desktop_path).ok()?;
+    let entry = parse_desktop_file(app_name, &desktop_path).ok()?;
 
-    for line in &lines {
-        if line.to_uppercase().starts_with("EXEC=") {
-            let exec = &line[5..]; // Skip "Exec="
-            // Strip field codes like %u, %f, etc.
-            let exec = if let Some(pos) = exec.find('%') {
-                exec[..pos.saturating_sub(1)].trim()
-            } else {
-                exec.trim()
-            };
-            return Some(exec.to_string());
-        }
+    if entry.exec.is_empty() {
+        return Some(cmd.to_string());
     }
 
-    Some(cmd.to_string())
+    // Strip field codes like %u, %f, etc.
+    let exec = if let Some(pos) = entry.exec.find('%') {
+        entry.exec[..pos.saturating_sub(1)].trim().to_string()
+    } else {
+        entry.exec
+    };
+
+    Some(exec)
 }
 
 /// Resolves the display name for an application.
+///
+/// Returns the locale-aware name (e.g., Name[pl] for Polish) if available,
+/// falling back to the base Name field, then the raw app class name.
+/// Fixes: nwg-piotr/nwg-dock#56 (broken application names)
 pub fn get_name(app_name: &str, app_dirs: &[PathBuf]) -> String {
     if let Some(desktop_path) = find_desktop_file(app_name, app_dirs)
-        && let Ok(lines) = load_text_lines(&desktop_path)
+        && let Ok(entry) = parse_desktop_file(app_name, &desktop_path)
     {
-        for line in &lines {
-            if line.to_uppercase().starts_with("NAME=") {
-                return line[5..].to_string();
-            }
+        if !entry.name_loc.is_empty() {
+            return entry.name_loc;
+        }
+        if !entry.name.is_empty() {
+            return entry.name;
         }
     }
     app_name.to_string()
