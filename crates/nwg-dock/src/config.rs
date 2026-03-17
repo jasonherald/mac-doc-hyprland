@@ -58,11 +58,11 @@ pub struct DockConfig {
     pub ignore_classes: String,
 
     /// Hotspot delay in ms (smaller = faster trigger to show)
-    #[arg(long, default_value_t = 20)]
+    #[arg(long, alias = "hd", default_value_t = 20)]
     pub hotspot_delay: i64,
 
     /// Hotspot layer
-    #[arg(long, value_enum, default_value_t = Layer::Overlay)]
+    #[arg(long, alias = "hl", value_enum, default_value_t = Layer::Overlay)]
     pub hotspot_layer: Layer,
 
     /// Auto-hide timeout in ms (how long after cursor leaves before dock hides)
@@ -74,7 +74,7 @@ pub struct DockConfig {
     pub ico: String,
 
     /// Ignore running apps on these workspaces (comma-separated names/ids)
-    #[arg(long, default_value = "")]
+    #[arg(long, alias = "iw", default_value = "")]
     pub ignore_workspaces: String,
 
     /// Icon size in pixels
@@ -86,7 +86,7 @@ pub struct DockConfig {
     pub launcher_cmd: String,
 
     /// Launcher button position
-    #[arg(long, value_enum, default_value_t = Alignment::End)]
+    #[arg(long, alias = "lp", value_enum, default_value_t = Alignment::End)]
     pub launcher_pos: Alignment,
 
     /// Layer-shell layer
