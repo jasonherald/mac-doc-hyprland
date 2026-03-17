@@ -3,17 +3,190 @@ use crate::state::DockState;
 use dock_common::compositor::{Compositor, WmMonitor};
 use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Edge detection threshold in pixels from the screen bottom.
+/// Edge detection threshold in pixels from the screen edge.
 const EDGE_THRESHOLD: i32 = 2;
+
+/// Thickness of the hotspot trigger window in pixels.
+const HOTSPOT_THICKNESS: i32 = 4;
+
+/// Sets up autohide using the appropriate method for the compositor.
+///
+/// - Compositors with cursor position IPC (Hyprland): poll cursor position
+/// - Compositors without (Sway): use thin GTK layer-shell hotspot windows
+pub fn setup_autohide(
+    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    config: &DockConfig,
+    state: &Rc<RefCell<DockState>>,
+    compositor: &Rc<dyn Compositor>,
+    app: &gtk4::Application,
+    monitors: &[gtk4::gdk::Monitor],
+) {
+    if compositor.supports_cursor_position() {
+        start_cursor_poller(dock_windows, config, state, compositor);
+    } else {
+        start_hotspot_windows(dock_windows, config, state, app, monitors);
+    }
+}
+
+// =============================================================================
+// GTK hotspot approach (for Sway and other compositors without cursor IPC)
+// =============================================================================
+
+/// Creates thin layer-shell windows at the dock edge to trigger show on hover.
+/// Uses GTK4 EventControllerMotion for enter/leave detection.
+fn start_hotspot_windows(
+    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    config: &DockConfig,
+    state: &Rc<RefCell<DockState>>,
+    app: &gtk4::Application,
+    monitors: &[gtk4::gdk::Monitor],
+) {
+    let hide_timeout = config.hide_timeout;
+    let position = config.position;
+
+    // Shared hide timer state
+    let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
+
+    for (i, mon) in monitors.iter().enumerate() {
+        let dock_windows = Rc::clone(dock_windows);
+
+        // --- Create the hotspot trigger window ---
+        let hotspot = gtk4::ApplicationWindow::new(app);
+        hotspot.init_layer_shell();
+        hotspot.set_namespace(Some("mac-dock-hotspot"));
+        setup_hotspot_layer(&hotspot, position);
+        hotspot.set_monitor(Some(mon));
+
+        // Minimal content with near-zero opacity so compositor delivers input
+        let hotspot_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+        hotspot_box.add_css_class("dock-hotspot");
+        hotspot.set_child(Some(&hotspot_box));
+
+        // Load hotspot CSS once
+        static CSS_LOADED: std::sync::Once = std::sync::Once::new();
+        CSS_LOADED.call_once(|| {
+            let provider = gtk4::CssProvider::new();
+            provider.load_from_data(".dock-hotspot { background: rgba(0,0,0,0.01); }");
+            gtk4::style_context_add_provider_for_display(
+                &gtk4::gdk::Display::default().unwrap(),
+                &provider,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        });
+
+        hotspot.present();
+
+        // Hotspot enter → show dock on this monitor
+        let dock_wins_enter = Rc::clone(&dock_windows);
+        let left_at_enter = Rc::clone(&left_at);
+        let motion = gtk4::EventControllerMotion::new();
+        motion.connect_enter(move |_, _, _| {
+            let wins = dock_wins_enter.borrow();
+            if i < wins.len() {
+                log::debug!("Hotspot entered, showing dock on monitor {}", i);
+                wins[i].set_visible(true);
+            }
+            *left_at_enter.borrow_mut() = None;
+        });
+        hotspot.add_controller(motion);
+
+        // --- Attach enter/leave to the dock window ---
+        let wins = dock_windows.borrow();
+        if i < wins.len() {
+            let dock_win = &wins[i];
+
+            // Dock enter → cancel hide timer
+            let left_at_dock_enter = Rc::clone(&left_at);
+            let dock_motion = gtk4::EventControllerMotion::new();
+            dock_motion.connect_enter(move |_, _, _| {
+                *left_at_dock_enter.borrow_mut() = None;
+            });
+            dock_win.add_controller(dock_motion);
+
+            // Dock leave → start hide timer
+            let left_at_dock_leave = Rc::clone(&left_at);
+            let leave_motion = gtk4::EventControllerMotion::new();
+            leave_motion.connect_leave(move |_| {
+                *left_at_dock_leave.borrow_mut() = Some(std::time::Instant::now());
+            });
+            dock_win.add_controller(leave_motion);
+        }
+    }
+
+    // Poll the hide timer to actually hide dock windows
+    let dock_windows = Rc::clone(dock_windows);
+    let state = Rc::clone(state);
+    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        let mut left = left_at.borrow_mut();
+        if let Some(when) = *left {
+            // Don't hide while a popover menu is open or drag in progress
+            let s = state.borrow();
+            let keep_visible = s.popover_open || s.drag_source_index.is_some();
+            drop(s);
+
+            if keep_visible {
+                *left = None;
+            } else if when.elapsed().as_millis() >= hide_timeout as u128 {
+                log::debug!("Cursor left dock area, hiding (hotspot mode)");
+                for win in dock_windows.borrow().iter() {
+                    win.set_visible(false);
+                }
+                *left = None;
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+/// Configures a hotspot window as a thin strip at the dock edge.
+fn setup_hotspot_layer(win: &gtk4::ApplicationWindow, position: crate::config::Position) {
+    use crate::config::Position;
+
+    win.set_layer(gtk4_layer_shell::Layer::Overlay);
+    win.set_exclusive_zone(-1);
+    win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
+
+    match position {
+        Position::Bottom => {
+            win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Left, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Right, true);
+            win.set_size_request(-1, HOTSPOT_THICKNESS);
+        }
+        Position::Top => {
+            win.set_anchor(gtk4_layer_shell::Edge::Top, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Left, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Right, true);
+            win.set_size_request(-1, HOTSPOT_THICKNESS);
+        }
+        Position::Left => {
+            win.set_anchor(gtk4_layer_shell::Edge::Left, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Top, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
+            win.set_size_request(HOTSPOT_THICKNESS, -1);
+        }
+        Position::Right => {
+            win.set_anchor(gtk4_layer_shell::Edge::Right, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Top, true);
+            win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
+            win.set_size_request(HOTSPOT_THICKNESS, -1);
+        }
+    }
+}
+
+// =============================================================================
+// IPC cursor poller approach (for Hyprland)
+// =============================================================================
 
 /// Starts a cursor position poller that shows/hides dock windows
 /// based on whether the cursor is near the screen edge or inside the dock.
 ///
-/// Uses compositor IPC cursor tracking instead of GTK hotspot windows.
-pub fn start_cursor_poller(
+/// Uses compositor IPC cursor tracking (Hyprland `j/cursorpos`).
+fn start_cursor_poller(
     dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,

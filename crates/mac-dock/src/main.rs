@@ -148,7 +148,7 @@ fn main() {
 
         // Listeners
         if config.autohide {
-            listeners::setup_autohide(&all_windows, &config, &state, &compositor);
+            listeners::setup_autohide(&all_windows, &config, &state, &compositor, app, &monitors);
         }
         events::start_event_listener(
             Rc::clone(&state),

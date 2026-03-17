@@ -78,12 +78,14 @@ pub fn setup_signal_poller(
 }
 
 /// Sets up autohide: hides dock windows after initial show,
-/// then starts the compositor IPC cursor edge poller.
+/// then starts the appropriate autohide mechanism for the compositor.
 pub fn setup_autohide(
     all_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     compositor: &Rc<dyn Compositor>,
+    app: &gtk4::Application,
+    monitors: &[gtk4::gdk::Monitor],
 ) {
     for win in all_windows.borrow().iter() {
         let win_hide = win.clone();
@@ -92,5 +94,5 @@ pub fn setup_autohide(
         });
     }
 
-    crate::ui::hotspot::start_cursor_poller(all_windows, config, state, compositor);
+    crate::ui::hotspot::setup_autohide(all_windows, config, state, compositor, app, monitors);
 }
