@@ -83,6 +83,15 @@ pub fn clean_exec(exec: &str) -> String {
     }
 }
 
+/// Prepends GTK_THEME= to a command if force-theme is enabled.
+pub fn prepend_theme(cmd: &str, theme_prefix: &str) -> String {
+    if theme_prefix.is_empty() {
+        cmd.to_string()
+    } else {
+        format!("{} {}", theme_prefix, cmd)
+    }
+}
+
 /// Truncates a string to max chars, appending ellipsis if needed.
 pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() > max {

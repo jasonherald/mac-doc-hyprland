@@ -136,6 +136,10 @@ pub struct DrawerConfig {
     #[arg(long)]
     pub close: bool,
 
+    /// Force GTK theme for libadwaita apps (prepends GTK_THEME= to launch commands)
+    #[arg(long)]
+    pub force_theme: bool,
+
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, default_value = "")]
     pub wm: String,

@@ -97,17 +97,19 @@ fn flow_box_button(
     let term_cmd = config.term.clone();
     let on_launch_click = Rc::clone(&on_launch);
     let compositor = Rc::clone(&state.borrow().compositor);
+    let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
         let clean = widgets::clean_exec(&exec);
         if !clean.is_empty() {
+            let cmd = widgets::prepend_theme(&clean, &theme_prefix);
             if terminal {
                 nwg_dock_common::launch::launch_terminal_via_compositor(
-                    &clean,
+                    &cmd,
                     &term_cmd,
                     &*compositor,
                 );
             } else {
-                nwg_dock_common::launch::launch_via_compositor(&clean, &*compositor);
+                nwg_dock_common::launch::launch_via_compositor(&cmd, &*compositor);
             }
             on_launch_click();
         }

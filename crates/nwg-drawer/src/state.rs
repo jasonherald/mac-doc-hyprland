@@ -38,6 +38,8 @@ pub struct DrawerState {
     pub exclusions: Vec<String>,
     /// Custom file associations (pattern → command).
     pub preferred_apps: HashMap<String, String>,
+    /// GTK_THEME prefix for launched commands (from --force-theme flag).
+    pub gtk_theme_prefix: String,
     /// Compositor backend for launching apps.
     pub compositor: Rc<dyn Compositor>,
 }
@@ -51,6 +53,7 @@ impl DrawerState {
             user_dirs: map_xdg_user_dirs(),
             exclusions: Vec::new(),
             preferred_apps: HashMap::new(),
+            gtk_theme_prefix: String::new(),
             compositor,
         }
     }

@@ -94,9 +94,11 @@ fn create_pinned_button(
     let term = config.term.clone();
     let on_launch_ref = Rc::clone(on_launch);
     let compositor = Rc::clone(&state.borrow().compositor);
+    let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
         let clean = widgets::clean_exec(&exec);
         if !clean.is_empty() {
+            let clean = widgets::prepend_theme(&clean, &theme_prefix);
             if terminal {
                 nwg_dock_common::launch::launch_terminal_via_compositor(
                     &clean,
