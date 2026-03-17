@@ -31,6 +31,26 @@ fn main() {
         env_logger::init();
     }
 
+    // Handle --open/--close: send signal to running instance and exit
+    if config.open || config.close {
+        if let Some(pid) = singleton::find_running_pid("mac-drawer") {
+            let sig = if config.open {
+                signals::sig_show()
+            } else {
+                signals::sig_hide()
+            };
+            signals::send_signal_to_pid(pid, sig);
+            log::info!(
+                "Sent {} signal to running instance (pid {})",
+                if config.open { "show" } else { "hide" },
+                pid
+            );
+        } else {
+            log::warn!("No running drawer instance found");
+        }
+        std::process::exit(0);
+    }
+
     let _lock = match singleton::acquire_lock("mac-drawer") {
         Ok(lock) => lock,
         Err(existing_pid) => {

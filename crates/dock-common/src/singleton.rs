@@ -53,6 +53,22 @@ impl Drop for LockFile {
     }
 }
 
+/// Finds the PID of a running instance (if any) without acquiring the lock.
+pub fn find_running_pid(app_name: &str) -> Option<u32> {
+    let user = std::env::var("USER").unwrap_or_default();
+    let user_hash = md5_hash(&user);
+    let lock_path = temp_dir().join(format!("{}-{}.lock", app_name, user_hash));
+
+    let content = fs::read_to_string(&lock_path).ok()?;
+    let pid: u32 = content.trim().parse().ok()?;
+    let proc_path = format!("/proc/{}", pid);
+    if Path::new(&proc_path).exists() {
+        Some(pid)
+    } else {
+        None
+    }
+}
+
 /// Simple MD5 hash of a string, returned as hex.
 fn md5_hash(text: &str) -> String {
     // Minimal MD5 implementation to avoid adding a dependency.

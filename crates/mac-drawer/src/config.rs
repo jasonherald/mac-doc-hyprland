@@ -128,6 +128,14 @@ pub struct DrawerConfig {
     #[arg(long, value_enum, default_value_t = CloseButton::None)]
     pub closebtn: CloseButton,
 
+    /// Open a running resident instance
+    #[arg(long)]
+    pub open: bool,
+
+    /// Close a running resident instance
+    #[arg(long)]
+    pub close: bool,
+
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, default_value = "")]
     pub wm: String,
