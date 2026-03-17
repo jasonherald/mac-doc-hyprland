@@ -3,8 +3,8 @@ use std::path::PathBuf;
 /// Unified error type for dock-common operations.
 #[derive(Debug, thiserror::Error)]
 pub enum DockError {
-    #[error("Hyprland IPC error: {0}")]
-    HyprlandIpc(#[from] std::io::Error),
+    #[error("compositor IPC error: {0}")]
+    Ipc(#[from] std::io::Error),
 
     #[error("JSON parse error: {0}")]
     Json(#[from] serde_json::Error),

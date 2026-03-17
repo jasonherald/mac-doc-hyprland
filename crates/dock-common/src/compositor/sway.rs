@@ -60,7 +60,18 @@ impl Compositor for SwayBackend {
             id: 0,
             name: String::new(),
         };
-        collect_windows_with_context(&tree, &mut clients, &default_ws, 0);
+        // Enumerate root-level outputs to track monitor index
+        let mut output_idx: i32 = 0;
+        if let Some(nodes) = tree.get("nodes").and_then(|v| v.as_array()) {
+            for child in nodes {
+                let node_type = child.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let name = child.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                if node_type == "output" && !name.starts_with("__") {
+                    collect_windows_with_context(child, &mut clients, &default_ws, output_idx);
+                    output_idx += 1;
+                }
+            }
+        }
         Ok(clients)
     }
 
@@ -79,7 +90,7 @@ impl Compositor for SwayBackend {
         let reply = self.command(MSG_GET_TREE, &[])?;
         let tree: serde_json::Value = serde_json::from_slice(&reply)?;
         find_focused_window(&tree).ok_or_else(|| {
-            DockError::HyprlandIpc(std::io::Error::new(
+            DockError::Ipc(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 "no focused window",
             ))
@@ -137,7 +148,7 @@ impl Compositor for SwayBackend {
         // Check subscription success
         let result: serde_json::Value = serde_json::from_slice(&reply)?;
         if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
-            return Err(DockError::HyprlandIpc(std::io::Error::other(
+            return Err(DockError::Ipc(std::io::Error::other(
                 "Sway event subscription failed",
             )));
         }
@@ -157,7 +168,7 @@ impl WmEventStream for SwayEventStream {
     fn next_event(&mut self) -> std::result::Result<WmEvent, std::io::Error> {
         loop {
             let body = read_response(&mut self.conn).map_err(|e| match e {
-                DockError::HyprlandIpc(io) => io,
+                DockError::Ipc(io) => io,
                 other => std::io::Error::other(other.to_string()),
             })?;
             let event: serde_json::Value = serde_json::from_slice(&body)
@@ -201,7 +212,7 @@ fn read_response(conn: &mut UnixStream) -> Result<Vec<u8>> {
 
     // Validate magic
     if &header[..6] != I3_IPC_MAGIC {
-        return Err(DockError::HyprlandIpc(std::io::Error::new(
+        return Err(DockError::Ipc(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "invalid i3-ipc magic in response",
         )));
@@ -645,6 +656,92 @@ mod tests {
         };
         collect_windows_with_context(&tree, &mut clients, &ws, 0);
         assert!(clients.is_empty());
+    }
+
+    #[test]
+    fn multi_monitor_assigns_correct_output_ids() {
+        let tree = serde_json::json!({
+            "type": "root",
+            "nodes": [
+                {
+                    "type": "output",
+                    "name": "__i3",
+                    "nodes": [],
+                    "floating_nodes": []
+                },
+                {
+                    "type": "output",
+                    "name": "DP-1",
+                    "nodes": [{
+                        "type": "workspace",
+                        "name": "1",
+                        "num": 1,
+                        "nodes": [{
+                            "type": "con",
+                            "id": 10,
+                            "name": "App on DP-1",
+                            "app_id": "app1",
+                            "pid": 100,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    }],
+                    "floating_nodes": []
+                },
+                {
+                    "type": "output",
+                    "name": "HDMI-1",
+                    "nodes": [{
+                        "type": "workspace",
+                        "name": "2",
+                        "num": 2,
+                        "nodes": [{
+                            "type": "con",
+                            "id": 20,
+                            "name": "App on HDMI-1",
+                            "app_id": "app2",
+                            "pid": 200,
+                            "focused": false,
+                            "fullscreen_mode": 0,
+                            "nodes": [],
+                            "floating_nodes": []
+                        }],
+                        "floating_nodes": []
+                    }],
+                    "floating_nodes": []
+                }
+            ],
+            "floating_nodes": []
+        });
+
+        // Simulate list_clients() root-level enumeration
+        let mut clients = Vec::new();
+        let default_ws = WmWorkspace {
+            id: 0,
+            name: String::new(),
+        };
+        let mut output_idx: i32 = 0;
+        if let Some(nodes) = tree.get("nodes").and_then(|v| v.as_array()) {
+            for child in nodes {
+                let node_type = child.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                let name = child.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                if node_type == "output" && !name.starts_with("__") {
+                    collect_windows_with_context(child, &mut clients, &default_ws, output_idx);
+                    output_idx += 1;
+                }
+            }
+        }
+
+        assert_eq!(clients.len(), 2);
+        assert_eq!(clients[0].class, "app1");
+        assert_eq!(clients[0].monitor_id, 0); // DP-1 = first real output
+        assert_eq!(clients[0].workspace.name, "1");
+        assert_eq!(clients[1].class, "app2");
+        assert_eq!(clients[1].monitor_id, 1); // HDMI-1 = second real output
+        assert_eq!(clients[1].workspace.name, "2");
     }
 
     #[test]

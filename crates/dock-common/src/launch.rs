@@ -12,26 +12,6 @@ pub fn launch(app_id: &str, app_dirs: &[PathBuf]) {
     launch_command(&command);
 }
 
-/// Launches a command string via `hyprctl dispatch exec`.
-///
-/// This is the preferred method for Hyprland — it ensures proper
-/// window tracking, workspace assignment, and process isolation.
-pub fn launch_hyprctl(command: &str) {
-    let command = command.replace('"', "");
-    if command.trim().is_empty() {
-        log::error!("Empty command to launch");
-        return;
-    }
-    log::info!("Launching via hyprctl: {}", command);
-    let _ = crate::hyprland::ipc::hyprctl(&format!("dispatch exec {}", command));
-}
-
-/// Launches a command string via `hyprctl dispatch exec` with terminal wrapping.
-pub fn launch_hyprctl_terminal(command: &str, term: &str) {
-    let full = format!("{} -e {}", term, command);
-    launch_hyprctl(&full);
-}
-
 /// Launches a command via the compositor's exec mechanism.
 pub fn launch_via_compositor(command: &str, compositor: &dyn Compositor) {
     let command = command.replace('"', "");
