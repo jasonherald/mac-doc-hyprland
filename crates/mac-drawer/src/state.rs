@@ -1,6 +1,8 @@
+use dock_common::compositor::Compositor;
 use dock_common::desktop::entry::DesktopEntry;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::rc::Rc;
 
 /// Desktop application registry — loaded from .desktop files.
 pub struct AppRegistry {
@@ -36,10 +38,12 @@ pub struct DrawerState {
     pub exclusions: Vec<String>,
     /// Custom file associations (pattern → command).
     pub preferred_apps: HashMap<String, String>,
+    /// Compositor backend for launching apps.
+    pub compositor: Rc<dyn Compositor>,
 }
 
 impl DrawerState {
-    pub fn new(app_dirs: Vec<PathBuf>) -> Self {
+    pub fn new(app_dirs: Vec<PathBuf>, compositor: Rc<dyn Compositor>) -> Self {
         Self {
             apps: AppRegistry::new(),
             pinned: Vec::new(),
@@ -47,6 +51,7 @@ impl DrawerState {
             user_dirs: map_xdg_user_dirs(),
             exclusions: Vec::new(),
             preferred_apps: HashMap::new(),
+            compositor,
         }
     }
 }

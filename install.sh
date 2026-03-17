@@ -1,5 +1,5 @@
 #!/bin/bash
-# Install all mac-dock-hyprland binaries to ~/.cargo/bin/
+# Install all nwg binaries to ~/.cargo/bin/
 set -e
 
 echo "Building and installing..."
@@ -9,10 +9,10 @@ cargo install --path crates/mac-notifications --force
 
 echo ""
 echo "Installed:"
-echo "  $(which nwg-dock-hyprland-rs)"
-echo "  $(which nwg-drawer-rs)"
-echo "  $(which mac-notifications-rs)"
+echo "  $(which nwg-dock-hyprland)"
+echo "  $(which nwg-drawer)"
+echo "  $(which nwg-notifications)"
 echo ""
 echo "Add to ~/.config/hypr/autostart.conf:"
-echo "  exec-once = uwsm-app -- nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400"
-echo "  exec-once = uwsm-app -- mac-notifications-rs --persist"
+echo "  exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400"
+echo "  exec-once = uwsm-app -- nwg-notifications --persist"

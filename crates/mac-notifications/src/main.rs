@@ -40,6 +40,27 @@ fn main() {
         }
     };
 
+    let wm_override = if config.wm.is_empty() {
+        None
+    } else {
+        Some(config.wm.as_str())
+    };
+    let compositor_kind = match dock_common::compositor::detect(wm_override) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    let compositor: Rc<dyn dock_common::compositor::Compositor> =
+        match dock_common::compositor::create(compositor_kind) {
+            Ok(c) => Rc::from(c),
+            Err(e) => {
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        };
+
     // Signal listener — BEFORE GTK, same pattern as the dock
     let sig_rx = listeners::start_signal_listener();
 
@@ -100,17 +121,24 @@ fn main() {
             app,
             &config,
             Rc::clone(&on_state_change),
+            Rc::clone(&compositor),
         )));
 
         // Panel
         let state_panel_click = Rc::clone(&state);
+        let compositor_panel = Rc::clone(&compositor);
         let on_panel_click: Rc<dyn Fn(u32)> = Rc::new(move |id| {
             let s = state_panel_click.borrow();
             if let Some(notif) = s.history.iter().find(|n| n.id == id) {
                 let app_name = notif.app_name.clone();
                 let desktop_entry = notif.desktop_entry.clone();
                 drop(s);
-                ui::popup::focus_app(&app_name, desktop_entry.as_deref(), &state_panel_click);
+                ui::popup::focus_app(
+                    &app_name,
+                    desktop_entry.as_deref(),
+                    &state_panel_click,
+                    &*compositor_panel,
+                );
                 state_panel_click.borrow_mut().mark_read(id);
             }
         });
@@ -159,7 +187,9 @@ fn main() {
         // Poll signal receiver on GTK main thread
         listeners::poll_signals(&sig_rx, &panel, &state, &on_state_change, &dnd_menu);
 
-        log::info!("Notification daemon started (panel: SIGRTMIN+4, DND: SIGRTMIN+5, menu: SIGRTMIN+6)");
+        log::info!(
+            "Notification daemon started (panel: SIGRTMIN+4, DND: SIGRTMIN+5, menu: SIGRTMIN+6)"
+        );
     });
 
     app.run_with_args::<String>(&[]);

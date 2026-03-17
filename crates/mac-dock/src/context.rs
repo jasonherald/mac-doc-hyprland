@@ -1,5 +1,6 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
+use dock_common::compositor::Compositor;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -13,4 +14,5 @@ pub struct DockContext {
     pub data_home: Rc<PathBuf>,
     pub pinned_file: Rc<PathBuf>,
     pub rebuild: Rc<dyn Fn()>,
+    pub compositor: Rc<dyn Compositor>,
 }

@@ -208,7 +208,7 @@ fn handle_capabilities(invocation: gio::DBusMethodInvocation) {
 }
 
 fn handle_server_info(invocation: gio::DBusMethodInvocation) {
-    let info = ("mac-notifications", "mac-dock-hyprland", "0.1.0", "1.2");
+    let info = ("nwg-notifications", "nwg-dock-hyprland", "0.1.0", "1.2");
     let variant = glib::Variant::from(info);
     invocation.return_value(Some(&variant));
 }

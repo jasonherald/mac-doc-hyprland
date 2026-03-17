@@ -120,19 +120,19 @@ impl DndMenu {
 
         if is_dnd {
             // Show remaining time if timed DND is active
-            if let Some(expiry) = self.state.borrow().dnd_expires {
-                if let Ok(remaining) = expiry.duration_since(std::time::SystemTime::now()) {
-                    let mins = remaining.as_secs() / 60;
-                    let text = if mins >= 60 {
-                        format!("Expires in {}h {}m", mins / 60, mins % 60)
-                    } else {
-                        format!("Expires in {}m", mins.max(1))
-                    };
-                    let label = gtk4::Label::new(Some(&text));
-                    label.add_css_class("dnd-menu-expires");
-                    label.set_margin_top(2);
-                    vbox.append(&label);
-                }
+            if let Some(expiry) = self.state.borrow().dnd_expires
+                && let Ok(remaining) = expiry.duration_since(std::time::SystemTime::now())
+            {
+                let mins = remaining.as_secs() / 60;
+                let text = if mins >= 60 {
+                    format!("Expires in {}h {}m", mins / 60, mins % 60)
+                } else {
+                    format!("Expires in {}m", mins.max(1))
+                };
+                let label = gtk4::Label::new(Some(&text));
+                label.add_css_class("dnd-menu-expires");
+                label.set_margin_top(2);
+                vbox.append(&label);
             }
         } else {
             // Timed options
@@ -152,8 +152,8 @@ impl DndMenu {
                 let bd_btn = self.backdrop.clone();
                 btn.connect_clicked(move |_| {
                     state_btn.borrow_mut().dnd = true;
-                    let expiry = std::time::SystemTime::now()
-                        + std::time::Duration::from_secs(minutes * 60);
+                    let expiry =
+                        std::time::SystemTime::now() + std::time::Duration::from_secs(minutes * 60);
                     state_btn.borrow_mut().dnd_expires = Some(expiry);
                     log::info!("DND enabled for {} minutes", minutes);
 

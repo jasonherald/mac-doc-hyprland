@@ -9,9 +9,9 @@ pub enum PopupPosition {
     BottomLeft,
 }
 
-/// A macOS-style notification daemon for Hyprland.
+/// A macOS-style notification daemon for Hyprland/Sway.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "mac-notifications", version, about)]
+#[command(name = "nwg-notifications", version, about)]
 pub struct NotificationConfig {
     /// Popup display position
     #[arg(long, value_enum, default_value_t = PopupPosition::TopRight)]
@@ -40,6 +40,10 @@ pub struct NotificationConfig {
     /// Turn on debug messages
     #[arg(long)]
     pub debug: bool,
+
+    /// Window manager override (auto-detected from environment if not specified)
+    #[arg(long, default_value = "")]
+    pub wm: String,
 }
 
 #[cfg(test)]

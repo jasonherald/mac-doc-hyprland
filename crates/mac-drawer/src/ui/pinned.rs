@@ -50,13 +50,18 @@ pub fn build_pinned_flow_box(
         let terminal = entry.terminal;
         let term = config.term.clone();
         let on_launch_ref = Rc::clone(&on_launch);
+        let compositor = Rc::clone(&state.borrow().compositor);
         button.connect_clicked(move |_| {
             let clean = widgets::clean_exec(&exec);
             if !clean.is_empty() {
                 if terminal {
-                    dock_common::launch::launch_hyprctl_terminal(&clean, &term);
+                    dock_common::launch::launch_terminal_via_compositor(
+                        &clean,
+                        &term,
+                        &*compositor,
+                    );
                 } else {
-                    dock_common::launch::launch_hyprctl(&clean);
+                    dock_common::launch::launch_via_compositor(&clean, &*compositor);
                 }
             }
             on_launch_ref();

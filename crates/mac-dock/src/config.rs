@@ -25,9 +25,9 @@ pub enum Layer {
     Bottom,
 }
 
-/// A macOS-style dock for Hyprland.
+/// A macOS-style dock for Hyprland/Sway.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "mac-dock", version, about)]
+#[command(name = "nwg-dock-hyprland", version, about)]
 pub struct DockConfig {
     /// Alignment in full width/height
     #[arg(short = 'a', long, value_enum, default_value_t = Alignment::Center)]
@@ -82,7 +82,7 @@ pub struct DockConfig {
     pub icon_size: i32,
 
     /// Command assigned to the launcher button
-    #[arg(short = 'c', long, default_value = "nwg-drawer-rs")]
+    #[arg(short = 'c', long, default_value = "nwg-drawer")]
     pub launcher_cmd: String,
 
     /// Launcher button position
@@ -132,6 +132,10 @@ pub struct DockConfig {
     /// Allow multiple instances of the dock
     #[arg(short = 'm', long)]
     pub multi: bool,
+
+    /// Window manager override (auto-detected from environment if not specified)
+    #[arg(long, default_value = "")]
+    pub wm: String,
 }
 
 impl DockConfig {

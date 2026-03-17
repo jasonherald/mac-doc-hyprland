@@ -1,8 +1,8 @@
 use clap::{Parser, ValueEnum};
 
-/// A macOS-style application drawer/launcher for Hyprland.
+/// A macOS-style application drawer/launcher for Hyprland/Sway.
 #[derive(Parser, Debug, Clone)]
-#[command(name = "mac-drawer", version, about)]
+#[command(name = "nwg-drawer", version, about)]
 pub struct DrawerConfig {
     /// CSS file name
     #[arg(short = 's', long, default_value = "drawer.css")]
@@ -127,6 +127,10 @@ pub struct DrawerConfig {
     /// Close button position
     #[arg(long, value_enum, default_value_t = CloseButton::None)]
     pub closebtn: CloseButton,
+
+    /// Window manager override (auto-detected from environment if not specified)
+    #[arg(long, default_value = "")]
+    pub wm: String,
 }
 
 /// Close button position in the drawer.

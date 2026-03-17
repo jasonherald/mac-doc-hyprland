@@ -1,5 +1,6 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
+use dock_common::compositor::Compositor;
 use dock_common::signals::WindowCommand;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -77,11 +78,12 @@ pub fn setup_signal_poller(
 }
 
 /// Sets up autohide: hides dock windows after initial show,
-/// then starts the Hyprland IPC cursor edge poller.
+/// then starts the compositor IPC cursor edge poller.
 pub fn setup_autohide(
     all_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
+    compositor: &Rc<dyn Compositor>,
 ) {
     for win in all_windows.borrow().iter() {
         let win_hide = win.clone();
@@ -90,5 +92,5 @@ pub fn setup_autohide(
         });
     }
 
-    crate::ui::hotspot::start_cursor_poller(all_windows, config, state);
+    crate::ui::hotspot::start_cursor_poller(all_windows, config, state, compositor);
 }

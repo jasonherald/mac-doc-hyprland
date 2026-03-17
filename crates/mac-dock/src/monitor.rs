@@ -5,9 +5,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-/// Maps Hyprland output names to GDK monitors.
+/// Maps compositor output names to GDK monitors.
 ///
-/// Uses the Hyprland monitor list (by index) to match against GDK monitors.
+/// Uses the compositor monitor list (by index) to match against GDK monitors.
 pub fn map_outputs(state: &Rc<RefCell<DockState>>) -> HashMap<String, gdk::Monitor> {
     let mut result = HashMap::new();
 
@@ -25,13 +25,13 @@ pub fn map_outputs(state: &Rc<RefCell<DockState>>) -> HashMap<String, gdk::Monit
     };
 
     let monitors = display.monitors();
-    let hypr_monitors = state.borrow().monitors.clone();
+    let wm_monitors = state.borrow().monitors.clone();
 
-    for (i, hypr_mon) in hypr_monitors.iter().enumerate() {
+    for (i, wm_mon) in wm_monitors.iter().enumerate() {
         if let Some(item) = monitors.item(i as u32)
             && let Ok(mon) = item.downcast::<gdk::Monitor>()
         {
-            result.insert(hypr_mon.name.clone(), mon);
+            result.insert(wm_mon.name.clone(), mon);
         }
     }
 

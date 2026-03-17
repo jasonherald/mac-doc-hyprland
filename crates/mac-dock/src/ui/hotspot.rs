@@ -1,7 +1,6 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
-use dock_common::hyprland::ipc;
-use dock_common::hyprland::types::HyprMonitor;
+use dock_common::compositor::{Compositor, WmMonitor};
 use gtk4::glib;
 use gtk4::prelude::*;
 use std::cell::RefCell;
@@ -13,27 +12,29 @@ const EDGE_THRESHOLD: i32 = 2;
 /// Starts a cursor position poller that shows/hides dock windows
 /// based on whether the cursor is near the screen edge or inside the dock.
 ///
-/// Uses Hyprland IPC cursor tracking instead of GTK hotspot windows.
+/// Uses compositor IPC cursor tracking instead of GTK hotspot windows.
 pub fn start_cursor_poller(
     dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
+    compositor: &Rc<dyn Compositor>,
 ) {
     let windows = Rc::clone(dock_windows);
     let position = config.position;
     let hide_timeout = config.hide_timeout;
     let state = Rc::clone(state);
+    let compositor = Rc::clone(compositor);
     // Track when cursor last left the dock area (for hide delay)
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
     // Cache monitors — they rarely change during a session
-    let cached_monitors: Rc<RefCell<Vec<HyprMonitor>>> =
-        Rc::new(RefCell::new(ipc::list_monitors().unwrap_or_default()));
+    let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> =
+        Rc::new(RefCell::new(compositor.list_monitors().unwrap_or_default()));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
 
     glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
-        let cursor = match get_cursor_pos() {
-            Some(c) => c,
+        let cursor = match compositor.get_cursor_position() {
+            Some((x, y)) => CursorPos { x, y },
             None => return glib::ControlFlow::Continue,
         };
 
@@ -43,7 +44,7 @@ pub fn start_cursor_poller(
             *count += 1;
             if *count >= 50 {
                 *count = 0;
-                if let Ok(m) = ipc::list_monitors() {
+                if let Ok(m) = compositor.list_monitors() {
                     *cached_monitors.borrow_mut() = m;
                 }
             }
@@ -66,7 +67,7 @@ pub fn start_cursor_poller(
             }
         } else {
             // Dock is visible — check if cursor is inside dock area or at edge
-            let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows);
+            let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows, &monitors);
             let at_edge = is_cursor_at_edge(&cursor, &monitors, position);
 
             // Don't hide while a popover menu is open or a drag is in progress
@@ -113,18 +114,9 @@ struct CursorPos {
     y: i32,
 }
 
-fn get_cursor_pos() -> Option<CursorPos> {
-    let reply = ipc::hyprctl("j/cursorpos").ok()?;
-    let val: serde_json::Value = serde_json::from_slice(&reply).ok()?;
-    Some(CursorPos {
-        x: val.get("x")?.as_i64()? as i32,
-        y: val.get("y")?.as_i64()? as i32,
-    })
-}
-
 fn is_cursor_at_edge(
     cursor: &CursorPos,
-    monitors: &[HyprMonitor],
+    monitors: &[WmMonitor],
     position: crate::config::Position,
 ) -> bool {
     for mon in monitors {
@@ -148,7 +140,7 @@ fn is_cursor_at_edge(
     false
 }
 
-fn find_cursor_monitor(cursor: &CursorPos, monitors: &[HyprMonitor]) -> Option<usize> {
+fn find_cursor_monitor(cursor: &CursorPos, monitors: &[WmMonitor]) -> Option<usize> {
     for (i, mon) in monitors.iter().enumerate() {
         let in_x = cursor.x >= mon.x && cursor.x < mon.x + mon.width;
         let in_y = cursor.y >= mon.y && cursor.y < mon.y + mon.height;
@@ -160,31 +152,25 @@ fn find_cursor_monitor(cursor: &CursorPos, monitors: &[HyprMonitor]) -> Option<u
 }
 
 /// Checks if the cursor is within the bounds of any visible dock window.
-/// Uses the window's allocated size and its monitor's position to compute bounds.
+/// Uses the window's allocated size and monitor positions to compute bounds.
 fn is_cursor_in_visible_dock(
     cursor: &CursorPos,
     windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    monitors: &[WmMonitor],
 ) -> bool {
     let wins = windows.borrow();
     for win in wins.iter() {
         if !win.is_visible() {
             continue;
         }
-        // Get the layer surface geometry from Hyprland
-        // Fall back to a generous check based on monitor bottom area
         let w = win.width();
         let h = win.height();
         if w == 0 || h == 0 {
             continue;
         }
 
-        // The dock is centered at the bottom of its monitor.
-        // We need the monitor's geometry to compute absolute position.
-        // Use the surface allocation as an approximation.
-        if win.surface().is_some()
-            && let Ok(monitors) = ipc::list_monitors()
-        {
-            for mon in &monitors {
+        if win.surface().is_some() {
+            for mon in monitors {
                 // Check if this window is on this monitor
                 // (dock centered at bottom of monitor)
                 let dock_x = mon.x + (mon.width - w) / 2;

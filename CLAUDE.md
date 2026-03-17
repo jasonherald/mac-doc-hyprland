@@ -2,14 +2,14 @@
 
 ## What is this?
 
-A macOS-style dock, app drawer, and notification center for Hyprland, written in Rust. Ported from Go (nwg-dock-hyprland + nwg-drawer) with enhancements: multi-monitor, shared pin state, Hyprland IPC cursor tracking, Launchpad-style drawer, and a full notification daemon replacing mako.
+A macOS-style dock, app drawer, and notification center for Hyprland (Sway support coming), written in Rust. Ported from Go (nwg-dock-hyprland + nwg-drawer) with enhancements: multi-monitor, shared pin state, compositor-abstracted IPC, Launchpad-style drawer, and a full notification daemon replacing mako.
 
 ## Build & test
 
 ```bash
 cargo build                    # Debug build
 cargo build --release          # Release build
-cargo test --workspace         # Run all 52 tests
+cargo test --workspace         # Run all tests
 cargo clippy --all-targets     # Lint (should be zero warnings)
 cargo fmt --all                # Format
 ```
@@ -26,13 +26,16 @@ cargo install --path crates/mac-notifications
 
 ```bash
 # Dock with auto-hide
-nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
+nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
 
 # Drawer
-nwg-drawer-rs
+nwg-drawer
 
 # Notification daemon with persistence
-mac-notifications-rs --persist
+nwg-notifications --persist
+
+# Override compositor detection (auto-detects from env vars)
+nwg-dock-hyprland --wm hyprland
 ```
 
 ## Architecture
@@ -40,31 +43,32 @@ mac-notifications-rs --persist
 Four crates in a Cargo workspace:
 
 - **dock-common** — shared library (no GTK dependency in types/IPC)
-  - `hyprland/` — IPC socket, event stream, types
+  - `compositor/` — trait-based compositor abstraction (Hyprland backend, Sway planned)
+  - `hyprland/` — Hyprland IPC socket, event stream, types (internal to compositor backend)
   - `desktop/` — .desktop parser, icon resolution, categories, preferred-apps
   - `config/` — XDG paths, CSS loading
   - `pinning.rs`, `launch.rs`, `singleton.rs`, `signals.rs`
 
-- **mac-dock** — dock binary
+- **mac-dock** — dock binary (`nwg-dock-hyprland`)
   - `main.rs` — thin coordinator (~130 lines)
   - `config.rs` — clap CLI with Position/Alignment/Layer enums
-  - `context.rs` — DockContext bundles shared refs
+  - `context.rs` — DockContext bundles shared refs + compositor
   - `dock_windows.rs` — per-monitor window creation
   - `rebuild.rs` — self-referential rebuild function (uses Weak to avoid Rc cycle)
   - `listeners.rs` — pin watcher, signal poller, autohide
-  - `events.rs` — Hyprland event stream → smart rebuild
+  - `events.rs` — compositor event stream → smart rebuild
   - `ui/` — window, dock_box, buttons, menus, hotspot (cursor poller), drag, dock_menu, css
 
-- **mac-drawer** — drawer binary
+- **mac-drawer** — drawer binary (`nwg-drawer`)
   - `main.rs` — coordinator (~185 lines)
   - `config.rs` — clap CLI with CloseButton enum
-  - `state.rs` — DrawerState with AppRegistry sub-struct
+  - `state.rs` — DrawerState with AppRegistry sub-struct + compositor
   - `desktop_loader.rs` — scans .desktop files, multi-category assignment
   - `listeners.rs` — keyboard, focus detector, file watcher, signals
   - `ui/` — well_builder, search_handler, app_grid, pinned, file_search, widgets, math, power_bar, search, window
   - `assets/drawer.css` — embedded via include_str!()
 
-- **mac-notifications** — notification daemon
+- **mac-notifications** — notification daemon (`nwg-notifications`)
   - `main.rs` — coordinator (~160 lines)
   - `config.rs` — clap CLI with PopupPosition enum
   - `notification.rs` — Notification struct, Urgency enum, action parsing
@@ -80,13 +84,24 @@ Four crates in a Cargo workspace:
 
 - **Enums over strings** — Position, Alignment, Layer, CloseButton, PopupPosition, Urgency are all `clap::ValueEnum` or repr enums
 - **Named constants** — all UI dimensions in `ui/constants.rs`
-- **DockContext** — bundles config/state/data_home/pinned_file/rebuild for clean function signatures
+- **DockContext** — bundles config/state/data_home/pinned_file/rebuild/compositor for clean function signatures
+- **Compositor trait** — all WM IPC goes through `dyn Compositor` (dock-common/src/compositor/traits.rs), never direct hyprland calls from binaries
 - **No `#[allow(dead_code)]`** — all code is used
 - **No magic numbers** — every numeric literal has a named constant or clear inline comment
 - **Error handling** — log errors, never silently discard with `let _ =` (except optional wl-copy)
 - **Unsafe** — only in signals.rs / listeners.rs (required for RT signal handling via raw libc), documented with SAFETY comments
 - **Tests** — `#[cfg(test)] mod tests` at bottom of file, test behavior not implementation
 - **Shared icon resolution** — `ui/icons.rs` module with `resolve_popup_icon` (pixbuf) and `resolve_theme_icon` (theme-only, avoids glycin crashes)
+
+## Compositor abstraction
+
+All compositor IPC goes through the `Compositor` trait in `dock-common/src/compositor/`. Auto-detection checks `HYPRLAND_INSTANCE_SIGNATURE` and `SWAYSOCK` env vars. Override with `--wm hyprland` or `--wm sway`.
+
+Key types: `WmClient`, `WmMonitor`, `WmWorkspace`, `WmEvent` (compositor-neutral).
+
+Backends:
+- `compositor/hyprland.rs` — wraps `hyprland/ipc.rs`, converts Hyprland types to Wm types
+- `compositor/sway.rs` — planned (Phase B)
 
 ## Signal assignments
 
@@ -120,7 +135,7 @@ Shared helper: `ui::widgets::app_icon_button()`
 The dock rebuild function needs to pass itself to buttons (for pin/unpin rebuild). Uses `Weak` reference to avoid Rc cycle. See `rebuild.rs`.
 
 ### Cursor-based autohide
-Replaced GTK hotspot windows with Hyprland IPC `j/cursorpos` polling. Cached monitor list refreshed every ~10s. See `ui/hotspot.rs`.
+Uses compositor IPC cursor position polling (Hyprland `j/cursorpos`). Cached monitor list refreshed every ~10s. See `ui/hotspot.rs`. Sway will use GTK hotspot windows since it lacks cursor position IPC.
 
 ### Drag-to-reorder
 GTK4 DragSource on each pinned button (including running apps), single DropTarget on the dock box. Cursor poller tracks `drag_outside_dock` state for unpin-by-drag-off. Preview icon cached to avoid glycin reentrancy crashes. Rebuilds deferred via `idle_add_local_once`. Lock state persisted in `~/.cache/mac-dock-locked`. See `ui/drag.rs`, `ui/dock_menu.rs`.

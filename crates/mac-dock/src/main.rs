@@ -37,10 +37,26 @@ fn main() {
         config.autohide = false;
     }
 
-    if dock_common::hyprland::ipc::instance_signature().is_err() {
-        log::error!("HYPRLAND_INSTANCE_SIGNATURE not found, terminating.");
-        std::process::exit(1);
-    }
+    let wm_override = if config.wm.is_empty() {
+        None
+    } else {
+        Some(config.wm.as_str())
+    };
+    let compositor_kind = match dock_common::compositor::detect(wm_override) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    let compositor: Rc<dyn dock_common::compositor::Compositor> =
+        match dock_common::compositor::create(compositor_kind) {
+            Ok(c) => Rc::from(c),
+            Err(e) => {
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        };
 
     let _lock = if !config.multi {
         match singleton::acquire_lock("mac-dock") {
@@ -98,7 +114,10 @@ fn main() {
         let _hold = app.hold();
 
         // State
-        let state = Rc::new(RefCell::new(DockState::new(app_dirs.clone())));
+        let state = Rc::new(RefCell::new(DockState::new(
+            app_dirs.clone(),
+            Rc::clone(&compositor),
+        )));
         state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
         state.borrow_mut().locked = ui::dock_menu::load_lock_state();
         if let Err(e) = state.borrow_mut().refresh_clients() {
@@ -113,8 +132,14 @@ fn main() {
         let per_monitor = Rc::new(RefCell::new(per_monitor));
 
         // Rebuild function
-        let rebuild =
-            rebuild::create_rebuild_fn(&per_monitor, &config, &state, &data_home, &pinned_file);
+        let rebuild = rebuild::create_rebuild_fn(
+            &per_monitor,
+            &config,
+            &state,
+            &data_home,
+            &pinned_file,
+            &compositor,
+        );
         rebuild();
 
         for win in all_windows.borrow().iter() {
@@ -123,9 +148,13 @@ fn main() {
 
         // Listeners
         if config.autohide {
-            listeners::setup_autohide(&all_windows, &config, &state);
+            listeners::setup_autohide(&all_windows, &config, &state, &compositor);
         }
-        events::start_event_listener(Rc::clone(&state), Rc::clone(&rebuild));
+        events::start_event_listener(
+            Rc::clone(&state),
+            Rc::clone(&rebuild),
+            Rc::clone(&compositor),
+        );
         listeners::setup_pin_watcher(&pinned_file, &rebuild);
         listeners::setup_signal_poller(&all_windows, &sig_rx);
     });

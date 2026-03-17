@@ -2,6 +2,7 @@ use crate::config::DrawerConfig;
 use crate::state::DrawerState;
 use crate::ui::well_builder;
 use crate::{desktop_loader, watcher};
+use dock_common::compositor::Compositor;
 use dock_common::pinning;
 use dock_common::signals::WindowCommand;
 use gtk4::glib;
@@ -18,6 +19,7 @@ pub fn setup_keyboard(
     config: &Rc<DrawerConfig>,
     on_launch: &Rc<dyn Fn()>,
     app: &gtk4::Application,
+    compositor: &Rc<dyn Compositor>,
 ) {
     let win_ctrl = win.clone();
     let win = win.clone();
@@ -25,6 +27,7 @@ pub fn setup_keyboard(
     let search_entry = search_entry.clone();
     let on_launch = Rc::clone(on_launch);
     let app = app.clone();
+    let compositor = Rc::clone(compositor);
 
     let key_ctrl = gtk4::EventControllerKey::new();
     key_ctrl.connect_key_released(move |_, keyval, _, _| match keyval {
@@ -43,7 +46,7 @@ pub fn setup_keyboard(
             let text = search_entry.text().to_string();
             if text.starts_with(':') && text.len() > 1 {
                 let cmd = &text[1..];
-                dock_common::launch::launch_hyprctl(cmd);
+                dock_common::launch::launch_via_compositor(cmd, &*compositor);
                 on_launch();
             } else if let Some(result) = crate::ui::math::eval_expression(&text) {
                 crate::ui::math::show_result_window(&text, result, &app);
@@ -54,10 +57,15 @@ pub fn setup_keyboard(
     win_ctrl.add_controller(key_ctrl);
 }
 
-/// Polls Hyprland activewindow to close drawer when another window gets focus.
-pub fn setup_focus_detector(win: &gtk4::ApplicationWindow, on_launch: &Rc<dyn Fn()>) {
+/// Polls compositor active window to close drawer when another window gets focus.
+pub fn setup_focus_detector(
+    win: &gtk4::ApplicationWindow,
+    on_launch: &Rc<dyn Fn()>,
+    compositor: &Rc<dyn Compositor>,
+) {
     let win = win.clone();
     let on_launch = Rc::clone(on_launch);
+    let compositor = Rc::clone(compositor);
     let baseline: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
 
     glib::timeout_add_local(std::time::Duration::from_millis(300), move || {
@@ -66,24 +74,18 @@ pub fn setup_focus_detector(win: &gtk4::ApplicationWindow, on_launch: &Rc<dyn Fn
             return glib::ControlFlow::Continue;
         }
 
-        if let Ok(reply) = dock_common::hyprland::ipc::hyprctl("j/activewindow")
-            && let Ok(val) = serde_json::from_slice::<serde_json::Value>(&reply)
-        {
-            let addr = val
-                .get("address")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let class = val.get("class").and_then(|v| v.as_str()).unwrap_or("");
+        if let Ok(active) = compositor.get_active_window() {
+            let id = active.id;
+            let class = active.class;
 
-            if addr.is_empty() || class.is_empty() {
+            if id.is_empty() || class.is_empty() {
                 return glib::ControlFlow::Continue;
             }
 
             let mut b = baseline.borrow_mut();
             if b.is_none() {
-                *b = Some(addr);
-            } else if b.as_deref() != Some(&addr) {
+                *b = Some(id);
+            } else if b.as_deref() != Some(&id) {
                 *b = None;
                 drop(b);
                 on_launch();

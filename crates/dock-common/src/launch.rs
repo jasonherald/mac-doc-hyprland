@@ -1,3 +1,4 @@
+use crate::compositor::Compositor;
 use crate::desktop::icons::get_exec;
 use std::path::PathBuf;
 use std::process::Command;
@@ -29,6 +30,25 @@ pub fn launch_hyprctl(command: &str) {
 pub fn launch_hyprctl_terminal(command: &str, term: &str) {
     let full = format!("{} -e {}", term, command);
     launch_hyprctl(&full);
+}
+
+/// Launches a command via the compositor's exec mechanism.
+pub fn launch_via_compositor(command: &str, compositor: &dyn Compositor) {
+    let command = command.replace('"', "");
+    if command.trim().is_empty() {
+        log::error!("Empty command to launch");
+        return;
+    }
+    log::info!("Launching via compositor: {}", command);
+    if let Err(e) = compositor.exec(&command) {
+        log::error!("Failed to launch: {}", e);
+    }
+}
+
+/// Launches a command with terminal wrapping via the compositor.
+pub fn launch_terminal_via_compositor(command: &str, term: &str, compositor: &dyn Compositor) {
+    let full = format!("{} -e {}", term, command);
+    launch_via_compositor(&full, compositor);
 }
 
 /// Launches a raw command string directly (without WM dispatch).

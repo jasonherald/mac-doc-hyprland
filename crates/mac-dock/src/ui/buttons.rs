@@ -1,7 +1,7 @@
 use crate::context::DockContext;
 use crate::ui::menus;
+use dock_common::compositor::WmClient;
 use dock_common::desktop::icons;
-use dock_common::hyprland::types::HyprClient;
 use gtk4::prelude::*;
 use std::path::Path;
 use std::rc::Rc;
@@ -169,7 +169,7 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
 }
 
 /// Creates a task button for a running application.
-pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockContext) -> gtk4::Box {
+pub fn task_button(client: &WmClient, instances: &[WmClient], ctx: &DockContext) -> gtk4::Box {
     let img_size = ctx.state.borrow().img_size_scaled;
     let app_dirs = ctx.state.borrow().app_dirs.clone();
 
@@ -190,16 +190,18 @@ pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockCont
 
     // Left-click
     if instances.len() == 1 {
-        let addr = client.address.clone();
+        let id = client.id.clone();
         let ws_name = client.workspace.name.clone();
+        let comp = Rc::clone(&ctx.compositor);
         button.connect_clicked(move |_| {
-            focus_window(&addr, &ws_name);
+            menus::focus_window(&id, &ws_name, &*comp);
         });
     } else {
         let insts = instances.to_vec();
         let state_menu = Rc::clone(&ctx.state);
+        let comp = Rc::clone(&ctx.compositor);
         button.connect_clicked(move |btn| {
-            menus::show_client_menu(&insts, &state_menu, btn);
+            menus::show_client_menu(&insts, &state_menu, &comp, btn);
         });
     }
 
@@ -219,6 +221,7 @@ pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockCont
     let insts = instances.to_vec();
     let config_ref = ctx.config.as_ref().clone();
     let state_ref = Rc::clone(&ctx.state);
+    let comp = Rc::clone(&ctx.compositor);
     let pinned_path = ctx.pinned_file.as_ref().clone();
     let rebuild_ref = Rc::clone(&ctx.rebuild);
     let right = gtk4::GestureClick::new();
@@ -231,6 +234,7 @@ pub fn task_button(client: &HyprClient, instances: &[HyprClient], ctx: &DockCont
                 &insts,
                 &config_ref,
                 &state_ref,
+                &comp,
                 &pinned_path,
                 &rebuild_ref,
                 &widget,
@@ -300,20 +304,4 @@ pub fn launcher_button(ctx: &DockContext, win: &gtk4::ApplicationWindow) -> Opti
         ctx.config.position,
         ctx.config.is_vertical(),
     ))
-}
-
-fn focus_window(address: &str, workspace_name: &str) {
-    if workspace_name.starts_with("special") {
-        let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
-        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch togglespecialworkspace {}",
-            special_name
-        ));
-    } else {
-        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch focuswindow address:{}",
-            address
-        ));
-    }
-    let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");
 }

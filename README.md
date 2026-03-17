@@ -6,10 +6,10 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 
 ## Features
 
-### Dock (`nwg-dock-hyprland-rs`)
+### Dock (`nwg-dock-hyprland`)
 - **Multi-monitor** — dock appears on all monitors simultaneously
 - **Content-width** — floats centered at screen edge, sized to its icons
-- **Auto-hide** — Hyprland IPC cursor tracking with configurable timeout
+- **Auto-hide** — compositor IPC cursor tracking with configurable timeout
 - **Drag-to-reorder** — drag any pinned icon (running or not) to rearrange
 - **Drag-to-remove** — drag an icon off the dock to unpin it (like macOS)
 - **Dock settings menu** — right-click dock background to lock/unlock arrangement
@@ -19,7 +19,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Icon scaling** — icons shrink automatically when many apps are open
 - **Instant pin sync** — inotify-based, shared with the drawer
 
-### Drawer (`nwg-drawer-rs`)
+### Drawer (`nwg-drawer`)
 - **Full-screen overlay** — dark transparent Launchpad-style launcher
 - **Unified well** — favorites section with divider, then all apps in a grid
 - **Subsequence search** — type to filter apps by name, description, or command
@@ -28,7 +28,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Command execution** — prefix with `:` to run arbitrary commands
 - **Pin sync** — shared pin file with the dock, changes reflect instantly on both
 
-### Notification Center (`mac-notifications-rs`)
+### Notification Center (`nwg-notifications`)
 - **D-Bus notification daemon** — replaces mako, claims `org.freedesktop.Notifications`
 - **Popup toasts** — top-right corner, auto-dismiss, click-to-focus sending app
 - **Action buttons** — shows Reply/Open/etc. buttons, emits ActionInvoked D-Bus signal
@@ -42,7 +42,8 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Focused monitor** — popups appear on the currently focused monitor
 
 ### Shared (`dock-common`)
-- Custom Hyprland IPC implementation (no external crate dependency)
+- Compositor abstraction layer (Hyprland supported, Sway planned)
+- Custom IPC implementation (no external crate dependency)
 - XDG desktop entry parser with locale support
 - Icon resolution with theme fallbacks
 - Pin management with file persistence
@@ -53,7 +54,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 
 ### Dependencies
 
-GTK4, gtk4-layer-shell, and a running Hyprland session.
+GTK4, gtk4-layer-shell, and a running Hyprland or Sway session.
 
 On Arch Linux:
 ```bash
@@ -82,15 +83,15 @@ cargo install --path crates/mac-notifications
 
 1. **Hyprland autostart** — add to `~/.config/hypr/autostart.conf`:
     ```ini
-    exec-once = uwsm-app -- nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
-    exec-once = uwsm-app -- mac-notifications-rs --persist
+    exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
+    exec-once = uwsm-app -- nwg-notifications --persist
     ```
 
 2. **D-Bus service** — create `~/.local/share/dbus-1/services/org.freedesktop.Notifications.service` so the notification daemon auto-starts when any app sends a notification:
     ```ini
     [D-BUS Service]
     Name=org.freedesktop.Notifications
-    Exec=/home/YOU/.cargo/bin/mac-notifications-rs --persist
+    Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
     ```
 
 3. **Disable mako** (if installed):
@@ -106,29 +107,29 @@ cargo install --path crates/mac-notifications
 
 ```bash
 # Basic — auto-hide, 48px icons, 10px bottom margin, 400ms hide timeout
-nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
+nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
 ```
 
 ### Drawer
 
 ```bash
 # Resident mode (stays in memory, toggle with signals)
-nwg-drawer-rs -r
+nwg-drawer -r
 ```
 
 ### Notification Center
 
 ```bash
 # With history persistence
-mac-notifications-rs --persist
+nwg-notifications --persist
 ```
 
 ### Hyprland autostart
 
 ```ini
 # ~/.config/hypr/autostart.conf
-exec-once = uwsm-app -- nwg-dock-hyprland-rs -d -i 48 --mb 10 --hide-timeout 400
-exec-once = uwsm-app -- mac-notifications-rs --persist
+exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
+exec-once = uwsm-app -- nwg-notifications --persist
 ```
 
 ### D-Bus service (auto-start on first notification)
@@ -137,23 +138,23 @@ exec-once = uwsm-app -- mac-notifications-rs --persist
 # ~/.local/share/dbus-1/services/org.freedesktop.Notifications.service
 [D-BUS Service]
 Name=org.freedesktop.Notifications
-Exec=/home/YOU/.cargo/bin/mac-notifications-rs --persist
+Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
 ```
 
 ### Signal control
 
 ```bash
 # Toggle dock visibility
-pkill -f -35 nwg-dock-hyprland-rs     # SIGRTMIN+1
+pkill -f -35 nwg-dock-hyprland     # SIGRTMIN+1
 
 # Toggle notification panel
-pkill -f -38 mac-notifications-rs      # SIGRTMIN+4
+pkill -f -38 nwg-notifications      # SIGRTMIN+4
 
 # Toggle DND
-pkill -f -39 mac-notifications-rs      # SIGRTMIN+5
+pkill -f -39 nwg-notifications      # SIGRTMIN+5
 
 # Open DND menu
-pkill -f -40 mac-notifications-rs      # SIGRTMIN+6
+pkill -f -40 nwg-notifications      # SIGRTMIN+6
 ```
 
 ### Waybar module
@@ -164,8 +165,8 @@ Add to `~/.config/waybar/config.jsonc`:
     "exec": "cat $XDG_RUNTIME_DIR/mac-notifications-status.json 2>/dev/null || echo '{\"text\":\"\",\"alt\":\"empty\",\"class\":\"empty\"}'",
     "return-type": "json",
     "format": "{}",
-    "on-click": "pkill -f -38 mac-notifications-rs",
-    "on-click-right": "pkill -f -40 mac-notifications-rs",
+    "on-click": "pkill -f -38 nwg-notifications",
+    "on-click-right": "pkill -f -40 nwg-notifications",
     "signal": 11,
     "interval": "once"
 }

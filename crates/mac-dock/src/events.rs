@@ -1,36 +1,41 @@
 use crate::state::DockState;
-use dock_common::hyprland::events::{EventStream, HyprEvent};
+use dock_common::compositor::{Compositor, WmEvent};
 use gtk4::glib;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-/// Starts a background thread that listens for Hyprland events
+/// Starts a background thread that listens for compositor events
 /// and triggers UI refreshes on the main thread via polling.
 /// Only rebuilds if the client list actually changed (different count
 /// or different set of classes).
-pub fn start_event_listener(state: Rc<RefCell<DockState>>, rebuild_fn: Rc<dyn Fn()>) {
+pub fn start_event_listener(
+    state: Rc<RefCell<DockState>>,
+    rebuild_fn: Rc<dyn Fn()>,
+    compositor: Rc<dyn Compositor>,
+) {
     let (sender, receiver) = mpsc::channel::<String>();
 
-    std::thread::spawn(move || {
-        let mut stream = match EventStream::connect() {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to connect to Hyprland event socket: {}", e);
-                return;
-            }
-        };
+    // Create the event stream on the main thread, then move it to the background
+    let mut stream = match compositor.event_stream() {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to connect to compositor event stream: {}", e);
+            return;
+        }
+    };
 
+    std::thread::spawn(move || {
         loop {
             match stream.next_event() {
-                Ok(HyprEvent::ActiveWindowV2(addr)) => {
-                    if sender.send(addr).is_err() {
+                Ok(WmEvent::ActiveWindowChanged(id)) => {
+                    if sender.send(id).is_err() {
                         break;
                     }
                 }
                 Ok(_) => {} // Other events ignored
                 Err(e) => {
-                    log::error!("Hyprland event stream error: {}", e);
+                    log::error!("Compositor event stream error: {}", e);
                     break;
                 }
             }

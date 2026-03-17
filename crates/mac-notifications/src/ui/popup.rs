@@ -3,6 +3,7 @@ use super::window;
 use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency};
 use crate::state::NotificationState;
+use dock_common::compositor::Compositor;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
@@ -21,6 +22,7 @@ pub struct PopupManager {
     config: Rc<NotificationConfig>,
     app: gtk4::Application,
     on_state_change: Rc<dyn Fn()>,
+    compositor: Rc<dyn Compositor>,
 }
 
 impl PopupManager {
@@ -28,12 +30,14 @@ impl PopupManager {
         app: &gtk4::Application,
         config: &Rc<NotificationConfig>,
         on_state_change: Rc<dyn Fn()>,
+        compositor: Rc<dyn Compositor>,
     ) -> Self {
         Self {
             popups: Vec::new(),
             config: Rc::clone(config),
             app: app.clone(),
             on_state_change,
+            compositor,
         }
     }
 
@@ -58,7 +62,7 @@ impl PopupManager {
         win.set_width_request(POPUP_WIDTH);
 
         // Show on the focused monitor
-        if let Some(mon) = focused_gdk_monitor() {
+        if let Some(mon) = focused_gdk_monitor(&*self.compositor) {
             win.set_monitor(Some(&mon));
         }
 
@@ -72,10 +76,16 @@ impl PopupManager {
         let state_click = Rc::clone(state);
         let win_click = win.clone();
         let on_change_click = Rc::clone(&self.on_state_change);
+        let compositor_click = Rc::clone(&self.compositor);
         let click = gtk4::GestureClick::new();
         click.connect_released(move |gesture, _, _, _| {
             gesture.set_state(gtk4::EventSequenceState::Claimed);
-            focus_app(&notif_app, notif_desktop.as_deref(), &state_click);
+            focus_app(
+                &notif_app,
+                notif_desktop.as_deref(),
+                &state_click,
+                &*compositor_click,
+            );
             state_click.borrow_mut().mark_read(notif_id);
             state_click.borrow_mut().active_popups.remove(&notif_id);
             win_click.close();
@@ -257,10 +267,10 @@ fn build_popup_content(
     outer
 }
 
-/// Finds the GDK monitor that Hyprland reports as focused.
-fn focused_gdk_monitor() -> Option<gtk4::gdk::Monitor> {
-    let hypr_monitors = dock_common::hyprland::ipc::list_monitors().ok()?;
-    let focused_idx = hypr_monitors.iter().position(|m| m.focused)?;
+/// Finds the GDK monitor that the compositor reports as focused.
+fn focused_gdk_monitor(compositor: &dyn Compositor) -> Option<gtk4::gdk::Monitor> {
+    let wm_monitors = compositor.list_monitors().ok()?;
+    let focused_idx = wm_monitors.iter().position(|m| m.focused)?;
 
     let display = gtk4::gdk::Display::default()?;
     let monitors = display.monitors();
@@ -276,8 +286,9 @@ pub fn focus_app(
     app_name: &str,
     desktop_entry: Option<&str>,
     state: &Rc<RefCell<NotificationState>>,
+    compositor: &dyn Compositor,
 ) {
-    if let Ok(clients) = dock_common::hyprland::ipc::list_clients() {
+    if let Ok(clients) = compositor.list_clients() {
         // Try each candidate: desktop_entry first, then app_name
         let candidates: Vec<&str> = desktop_entry
             .into_iter()
@@ -293,10 +304,7 @@ pub fn focus_app(
                     || class_lower.contains(&candidate_lower)
                     || candidate_lower.contains(&class_lower)
                 {
-                    let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                        "dispatch focuswindow address:{}",
-                        client.address
-                    ));
+                    let _ = compositor.focus_window(&client.id);
                     return;
                 }
             }
@@ -306,8 +314,9 @@ pub fn focus_app(
     // App not running — try to launch it
     let class_to_find = desktop_entry.unwrap_or(app_name);
     let app_dirs = state.borrow().app_dirs.clone();
-    dock_common::launch::launch_hyprctl(
+    dock_common::launch::launch_via_compositor(
         &dock_common::desktop::icons::get_exec(class_to_find, &app_dirs)
             .unwrap_or_else(|| class_to_find.to_string()),
+        compositor,
     );
 }

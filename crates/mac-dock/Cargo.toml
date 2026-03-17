@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "nwg-dock-hyprland-rs"
+name = "nwg-dock-hyprland"
 path = "src/main.rs"
 
 [dependencies]

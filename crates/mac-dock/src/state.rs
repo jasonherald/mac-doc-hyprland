@@ -1,18 +1,22 @@
-use dock_common::hyprland::types::{HyprClient, HyprMonitor};
+use dock_common::compositor::{Compositor, WmClient, WmMonitor};
 use std::path::PathBuf;
+use std::rc::Rc;
 
-/// Hyprland client/window tracking state.
+/// Window/monitor tracking state.
 pub struct DockState {
-    pub clients: Vec<HyprClient>,
-    pub active_client: Option<HyprClient>,
-    pub monitors: Vec<HyprMonitor>,
+    pub clients: Vec<WmClient>,
+    pub active_client: Option<WmClient>,
+    pub monitors: Vec<WmMonitor>,
     pub pinned: Vec<String>,
     pub app_dirs: Vec<PathBuf>,
+
+    /// Compositor backend for IPC calls.
+    pub compositor: Rc<dyn Compositor>,
 
     /// Scaled icon size (adjusted when many apps are open).
     pub img_size_scaled: i32,
 
-    /// Last window address from socket2 events (used for change detection).
+    /// Last window id from event stream (used for change detection).
     pub last_win_addr: String,
 
     /// True when a popover menu is open — prevents autohide.
@@ -30,13 +34,14 @@ pub struct DockState {
 }
 
 impl DockState {
-    pub fn new(app_dirs: Vec<PathBuf>) -> Self {
+    pub fn new(app_dirs: Vec<PathBuf>, compositor: Rc<dyn Compositor>) -> Self {
         Self {
             clients: Vec::new(),
             active_client: None,
             monitors: Vec::new(),
             pinned: Vec::new(),
             app_dirs,
+            compositor,
             img_size_scaled: 48,
             last_win_addr: String::new(),
             popover_open: false,
@@ -47,7 +52,7 @@ impl DockState {
     }
 
     /// Finds all client instances matching a class (case-insensitive).
-    pub fn task_instances(&self, class: &str) -> Vec<HyprClient> {
+    pub fn task_instances(&self, class: &str) -> Vec<WmClient> {
         self.clients
             .iter()
             .filter(|c| c.class.eq_ignore_ascii_case(class))
@@ -55,16 +60,16 @@ impl DockState {
             .collect()
     }
 
-    /// Refreshes client list from Hyprland.
+    /// Refreshes client list from the compositor.
     pub fn refresh_clients(&mut self) -> anyhow::Result<()> {
-        self.clients = dock_common::hyprland::ipc::list_clients()?;
-        self.active_client = dock_common::hyprland::ipc::get_active_window().ok();
+        self.clients = self.compositor.list_clients()?;
+        self.active_client = self.compositor.get_active_window().ok();
         Ok(())
     }
 
-    /// Refreshes monitor list from Hyprland.
+    /// Refreshes monitor list from the compositor.
     pub fn refresh_monitors(&mut self) -> anyhow::Result<()> {
-        self.monitors = dock_common::hyprland::ipc::list_monitors()?;
+        self.monitors = self.compositor.list_monitors()?;
         Ok(())
     }
 }

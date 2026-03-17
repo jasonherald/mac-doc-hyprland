@@ -46,6 +46,27 @@ fn main() {
         }
     };
 
+    let wm_override = if config.wm.is_empty() {
+        None
+    } else {
+        Some(config.wm.as_str())
+    };
+    let compositor_kind = match dock_common::compositor::detect(wm_override) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    let compositor: Rc<dyn dock_common::compositor::Compositor> =
+        match dock_common::compositor::create(compositor_kind) {
+            Ok(c) => Rc::from(c),
+            Err(e) => {
+                log::error!("{}", e);
+                std::process::exit(1);
+            }
+        };
+
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
     if let Err(e) = paths::ensure_dir(&config_dir) {
@@ -90,7 +111,10 @@ fn main() {
         apply_theme_settings(&config);
 
         // State
-        let state = Rc::new(RefCell::new(DrawerState::new(app_dirs.clone())));
+        let state = Rc::new(RefCell::new(DrawerState::new(
+            app_dirs.clone(),
+            Rc::clone(&compositor),
+        )));
         state.borrow_mut().exclusions = exclusions.clone();
         desktop_loader::load_desktop_entries(&mut state.borrow_mut());
         load_preferred_apps(&mut state.borrow_mut());
@@ -98,7 +122,7 @@ fn main() {
 
         // Window
         let win = gtk4::ApplicationWindow::new(app);
-        let target_monitor = resolve_target_monitor(&config);
+        let target_monitor = resolve_target_monitor(&config, &compositor);
         ui::window::setup_drawer_window(&win, &config, target_monitor.as_ref());
 
         // Layout
@@ -172,8 +196,8 @@ fn main() {
         main_vbox.append(&status_label);
 
         // Listeners
-        listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app);
-        listeners::setup_focus_detector(&win, &on_launch);
+        listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app, &compositor);
+        listeners::setup_focus_detector(&win, &on_launch, &compositor);
         listeners::setup_file_watcher(&app_dirs, &pinned_file, &well, &config, &state, &on_launch);
         listeners::setup_signal_poller(&win, &sig_rx);
 
@@ -208,16 +232,19 @@ fn load_preferred_apps(state: &mut DrawerState) {
     }
 }
 
-fn resolve_target_monitor(config: &DrawerConfig) -> Option<gtk4::gdk::Monitor> {
+fn resolve_target_monitor(
+    config: &DrawerConfig,
+    compositor: &Rc<dyn dock_common::compositor::Compositor>,
+) -> Option<gtk4::gdk::Monitor> {
     if config.output.is_empty() {
         return None;
     }
     let display = gtk4::gdk::Display::default()?;
     let monitors = display.monitors();
-    let hypr_monitors = dock_common::hyprland::ipc::list_monitors().ok()?;
+    let wm_monitors = compositor.list_monitors().ok()?;
 
-    for (i, hm) in hypr_monitors.iter().enumerate() {
-        if hm.name == config.output
+    for (i, wm) in wm_monitors.iter().enumerate() {
+        if wm.name == config.output
             && let Some(item) = monitors.item(i as u32)
             && let Ok(mon) = item.downcast::<gtk4::gdk::Monitor>()
         {

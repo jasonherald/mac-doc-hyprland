@@ -23,6 +23,12 @@ pub enum DockError {
 
     #[error("environment variable not set: {0}")]
     EnvNotSet(String),
+
+    #[error("unsupported compositor: {0}")]
+    UnsupportedCompositor(String),
+
+    #[error("no compositor detected (set HYPRLAND_INSTANCE_SIGNATURE or SWAYSOCK)")]
+    NoCompositorDetected,
 }
 
 pub type Result<T> = std::result::Result<T, DockError>;

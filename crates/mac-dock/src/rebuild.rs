@@ -3,6 +3,7 @@ use crate::context::DockContext;
 use crate::dock_windows::MonitorDock;
 use crate::state::DockState;
 use crate::ui;
+use dock_common::compositor::Compositor;
 use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -17,12 +18,14 @@ pub fn create_rebuild_fn(
     state: &Rc<RefCell<DockState>>,
     data_home: &Rc<std::path::PathBuf>,
     pinned_file: &Rc<std::path::PathBuf>,
+    compositor: &Rc<dyn Compositor>,
 ) -> Rc<dyn Fn()> {
     let per_monitor = Rc::clone(per_monitor);
     let config = Rc::clone(config);
     let state = Rc::clone(state);
     let data_home = Rc::clone(data_home);
     let pinned_file = Rc::clone(pinned_file);
+    let compositor = Rc::clone(compositor);
 
     // Use Weak to break the Rc cycle: rebuild_fn → holder → rebuild_fn
     type RebuildHolder = Rc<RefCell<Weak<dyn Fn()>>>;
@@ -42,6 +45,7 @@ pub fn create_rebuild_fn(
                 data_home: Rc::clone(&data_home),
                 pinned_file: Rc::clone(&pinned_file),
                 rebuild: rebuild_ref,
+                compositor: Rc::clone(&compositor),
             };
 
             for dock in per_monitor.borrow().iter() {

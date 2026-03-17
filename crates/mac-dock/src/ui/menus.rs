@@ -1,6 +1,6 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
-use dock_common::hyprland::types::HyprClient;
+use dock_common::compositor::{Compositor, WmClient};
 use dock_common::pinning;
 use gtk4::prelude::*;
 use std::cell::RefCell;
@@ -28,8 +28,9 @@ fn create_tracked_popover(
 
 /// Creates and shows a popover listing all instances of a class (for multi-instance left-click).
 pub fn show_client_menu(
-    instances: &[HyprClient],
+    instances: &[WmClient],
     state: &Rc<RefCell<DockState>>,
+    compositor: &Rc<dyn Compositor>,
     parent: &impl IsA<gtk4::Widget>,
 ) {
     let popover = create_tracked_popover(parent, state);
@@ -41,12 +42,13 @@ pub fn show_client_menu(
         let btn = gtk4::Button::with_label(&label);
         btn.add_css_class("flat");
 
-        let addr = instance.address.clone();
+        let id = instance.id.clone();
         let ws_name = instance.workspace.name.clone();
         let popover_ref = popover.clone();
+        let comp = Rc::clone(compositor);
         btn.connect_clicked(move |_| {
             popover_ref.popdown();
-            focus_window(&addr, &ws_name);
+            focus_window(&id, &ws_name, &*comp);
         });
         vbox.append(&btn);
     }
@@ -56,11 +58,13 @@ pub fn show_client_menu(
 }
 
 /// Creates and shows a context menu for a task (right-click).
+#[allow(clippy::too_many_arguments)]
 pub fn show_context_menu(
     class: &str,
-    instances: &[HyprClient],
+    instances: &[WmClient],
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
+    compositor: &Rc<dyn Compositor>,
     pinned_file: &Path,
     rebuild: &Rc<dyn Fn()>,
     parent: &impl IsA<gtk4::Widget>,
@@ -76,45 +80,37 @@ pub fn show_context_menu(
         header.add_css_class("heading");
         vbox.append(&header);
 
-        let addr = &instance.address;
+        let id = &instance.id;
         let actions_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
 
         actions_box.append(&action_button("Close", &popover, {
-            let a = addr.clone();
+            let id = id.clone();
+            let comp = Rc::clone(compositor);
             move || {
-                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                    "dispatch closewindow address:{}",
-                    a
-                ));
+                let _ = comp.close_window(&id);
             }
         }));
         actions_box.append(&action_button("Toggle Floating", &popover, {
-            let a = addr.clone();
+            let id = id.clone();
+            let comp = Rc::clone(compositor);
             move || {
-                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                    "dispatch togglefloating address:{}",
-                    a
-                ));
+                let _ = comp.toggle_floating(&id);
             }
         }));
         actions_box.append(&action_button("Fullscreen", &popover, {
-            let a = addr.clone();
+            let id = id.clone();
+            let comp = Rc::clone(compositor);
             move || {
-                let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                    "dispatch fullscreen address:{}",
-                    a
-                ));
+                let _ = comp.toggle_fullscreen(&id);
             }
         }));
 
         for ws in 1..=config.num_ws {
             actions_box.append(&action_button(&format!("-> WS {}", ws), &popover, {
-                let a = addr.clone();
+                let id = id.clone();
+                let comp = Rc::clone(compositor);
                 move || {
-                    let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                        "dispatch movetoworkspace {},address:{}",
-                        ws, a
-                    ));
+                    let _ = comp.move_to_workspace(&id, ws);
                 }
             }));
         }
@@ -138,14 +134,12 @@ pub fn show_context_menu(
     // Close all
     let btn = gtk4::Button::with_label("Close all windows");
     btn.add_css_class("flat");
-    let insts: Vec<String> = instances.iter().map(|i| i.address.clone()).collect();
+    let insts: Vec<String> = instances.iter().map(|i| i.id.clone()).collect();
     let p = popover.clone();
+    let comp = Rc::clone(compositor);
     btn.connect_clicked(move |_| {
-        for addr in &insts {
-            let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-                "dispatch closewindow address:{}",
-                addr
-            ));
+        for id in &insts {
+            let _ = comp.close_window(id);
         }
         p.popdown();
     });
@@ -212,20 +206,14 @@ pub fn show_pinned_context_menu(
     popover.popup();
 }
 
-fn focus_window(address: &str, workspace_name: &str) {
+pub fn focus_window(id: &str, workspace_name: &str, compositor: &dyn Compositor) {
     if workspace_name.starts_with("special") {
         let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
-        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch togglespecialworkspace {}",
-            special_name
-        ));
+        let _ = compositor.toggle_special_workspace(special_name);
     } else {
-        let _ = dock_common::hyprland::ipc::hyprctl(&format!(
-            "dispatch focuswindow address:{}",
-            address
-        ));
+        let _ = compositor.focus_window(id);
     }
-    let _ = dock_common::hyprland::ipc::hyprctl("dispatch bringactivetotop");
+    let _ = compositor.raise_active();
 }
 
 /// Creates a flat button that runs an action and closes the popover.
