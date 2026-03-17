@@ -284,13 +284,10 @@ pub fn launcher_button(ctx: &DockContext, win: &gtk4::ApplicationWindow) -> Opti
     let autohide = ctx.config.autohide;
     let win_ref = win.clone();
     button.connect_clicked(move |_| {
-        let elements: Vec<&str> = cmd.split_whitespace().collect();
-        if let Some((&prog, args)) = elements.split_first() {
-            let mut command = std::process::Command::new(prog);
-            command.args(args);
-            if let Err(e) = command.spawn() {
-                log::warn!("Unable to start launcher: {}", e);
-            }
+        // Use sh -c to handle quoted arguments in the launcher command
+        // (e.g. nwg-drawer --pblock "swaylock" --pbexit "loginctl terminate-session")
+        if let Err(e) = std::process::Command::new("sh").args(["-c", &cmd]).spawn() {
+            log::warn!("Unable to start launcher: {}", e);
         }
         if autohide {
             win_ref.set_visible(false);
