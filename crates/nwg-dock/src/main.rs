@@ -21,25 +21,6 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-/// Detects and creates the compositor backend, exiting on failure.
-fn init_compositor(wm: &str) -> Rc<dyn nwg_dock_common::compositor::Compositor> {
-    let wm_override = if wm.is_empty() { None } else { Some(wm) };
-    let compositor_kind = match nwg_dock_common::compositor::detect(wm_override) {
-        Ok(k) => k,
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    };
-    match nwg_dock_common::compositor::create(compositor_kind) {
-        Ok(c) => Rc::from(c),
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
 fn main() {
     let mut config = DockConfig::parse();
 
@@ -57,7 +38,8 @@ fn main() {
     }
 
     auto_detect_launcher(&mut config);
-    let compositor = init_compositor(&config.wm);
+    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
+        Rc::from(nwg_dock_common::compositor::init_or_exit(&config.wm));
     let _lock = acquire_singleton_lock("mac-dock", config.multi, config.is_resident_mode());
 
     let data_home = paths::find_data_home("nwg-dock-hyprland").unwrap_or_else(|| {

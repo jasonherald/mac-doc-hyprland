@@ -42,6 +42,32 @@ pub fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
     }
 }
 
+/// Detects and creates the compositor backend, exiting the process on failure.
+///
+/// Shared by all three binaries (dock, drawer, notifications) to avoid duplication.
+/// Pass the `--wm` flag value (empty string = auto-detect from environment).
+pub fn init_or_exit(wm_flag: &str) -> Box<dyn Compositor> {
+    let wm_override = if wm_flag.is_empty() {
+        None
+    } else {
+        Some(wm_flag)
+    };
+    let kind = match detect(wm_override) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    match create(kind) {
+        Ok(c) => c,
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 /// Sanitizes a command string before passing to compositor exec.
 ///
 /// Strips characters that could be used for command injection via

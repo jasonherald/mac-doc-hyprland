@@ -40,7 +40,8 @@ fn main() {
         }
     };
 
-    let compositor = init_compositor(&config.wm);
+    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
+        Rc::from(nwg_dock_common::compositor::init_or_exit(&config.wm));
 
     // Signal listener — BEFORE GTK, same pattern as the dock
     let sig_rx = listeners::start_signal_listener();
@@ -205,24 +206,4 @@ fn build_on_notify_callback(
 
         on_change_notify();
     })
-}
-
-/// Detects the compositor kind and creates the compositor instance.
-/// Exits with an error if detection or creation fails.
-fn init_compositor(wm: &str) -> Rc<dyn nwg_dock_common::compositor::Compositor> {
-    let wm_override = if wm.is_empty() { None } else { Some(wm) };
-    let compositor_kind = match nwg_dock_common::compositor::detect(wm_override) {
-        Ok(k) => k,
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    };
-    match nwg_dock_common::compositor::create(compositor_kind) {
-        Ok(c) => Rc::from(c),
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    }
 }

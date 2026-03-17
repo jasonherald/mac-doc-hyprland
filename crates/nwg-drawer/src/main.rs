@@ -33,7 +33,8 @@ fn main() {
 
     handle_open_close(&config);
     let _lock = acquire_singleton_lock(&config);
-    let compositor = init_compositor(&config.wm);
+    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
+        Rc::from(nwg_dock_common::compositor::init_or_exit(&config.wm));
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
@@ -206,24 +207,6 @@ fn activate_drawer(
 
 /// Detects the compositor kind and creates the compositor instance.
 /// Exits with an error if detection or creation fails.
-fn init_compositor(wm: &str) -> Rc<dyn nwg_dock_common::compositor::Compositor> {
-    let wm_override = if wm.is_empty() { None } else { Some(wm) };
-    let compositor_kind = match nwg_dock_common::compositor::detect(wm_override) {
-        Ok(k) => k,
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    };
-    match nwg_dock_common::compositor::create(compositor_kind) {
-        Ok(c) => Rc::from(c),
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
 fn apply_theme_settings(config: &DrawerConfig) {
     if let Some(settings) = gtk4::Settings::default() {
         if !config.gtk_theme.is_empty() {
