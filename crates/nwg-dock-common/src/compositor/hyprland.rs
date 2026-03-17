@@ -32,8 +32,20 @@ impl Compositor for HyprlandBackend {
     }
 
     fn get_cursor_position(&self) -> Option<(i32, i32)> {
-        let reply = ipc::hyprctl("j/cursorpos").ok()?;
-        let val: serde_json::Value = serde_json::from_slice(&reply).ok()?;
+        let reply = match ipc::hyprctl("j/cursorpos") {
+            Ok(r) => r,
+            Err(e) => {
+                log::debug!("Failed to get cursor position: {}", e);
+                return None;
+            }
+        };
+        let val: serde_json::Value = match serde_json::from_slice(&reply) {
+            Ok(v) => v,
+            Err(e) => {
+                log::debug!("Failed to parse cursor position: {}", e);
+                return None;
+            }
+        };
         let x = val.get("x")?.as_i64()? as i32;
         let y = val.get("y")?.as_i64()? as i32;
         Some((x, y))
@@ -78,7 +90,8 @@ impl Compositor for HyprlandBackend {
     }
 
     fn exec(&self, cmd: &str) -> Result<()> {
-        ipc::hyprctl(&format!("dispatch exec {}", cmd))?;
+        let sanitized = super::sanitize_exec_command(cmd);
+        ipc::hyprctl(&format!("dispatch exec {}", sanitized))?;
         Ok(())
     }
 

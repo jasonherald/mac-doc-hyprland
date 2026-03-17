@@ -67,7 +67,13 @@ impl Compositor for SwayBackend {
                 let node_type = child.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 let name = child.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 if node_type == "output" && !name.starts_with("__") {
-                    collect_windows_with_context(child, &mut clients, &default_ws, output_idx);
+                    collect_windows_with_context(
+                        child,
+                        &mut clients,
+                        &default_ws,
+                        output_idx,
+                        false,
+                    );
                     output_idx += 1;
                 }
             }
@@ -136,7 +142,8 @@ impl Compositor for SwayBackend {
     }
 
     fn exec(&self, cmd: &str) -> Result<()> {
-        self.run_command(&format!("exec {}", cmd))
+        let sanitized = super::sanitize_exec_command(cmd);
+        self.run_command(&format!("exec {}", sanitized))
     }
 
     fn event_stream(&self) -> Result<Box<dyn WmEventStream>> {
@@ -239,7 +246,7 @@ fn is_window_node(node: &serde_json::Value) -> bool {
     has_pid && (has_app_id || has_window_props) && node_type == "con"
 }
 
-fn node_to_wm_client(node: &serde_json::Value) -> Option<WmClient> {
+fn node_to_wm_client(node: &serde_json::Value, floating: bool) -> Option<WmClient> {
     let id = node.get("id")?.as_i64()?.to_string();
 
     // Wayland: app_id, X11: window_properties.class
@@ -263,19 +270,11 @@ fn node_to_wm_client(node: &serde_json::Value) -> Option<WmClient> {
 
     let pid = node.get("pid").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
 
-    let floating = node
-        .get("type")
-        .and_then(|v| v.as_str())
-        .map(|t| t == "floating_con")
-        .unwrap_or(false);
-
     let fullscreen_mode = node
         .get("fullscreen_mode")
         .and_then(|v| v.as_i64())
         .unwrap_or(0);
 
-    // Walk up to find the workspace name from the node's workspace field
-    // or derive from the tree position. For simplicity, use the output index.
     let (ws_id, ws_name) = extract_workspace_from_node(node);
 
     Some(WmClient {
@@ -288,7 +287,7 @@ fn node_to_wm_client(node: &serde_json::Value) -> Option<WmClient> {
             name: ws_name,
         },
         floating,
-        monitor_id: 0, // Will be set during tree traversal if needed
+        monitor_id: 0, // Set during tree traversal
         fullscreen: fullscreen_mode > 0,
     })
 }
@@ -313,20 +312,27 @@ fn extract_workspace_from_node(node: &serde_json::Value) -> (i32, String) {
 /// Finds the focused window in the tree by recursively searching for
 /// the deepest node with `focused: true`.
 fn find_focused_window(node: &serde_json::Value) -> Option<WmClient> {
+    find_focused_window_inner(node, false)
+}
+
+fn find_focused_window_inner(node: &serde_json::Value, is_floating: bool) -> Option<WmClient> {
+    let node_type = node.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    let floating = is_floating || node_type == "floating_con";
+
     if node.get("focused").and_then(|v| v.as_bool()) == Some(true) && is_window_node(node) {
-        return node_to_wm_client(node);
+        return node_to_wm_client(node, floating);
     }
 
     if let Some(nodes) = node.get("nodes").and_then(|v| v.as_array()) {
         for child in nodes {
-            if let Some(found) = find_focused_window(child) {
+            if let Some(found) = find_focused_window_inner(child, floating) {
                 return Some(found);
             }
         }
     }
-    if let Some(floating) = node.get("floating_nodes").and_then(|v| v.as_array()) {
-        for child in floating {
-            if let Some(found) = find_focused_window(child) {
+    if let Some(floating_nodes) = node.get("floating_nodes").and_then(|v| v.as_array()) {
+        for child in floating_nodes {
+            if let Some(found) = find_focused_window_inner(child, true) {
                 return Some(found);
             }
         }
@@ -389,6 +395,7 @@ fn collect_windows_with_context(
     windows: &mut Vec<WmClient>,
     current_workspace: &WmWorkspace,
     current_output: i32,
+    is_floating: bool,
 ) {
     let node_type = node.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -408,7 +415,7 @@ fn collect_windows_with_context(
                 id: ws_num,
                 name: ws_name,
             };
-            recurse_children(node, windows, &ws, current_output);
+            recurse_children(node, windows, &ws, current_output, false);
             return;
         }
         "output" => {
@@ -417,21 +424,32 @@ fn collect_windows_with_context(
             if name.starts_with("__") {
                 return;
             }
-            recurse_children(node, windows, current_workspace, current_output);
+            recurse_children(node, windows, current_workspace, current_output, false);
+            return;
+        }
+        // floating_con is the container that wraps floating windows
+        "floating_con" => {
+            recurse_children(node, windows, current_workspace, current_output, true);
             return;
         }
         _ => {}
     }
 
     if is_window_node(node)
-        && let Some(mut client) = node_to_wm_client(node)
+        && let Some(mut client) = node_to_wm_client(node, is_floating)
     {
         client.workspace = current_workspace.clone();
         client.monitor_id = current_output;
         windows.push(client);
     }
 
-    recurse_children(node, windows, current_workspace, current_output);
+    recurse_children(
+        node,
+        windows,
+        current_workspace,
+        current_output,
+        is_floating,
+    );
 }
 
 fn recurse_children(
@@ -439,15 +457,17 @@ fn recurse_children(
     windows: &mut Vec<WmClient>,
     ws: &WmWorkspace,
     output: i32,
+    is_floating: bool,
 ) {
     if let Some(nodes) = node.get("nodes").and_then(|v| v.as_array()) {
         for child in nodes {
-            collect_windows_with_context(child, windows, ws, output);
+            collect_windows_with_context(child, windows, ws, output, is_floating);
         }
     }
     if let Some(floating) = node.get("floating_nodes").and_then(|v| v.as_array()) {
         for child in floating {
-            collect_windows_with_context(child, windows, ws, output);
+            // Children of floating_nodes are floating
+            collect_windows_with_context(child, windows, ws, output, true);
         }
     }
 }
@@ -514,7 +534,7 @@ mod tests {
             id: 0,
             name: String::new(),
         };
-        collect_windows_with_context(&tree, &mut clients, &ws, 0);
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
         assert_eq!(clients.len(), 2);
         assert_eq!(clients[0].class, "firefox");
         assert_eq!(clients[0].id, "42");
@@ -522,8 +542,10 @@ mod tests {
         assert_eq!(clients[0].pid, 1234);
         assert_eq!(clients[0].workspace.name, "1");
         assert_eq!(clients[0].workspace.id, 1);
+        assert!(!clients[0].floating);
         assert_eq!(clients[1].class, "gnome-calculator");
         assert_eq!(clients[1].id, "43");
+        assert!(clients[1].floating); // nested under floating_nodes
     }
 
     #[test]
@@ -594,7 +616,7 @@ mod tests {
             "floating_nodes": []
         });
 
-        let client = node_to_wm_client(&node).unwrap();
+        let client = node_to_wm_client(&node, false).unwrap();
         assert_eq!(client.class, "steam");
         assert_eq!(client.id, "99");
     }
@@ -654,7 +676,7 @@ mod tests {
             id: 0,
             name: String::new(),
         };
-        collect_windows_with_context(&tree, &mut clients, &ws, 0);
+        collect_windows_with_context(&tree, &mut clients, &ws, 0, false);
         assert!(clients.is_empty());
     }
 
@@ -729,7 +751,13 @@ mod tests {
                 let node_type = child.get("type").and_then(|v| v.as_str()).unwrap_or("");
                 let name = child.get("name").and_then(|v| v.as_str()).unwrap_or("");
                 if node_type == "output" && !name.starts_with("__") {
-                    collect_windows_with_context(child, &mut clients, &default_ws, output_idx);
+                    collect_windows_with_context(
+                        child,
+                        &mut clients,
+                        &default_ws,
+                        output_idx,
+                        false,
+                    );
                     output_idx += 1;
                 }
             }

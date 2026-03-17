@@ -102,7 +102,7 @@ Key types: `WmClient`, `WmMonitor`, `WmWorkspace`, `WmEvent` (compositor-neutral
 
 Backends:
 - `compositor/hyprland.rs` — wraps `hyprland/ipc.rs`, converts Hyprland types to Wm types
-- `compositor/sway.rs` — i3-ipc based Sway backend
+- `compositor/sway.rs` — i3-ipc-based Sway backend
 
 ## Signal assignments
 
@@ -118,7 +118,7 @@ Backends:
 
 ## Shared pin file
 
-`~/.cache/nwg-dock-pinned` — one desktop ID per line, no `.desktop` suffix. Both dock and drawer read/write this file. Changes detected via inotify (dock) and notify crate (drawer).
+`~/.cache/mac-dock-pinned` — one desktop ID per line, no `.desktop` suffix. Both dock and drawer read/write this file. Changes detected via inotify (dock) and notify crate (drawer).
 
 ## Key patterns
 
