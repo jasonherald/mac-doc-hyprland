@@ -52,10 +52,17 @@ impl DockState {
     }
 
     /// Finds all client instances matching a class (case-insensitive).
+    ///
+    /// Also matches windows whose initial_class equals the query, so that
+    /// child windows (e.g., Playwright browsers spawned by VSCode) are
+    /// grouped with their parent app. (Fixes nwg-piotr/nwg-dock#49)
     pub fn task_instances(&self, class: &str) -> Vec<WmClient> {
         self.clients
             .iter()
-            .filter(|c| c.class.eq_ignore_ascii_case(class))
+            .filter(|c| {
+                c.class.eq_ignore_ascii_case(class)
+                    || (!c.initial_class.is_empty() && c.initial_class.eq_ignore_ascii_case(class))
+            })
             .cloned()
             .collect()
     }

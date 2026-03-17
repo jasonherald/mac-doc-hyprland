@@ -118,12 +118,13 @@ impl WmEventStream for HyprlandEventStream {
 /// Converts a Hyprland client to a compositor-neutral WmClient.
 ///
 /// Fields intentionally not carried over (not needed by dock/drawer UI):
-/// mapped, hidden, at, size, initial_class, initial_title, xwayland,
+/// mapped, hidden, at, size, initial_title, xwayland,
 /// pinned, fake_fullscreen, fullscreen_mode, grouped, swallowing.
 fn to_wm_client(c: HyprClient) -> WmClient {
     WmClient {
         id: c.address,
         class: c.class,
+        initial_class: c.initial_class,
         title: c.title,
         pid: c.pid,
         workspace: WmWorkspace {

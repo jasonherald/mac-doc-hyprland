@@ -63,6 +63,16 @@ pub fn build(
             && !config.launcher_cmd.contains(&task.class)
             && !task.class.is_empty()
         {
+            // Skip if this window's initial_class already has an icon
+            // (groups child windows like Playwright browsers under VSCode)
+            if !task.initial_class.is_empty()
+                && task.initial_class != task.class
+                && all_items
+                    .iter()
+                    .any(|item| item.eq_ignore_ascii_case(&task.initial_class))
+            {
+                continue;
+            }
             all_items.push(task.class.clone());
         }
     }
@@ -139,6 +149,17 @@ pub fn build(
         if task.class.is_empty()
             || pinning::is_pinned(&pinned_snapshot, &task.class)
             || ignored_classes.contains(&task.class)
+        {
+            continue;
+        }
+        // Skip child windows whose initial_class is already shown
+        // (e.g., Playwright Chromium windows spawned by VSCode)
+        if !task.initial_class.is_empty()
+            && task.initial_class != task.class
+            && (pinning::is_pinned(&pinned_snapshot, &task.initial_class)
+                || already_added
+                    .iter()
+                    .any(|a| a.eq_ignore_ascii_case(&task.initial_class)))
         {
             continue;
         }

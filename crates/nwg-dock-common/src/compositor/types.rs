@@ -5,6 +5,9 @@ pub struct WmClient {
     pub id: String,
     /// Application class (Hyprland: class, Sway: app_id or window_properties.class).
     pub class: String,
+    /// Initial class at window creation (Hyprland only). Used to group child
+    /// windows with their parent app (e.g., Playwright browsers under VSCode).
+    pub initial_class: String,
     pub title: String,
     pub pid: i32,
     pub workspace: WmWorkspace,

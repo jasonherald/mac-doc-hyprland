@@ -290,6 +290,7 @@ fn node_to_wm_client(node: &serde_json::Value, floating: bool) -> Option<WmClien
     Some(WmClient {
         id,
         class,
+        initial_class: String::new(), // Sway doesn't track initial class
         title,
         pid,
         workspace: WmWorkspace {
