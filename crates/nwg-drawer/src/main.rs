@@ -31,41 +31,8 @@ fn main() {
         env_logger::init();
     }
 
-    // Handle --open/--close: send signal to running instance and exit
-    if config.open || config.close {
-        if let Some(pid) = singleton::find_running_pid("mac-drawer") {
-            let sig = if config.open {
-                signals::sig_show()
-            } else {
-                signals::sig_hide()
-            };
-            signals::send_signal_to_pid(pid, sig);
-            log::info!(
-                "Sent {} signal to running instance (pid {})",
-                if config.open { "show" } else { "hide" },
-                pid
-            );
-        } else {
-            log::warn!("No running drawer instance found");
-        }
-        std::process::exit(0);
-    }
-
-    let _lock = match singleton::acquire_lock("mac-drawer") {
-        Ok(lock) => lock,
-        Err(existing_pid) => {
-            if let Some(pid) = existing_pid {
-                if config.resident {
-                    log::warn!("Resident instance already running (pid {})", pid);
-                } else {
-                    signals::send_signal_to_pid(pid, signals::sig_toggle());
-                    log::info!("Sent toggle signal to running instance (pid {}), bye!", pid);
-                }
-            }
-            std::process::exit(0);
-        }
-    };
-
+    handle_open_close(&config);
+    let _lock = acquire_singleton_lock(&config);
     let compositor = init_compositor(&config.wm);
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
@@ -332,4 +299,45 @@ fn setup_close_button(main_vbox: &gtk4::Box, win: &gtk4::ApplicationWindow, conf
     close_box.set_halign(align);
     close_box.append(&close_btn);
     main_vbox.append(&close_box);
+}
+
+/// Handles --open/--close flags by sending signal to running instance.
+fn handle_open_close(config: &DrawerConfig) {
+    if !config.open && !config.close {
+        return;
+    }
+    if let Some(pid) = singleton::find_running_pid("mac-drawer") {
+        let sig = if config.open {
+            signals::sig_show()
+        } else {
+            signals::sig_hide()
+        };
+        signals::send_signal_to_pid(pid, sig);
+        log::info!(
+            "Sent {} signal to running instance (pid {})",
+            if config.open { "show" } else { "hide" },
+            pid
+        );
+    } else {
+        log::warn!("No running drawer instance found");
+    }
+    std::process::exit(0);
+}
+
+/// Acquires the singleton lock, sending toggle to existing instance if needed.
+fn acquire_singleton_lock(config: &DrawerConfig) -> singleton::LockFile {
+    match singleton::acquire_lock("mac-drawer") {
+        Ok(lock) => lock,
+        Err(existing_pid) => {
+            if let Some(pid) = existing_pid {
+                if config.resident {
+                    log::warn!("Resident instance already running (pid {})", pid);
+                } else {
+                    signals::send_signal_to_pid(pid, signals::sig_toggle());
+                    log::info!("Sent toggle signal to running instance (pid {}), bye!", pid);
+                }
+            }
+            std::process::exit(0);
+        }
+    }
 }

@@ -56,38 +56,9 @@ fn main() {
         config.autohide = false;
     }
 
-    // Auto-detect launcher: if command not found on PATH, hide launcher button
-    if !config.nolauncher && !config.launcher_cmd.is_empty() {
-        let cmd = config.launcher_cmd.split_whitespace().next().unwrap_or("");
-        if !cmd.is_empty() && !command_exists(cmd) {
-            log::info!(
-                "Launcher command '{}' not found on PATH, hiding launcher",
-                cmd
-            );
-            config.nolauncher = true;
-        }
-    }
-
+    auto_detect_launcher(&mut config);
     let compositor = init_compositor(&config.wm);
-
-    let _lock = if !config.multi {
-        match singleton::acquire_lock("mac-dock") {
-            Ok(lock) => Some(lock),
-            Err(existing_pid) => {
-                if let Some(pid) = existing_pid {
-                    if config.is_resident_mode() {
-                        log::info!("Running instance found (pid {}), terminating...", pid);
-                    } else {
-                        signals::send_signal_to_pid(pid, signals::sig_toggle());
-                        log::info!("Sent toggle signal to running instance (pid {}), bye!", pid);
-                    }
-                }
-                std::process::exit(0);
-            }
-        }
-    } else {
-        None
-    };
+    let _lock = acquire_singleton_lock("mac-dock", config.multi, config.is_resident_mode());
 
     let data_home = paths::find_data_home("nwg-dock-hyprland").unwrap_or_else(|| {
         log::error!("No data directory found for nwg-dock-hyprland");
@@ -191,6 +162,46 @@ fn activate_dock(
     );
     listeners::setup_pin_watcher(pinned_file, &rebuild);
     listeners::setup_signal_poller(&all_windows, sig_rx);
+}
+
+/// Auto-detect launcher: hide button if command not found on PATH.
+fn auto_detect_launcher(config: &mut DockConfig) {
+    if config.nolauncher || config.launcher_cmd.is_empty() {
+        return;
+    }
+    let cmd = config.launcher_cmd.split_whitespace().next().unwrap_or("");
+    if !cmd.is_empty() && !command_exists(cmd) {
+        log::info!(
+            "Launcher command '{}' not found on PATH, hiding launcher",
+            cmd
+        );
+        config.nolauncher = true;
+    }
+}
+
+/// Acquires the singleton lock, sending toggle to existing instance if needed.
+fn acquire_singleton_lock(
+    app_name: &str,
+    multi: bool,
+    is_resident: bool,
+) -> Option<singleton::LockFile> {
+    if multi {
+        return None;
+    }
+    match singleton::acquire_lock(app_name) {
+        Ok(lock) => Some(lock),
+        Err(existing_pid) => {
+            if let Some(pid) = existing_pid {
+                if is_resident {
+                    log::info!("Running instance found (pid {}), terminating...", pid);
+                } else {
+                    signals::send_signal_to_pid(pid, signals::sig_toggle());
+                    log::info!("Sent toggle signal to running instance (pid {}), bye!", pid);
+                }
+            }
+            std::process::exit(0);
+        }
+    }
 }
 
 /// Checks if a command exists on PATH.
