@@ -207,10 +207,168 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-# Stop dock
+# Stop dock (we'll restart it for functional tests)
 kill "$DOCK_PID" 2>/dev/null || true
 wait "$DOCK_PID" 2>/dev/null || true
 unset DOCK_PID
+
+# ─────────────────────────────────────────────────────────────────────
+# Test: Sway window management (functional tests)
+# ─────────────────────────────────────────────────────────────────────
+
+echo ""
+echo -e "${YELLOW}=== Sway Window Management Tests ===${NC}"
+
+# Helper: run swaymsg against the test Sway instance (query mode — returns output)
+smsg() { swaymsg -s "$SWAYSOCK" "$@" 2>/dev/null; }
+
+# Helper: run swaymsg command silently (discards success/error JSON)
+smsg_cmd() { swaymsg -s "$SWAYSOCK" "$@" >/dev/null 2>&1 || true; }
+
+# Helper: count window nodes (nodes with a non-null app_id or window_properties)
+count_windows() {
+    smsg -t get_tree -r | python3 -c "
+import json, sys
+def count(node):
+    c = 1 if (node.get('app_id') or node.get('window_properties')) and node.get('pid',0) > 0 and node.get('type') == 'con' else 0
+    for n in node.get('nodes', []) + node.get('floating_nodes', []):
+        c += count(n)
+    return c
+print(count(json.load(sys.stdin)))
+" 2>/dev/null || echo "0"
+}
+
+# Helper: open a foot terminal in headless Sway
+open_test_window() {
+    local mark="$1"
+    swaymsg -s "$SWAYSOCK" "exec env HOME=$TEST_RUNTIME XDG_RUNTIME_DIR=$TEST_RUNTIME WAYLAND_DISPLAY=wayland-1 foot --app-id=$mark sh -c 'sleep 60'" 2>/dev/null || true
+    sleep 1.5
+}
+
+# --- Test: Open a window, verify Sway sees it ---
+BEFORE=$(count_windows)
+open_test_window "test-win-1"
+AFTER=$(count_windows)
+assert_gt "window appears in Sway tree" "$AFTER" "$BEFORE"
+
+# --- Test: Verify window has correct app_id ---
+TREE_JSON=$(smsg -t get_tree -r)
+assert_contains "window has correct app_id" "$TREE_JSON" 'test-win-1'
+
+# --- Test: Open a second window ---
+open_test_window "test-win-2"
+WIN_COUNT=$(count_windows)
+assert_gt "two windows in tree" "$WIN_COUNT" "$AFTER"
+
+# --- Test: Focus command works ---
+smsg_cmd '[app_id=test-win-1] focus'
+sleep 0.5
+FOCUSED=$(smsg -t get_tree -r | python3 -c "
+import json, sys
+def find_focused(node):
+    if node.get('focused') and node.get('app_id'):
+        return node['app_id']
+    for n in node.get('nodes', []) + node.get('floating_nodes', []):
+        r = find_focused(n)
+        if r: return r
+    return None
+print(find_focused(json.load(sys.stdin)) or '')
+" 2>/dev/null || echo "")
+assert_eq "focus command targets correct window" "test-win-1" "$FOCUSED"
+
+# --- Test: Floating toggle ---
+smsg_cmd '[app_id=test-win-1] floating toggle'
+sleep 0.5
+FLOAT_COUNT=$(smsg -t get_tree -r | grep -c 'floating_con' || echo "0")
+assert_gt "floating toggle creates floating_con" "$FLOAT_COUNT" "0"
+
+# Unfloat it
+smsg_cmd '[app_id=test-win-1] floating toggle'
+sleep 0.3
+
+# --- Test: Move to workspace ---
+smsg_cmd '[app_id=test-win-2] move to workspace 2'
+sleep 0.5
+WS2_WINDOWS=$(smsg -t get_tree -r | python3 -c "
+import json, sys
+def find_ws(node, name):
+    if node.get('type') == 'workspace' and node.get('name') == name:
+        return node
+    for n in node.get('nodes', []) + node.get('floating_nodes', []):
+        r = find_ws(n, name)
+        if r: return r
+    return None
+def count_wins(node):
+    c = 1 if node.get('app_id') and node.get('pid') else 0
+    for n in node.get('nodes', []) + node.get('floating_nodes', []):
+        c += count_wins(n)
+    return c
+tree = json.load(sys.stdin)
+ws = find_ws(tree, '2')
+print(count_wins(ws) if ws else 0)
+" 2>/dev/null || echo "0")
+assert_eq "window moved to workspace 2" "1" "$WS2_WINDOWS"
+
+# --- Test: Close window via IPC ---
+smsg_cmd '[app_id=test-win-2] kill'
+sleep 0.5
+AFTER_CLOSE=$(smsg -t get_tree -r | python3 -c "
+import json, sys
+def has_app(node, name):
+    if node.get('app_id') == name: return True
+    for n in node.get('nodes', []) + node.get('floating_nodes', []):
+        if has_app(n, name): return True
+    return False
+print('1' if has_app(json.load(sys.stdin), 'test-win-2') else '0')
+" 2>/dev/null || echo "0")
+assert_eq "close command removes window" "0" "$AFTER_CLOSE"
+
+# --- Test: Multi-monitor (add second headless output) ---
+smsg_cmd 'create_output'
+sleep 0.5
+OUTPUT_COUNT=$(smsg -t get_outputs -r | python3 -c "
+import json, sys
+outputs = json.load(sys.stdin)
+print(len([o for o in outputs if o.get('active')]))
+" 2>/dev/null || echo "0")
+assert_eq "second headless output active" "2" "$OUTPUT_COUNT"
+
+# Disable second output (cleanup)
+smsg_cmd 'output HEADLESS-2 disable'
+# Note: Sway may name it HEADLESS-2 or WL-2; we just verify the count
+sleep 0.3
+
+# --- Test: Rapid window open/close (stress test) ---
+TOTAL=$((TOTAL + 1))
+STRESS_OK=true
+for i in $(seq 1 5); do
+    open_test_window "stress-$i"
+done
+sleep 1
+for i in $(seq 1 5); do
+    smsg_cmd "[app_id=stress-$i] kill"
+done
+sleep 1
+REMAINING=$(smsg -t get_tree -r | python3 -c "
+import json, sys
+def count_prefix(node, prefix):
+    c = 1 if (node.get('app_id') or '').startswith(prefix) else 0
+    for n in node.get('nodes', []) + node.get('floating_nodes', []):
+        c += count_prefix(n, prefix)
+    return c
+print(count_prefix(json.load(sys.stdin), 'stress-'))
+" 2>/dev/null || echo "0")
+if [ "$REMAINING" -eq 0 ]; then
+    echo -e "  ${GREEN}PASS${NC}: rapid open/close stress test (5 windows)"
+    PASS=$((PASS + 1))
+else
+    echo -e "  ${RED}FAIL${NC}: $REMAINING stress windows still in tree"
+    FAIL=$((FAIL + 1))
+fi
+
+# --- Cleanup remaining test windows ---
+smsg_cmd '[app_id=test-win-1] kill'
+sleep 0.3
 
 # ─────────────────────────────────────────────────────────────────────
 # Test: Notification daemon on Sway
