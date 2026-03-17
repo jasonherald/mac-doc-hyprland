@@ -41,7 +41,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Persistence** — notification history saved across restarts with `--persist`
 - **Focused monitor** — popups appear on the currently focused monitor
 
-### Shared (`dock-common`)
+### Shared (`nwg-dock-common`)
 - Compositor abstraction layer (Hyprland supported, Sway planned)
 - Custom IPC implementation (no external crate dependency)
 - XDG desktop entry parser with locale support
@@ -116,9 +116,9 @@ make help            # Show all targets
 If you prefer not to use Make:
 
 ```bash
-cargo install --path crates/mac-dock
-cargo install --path crates/mac-drawer
-cargo install --path crates/mac-notifications
+cargo install --path crates/nwg-dock
+cargo install --path crates/nwg-drawer
+cargo install --path crates/nwg-notifications
 ```
 
 You'll also need to manually install the data files from `data/` to `~/.local/share/`.
@@ -199,10 +199,10 @@ Add to `~/.config/waybar/config.jsonc`:
 ```
 mac-dock-hyprland/
 ├── crates/
-│   ├── dock-common/           # Shared library
-│   ├── mac-dock/              # Dock binary
-│   ├── mac-drawer/            # Drawer binary
-│   └── mac-notifications/     # Notification daemon
+│   ├── nwg-dock-common/       # Shared library
+│   ├── nwg-dock/              # Dock binary
+│   ├── nwg-drawer/            # Drawer binary
+│   └── nwg-notifications/     # Notification daemon
 ```
 
 - **Four crates** in a Cargo workspace

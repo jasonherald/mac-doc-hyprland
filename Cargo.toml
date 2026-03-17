@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/dock-common",
-    "crates/mac-dock",
-    "crates/mac-drawer",
-    "crates/mac-notifications",
+    "crates/nwg-dock-common",
+    "crates/nwg-dock",
+    "crates/nwg-drawer",
+    "crates/nwg-notifications",
 ]
 
 [workspace.dependencies]
@@ -37,4 +37,4 @@ nix = { version = "0.31", features = ["signal", "process", "fs"] }
 dirs = "6"
 
 # Internal crates
-dock-common = { path = "crates/dock-common" }
+nwg-dock-common = { path = "crates/nwg-dock-common" }

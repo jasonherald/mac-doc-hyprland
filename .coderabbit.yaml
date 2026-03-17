@@ -23,7 +23,7 @@ reviews:
     - "!original/**"
 
   path_instructions:
-    - path: "crates/dock-common/src/compositor/**"
+    - path: "crates/nwg-dock-common/src/compositor/**"
       instructions: |
         Core compositor abstraction layer. Review for:
         - Trait method completeness (all WM operations covered)
@@ -32,21 +32,21 @@ reviews:
         - Error handling: compositor errors must be surfaced, not swallowed
         - Thread safety: Rc<dyn Compositor> must never cross thread boundaries
         - WmEventStream must be Send (used in background threads)
-    - path: "crates/dock-common/src/**"
+    - path: "crates/nwg-dock-common/src/**"
       instructions: |
         Shared library with no GTK dependency in types/IPC. Review for:
         - No magic numbers without named constants or comments
         - Error handling: log errors, never silently discard
         - Unsafe code only in signals.rs with SAFETY comments
         - Desktop entry parsing must handle malformed .desktop files gracefully
-    - path: "crates/mac-dock/src/ui/**"
+    - path: "crates/nwg-dock/src/ui/**"
       instructions: |
         GTK4 UI code. Review for:
         - Rc/Weak patterns: watch for reference cycles in rebuild_fn
         - Popover lifecycle: track open/close state for autohide
         - Drag-and-drop: verify cursor state machine correctness
         - Layer-shell: verify anchoring and exclusive zone usage
-    - path: "crates/mac-notifications/src/dbus.rs"
+    - path: "crates/nwg-notifications/src/dbus.rs"
       instructions: |
         D-Bus notification server implementing org.freedesktop.Notifications.
         - Verify protocol compliance with the Desktop Notifications Specification

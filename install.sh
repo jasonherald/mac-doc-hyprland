@@ -1,11 +1,13 @@
 #!/bin/bash
-# Install all nwg binaries to ~/.cargo/bin/
+# Legacy install script — prefer 'make install' instead.
 set -e
 
+echo "Note: prefer 'make install' for a complete installation."
+echo ""
 echo "Building and installing..."
-cargo install --path crates/mac-dock --force
-cargo install --path crates/mac-drawer --force
-cargo install --path crates/mac-notifications --force
+cargo install --path crates/nwg-dock --force
+cargo install --path crates/nwg-drawer --force
+cargo install --path crates/nwg-notifications --force
 
 echo ""
 echo "Installed:"
@@ -13,6 +15,4 @@ echo "  $(which nwg-dock-hyprland)"
 echo "  $(which nwg-drawer)"
 echo "  $(which nwg-notifications)"
 echo ""
-echo "Add to ~/.config/hypr/autostart.conf:"
-echo "  exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400"
-echo "  exec-once = uwsm-app -- nwg-notifications --persist"
+echo "Run 'make setup-hyprland' or 'make setup-sway' for autostart config."

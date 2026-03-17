@@ -1,0 +1,21 @@
+[package]
+name = "nwg-drawer"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "nwg-drawer"
+path = "src/main.rs"
+
+[dependencies]
+nwg-dock-common = { workspace = true }
+gtk4 = { workspace = true }
+gtk4-layer-shell = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+notify = { workspace = true }
+nix = { workspace = true }
