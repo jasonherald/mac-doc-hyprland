@@ -13,26 +13,34 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Drag-to-reorder** — drag any pinned icon (running or not) to rearrange
 - **Drag-to-remove** — drag an icon off the dock to unpin it (like macOS)
 - **Dock settings menu** — right-click dock background to lock/unlock arrangement
-- **Transparency** — semi-transparent background for a modern look
+- **Configurable opacity** — `--opacity 0-100` for translucent or opaque dock
 - **Right-click menus** — pin/unpin, close, toggle floating, fullscreen, move to workspace
 - **Middle-click** — launch new instance of any running app
 - **Icon scaling** — icons shrink automatically when many apps are open
 - **Instant pin sync** — inotify-based, shared with the drawer
+- **Go flag compatibility** — accepts original Go nwg-dock-hyprland flag names
 
 ### Drawer (`nwg-drawer`)
 - **Full-screen overlay** — dark transparent Launchpad-style launcher
-- **Unified well** — favorites section with divider, then all apps in a grid
+- **Keyboard navigation** — arrow keys between icons, Enter to launch, type to search
+- **Category filtering** — filter bar with per-category buttons
+- **Description line** — status bar shows app description on hover/focus
+- **Power bar** — lock/exit/reboot/sleep/poweroff with `--pb-auto` auto-detection
+- **Configurable opacity** — `--opacity 0-100` for background transparency
 - **Subsequence search** — type to filter apps by name, description, or command
 - **File search** — columnar results with system theme icons, sorted alphabetically
 - **Math evaluation** — type expressions like `2+2` and get results with clipboard copy
 - **Command execution** — prefix with `:` to run arbitrary commands
 - **Pin sync** — shared pin file with the dock, changes reflect instantly on both
+- **Go flag compatibility** — accepts original Go nwg-drawer flag names (`--pbexit`, `--nocats`, etc.)
 
 ### Notification Center (`nwg-notifications`)
 - **D-Bus notification daemon** — replaces mako, claims `org.freedesktop.Notifications`
 - **Popup toasts** — top-right corner, auto-dismiss, click-to-focus sending app
+- **Deep-linking** — clicking a notification tells the app to open the specific item
+- **Auto-dismiss** — popups dismissed when app calls CloseNotification (e.g., Slack read)
 - **Action buttons** — shows Reply/Open/etc. buttons, emits ActionInvoked D-Bus signal
-- **History panel** — slide-out from right, grouped by app, unread dot indicators
+- **History panel** — slide-out from right, grouped by app with collapse/expand
 - **Click-outside-to-close** — backdrop overlay + Escape key
 - **Dismiss controls** — per-notification, per-app group, or clear all
 - **Do Not Disturb** — toggle via panel button, signal, or waybar right-click menu
@@ -132,15 +140,24 @@ You'll also need to manually install the data files from `data/` to `~/.local/sh
 ### Dock
 
 ```bash
-# Basic — auto-hide, 48px icons, 10px bottom margin, 400ms hide timeout
-nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
+# Basic — auto-hide, 48px icons, translucent
+nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 --opacity 75
+
+# With drawer power bar auto-detection
+nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 -c "nwg-drawer --pb-auto"
 ```
 
 ### Drawer
 
 ```bash
+# Basic with auto-detected power bar
+nwg-drawer --pb-auto
+
+# Fully configured
+nwg-drawer --opacity 88 --pb-auto --columns 8
+
 # Resident mode (stays in memory, toggle with signals)
-nwg-drawer -r
+nwg-drawer -r --pb-auto
 ```
 
 ### Notification Center
@@ -154,7 +171,7 @@ nwg-notifications --persist
 
 ```ini
 # ~/.config/hypr/autostart.conf
-exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
+exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 --opacity 75 -c "nwg-drawer --opacity 88 --pb-auto"
 exec-once = uwsm-app -- nwg-notifications --persist
 ```
 
