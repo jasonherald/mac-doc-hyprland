@@ -57,7 +57,7 @@ fn start_hotspot_windows(
         // --- Create the hotspot trigger window ---
         let hotspot = gtk4::ApplicationWindow::new(app);
         hotspot.init_layer_shell();
-        hotspot.set_namespace(Some("mac-dock-hotspot"));
+        hotspot.set_namespace(Some("nwg-dock-hotspot"));
         setup_hotspot_layer(&hotspot, position);
         hotspot.set_monitor(Some(mon));
 
@@ -240,7 +240,7 @@ fn start_cursor_poller(
             }
         } else {
             // Dock is visible — check if cursor is inside dock area or at edge
-            let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows, &monitors);
+            let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows, &monitors, position);
             let at_edge = is_cursor_at_edge(&cursor, &monitors, position);
 
             // Don't hide while a popover menu is open or a drag is in progress
@@ -330,6 +330,7 @@ fn is_cursor_in_visible_dock(
     cursor: &CursorPos,
     windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     monitors: &[WmMonitor],
+    position: crate::config::Position,
 ) -> bool {
     let wins = windows.borrow();
     for win in wins.iter() {
@@ -344,13 +345,19 @@ fn is_cursor_in_visible_dock(
 
         if win.surface().is_some() {
             for mon in monitors {
-                // Check if this window is on this monitor
-                // (dock centered at bottom of monitor)
-                let dock_x = mon.x + (mon.width - w) / 2;
-                let dock_y = mon.y + mon.height - h;
+                let (dock_x, dock_y) = match position {
+                    crate::config::Position::Bottom => {
+                        (mon.x + (mon.width - w) / 2, mon.y + mon.height - h)
+                    }
+                    crate::config::Position::Top => (mon.x + (mon.width - w) / 2, mon.y),
+                    crate::config::Position::Left => (mon.x, mon.y + (mon.height - h) / 2),
+                    crate::config::Position::Right => {
+                        (mon.x + mon.width - w, mon.y + (mon.height - h) / 2)
+                    }
+                };
 
                 let in_x = cursor.x >= dock_x && cursor.x < dock_x + w;
-                let in_y = cursor.y >= dock_y && cursor.y <= mon.y + mon.height;
+                let in_y = cursor.y >= dock_y && cursor.y < dock_y + h;
 
                 if in_x && in_y {
                     return true;

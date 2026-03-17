@@ -102,7 +102,7 @@ Key types: `WmClient`, `WmMonitor`, `WmWorkspace`, `WmEvent` (compositor-neutral
 
 Backends:
 - `compositor/hyprland.rs` — wraps `hyprland/ipc.rs`, converts Hyprland types to Wm types
-- `compositor/sway.rs` — planned (Phase B)
+- `compositor/sway.rs` — i3-ipc based Sway backend
 
 ## Signal assignments
 

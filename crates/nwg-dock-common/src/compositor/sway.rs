@@ -45,7 +45,7 @@ impl SwayBackend {
                 .get("error")
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown error");
-            log::warn!("Sway command failed: {}", err_msg);
+            return Err(DockError::Ipc(std::io::Error::other(err_msg.to_string())));
         }
         Ok(())
     }
