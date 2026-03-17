@@ -292,6 +292,13 @@ test-integration: build
 
 test-all: test test-integration
 
+sonar:
+	@echo "Running SonarQube scan..."
+	@. ./.env && export SONAR_TOKEN && \
+	SONAR_SCANNER_OPTS="-Djavax.net.ssl.trustStore=/tmp/sonar-truststore.jks -Djavax.net.ssl.trustStorePassword=changeit" \
+	/opt/sonar-scanner/bin/sonar-scanner \
+		-Dsonar.host.url=https://sonar.aaru.network
+
 # ─────────────────────────────────────────────────────────────────────
 # Clean
 # ─────────────────────────────────────────────────────────────────────
