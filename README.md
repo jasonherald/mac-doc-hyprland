@@ -52,26 +52,68 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 
 ## Installation
 
-### Dependencies
-
-GTK4, gtk4-layer-shell, and a running Hyprland or Sway session.
-
-On Arch Linux:
-```bash
-pacman -S gtk4 gtk4-layer-shell
-```
-
 ### Quick install
 
 ```bash
 git clone https://github.com/jasonherald/mac-doc-hyprland.git
 cd mac-dock-hyprland
-./install.sh
+make install
 ```
 
-This builds all three binaries in release mode and installs them to `~/.cargo/bin/`.
+This will:
+1. Check for system dependencies (gtk4, gtk4-layer-shell) — tells you what to install if missing
+2. Check for Rust — offers to install via rustup if not found
+3. Build all three binaries in release mode
+4. Install binaries to `~/.cargo/bin/`
+5. Install data files (icons, default CSS) to `~/.local/share/`
+6. Create the D-Bus notification service
 
-### Manual install
+After install, run `make setup-hyprland` or `make setup-sway` for autostart configuration.
+
+### Install system dependencies
+
+If `make install` reports missing dependencies:
+
+```bash
+# Arch Linux
+sudo pacman -S gtk4 gtk4-layer-shell
+
+# Ubuntu/Debian
+sudo apt install libgtk-4-dev libgtk4-layer-shell-dev
+
+# Fedora
+sudo dnf install gtk4-devel gtk4-layer-shell-devel
+```
+
+Or just run `make deps` to auto-detect and install.
+
+### Compositor setup
+
+After installing, configure your compositor to start the dock and notifications:
+
+```bash
+# Print Hyprland config snippets
+make setup-hyprland
+
+# Print Sway config snippets
+make setup-sway
+```
+
+These print the autostart entries and optional keybindings for you to add to your config.
+
+### Other make targets
+
+```bash
+make build           # Build without installing
+make uninstall       # Remove all installed files
+make deps            # Install system dependencies (requires sudo)
+make clean           # Remove build artifacts
+make help            # Show all targets
+```
+
+### Manual install (advanced)
+
+If you prefer not to use Make:
 
 ```bash
 cargo install --path crates/mac-dock
@@ -79,27 +121,7 @@ cargo install --path crates/mac-drawer
 cargo install --path crates/mac-notifications
 ```
 
-### Post-install setup
-
-1. **Hyprland autostart** — add to `~/.config/hypr/autostart.conf`:
-    ```ini
-    exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400
-    exec-once = uwsm-app -- nwg-notifications --persist
-    ```
-
-2. **D-Bus service** — create `~/.local/share/dbus-1/services/org.freedesktop.Notifications.service` so the notification daemon auto-starts when any app sends a notification:
-    ```ini
-    [D-BUS Service]
-    Name=org.freedesktop.Notifications
-    Exec=/home/YOU/.cargo/bin/nwg-notifications --persist
-    ```
-
-3. **Disable mako** (if installed):
-    ```bash
-    systemctl --user mask mako
-    ```
-
-4. **Waybar module** (optional) — see [Waybar module](#waybar-module) section below for the notification bell config.
+You'll also need to manually install the data files from `data/` to `~/.local/share/`.
 
 ## Usage
 

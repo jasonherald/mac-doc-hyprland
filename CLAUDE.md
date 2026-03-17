@@ -17,9 +17,10 @@ cargo fmt --all                # Format
 ## Install
 
 ```bash
-cargo install --path crates/mac-dock
-cargo install --path crates/mac-drawer
-cargo install --path crates/mac-notifications
+make install                   # Full install (deps check, build, install, D-Bus service)
+make setup-hyprland            # Print Hyprland autostart config
+make setup-sway                # Print Sway autostart config
+make uninstall                 # Remove everything
 ```
 
 ## Run locally
