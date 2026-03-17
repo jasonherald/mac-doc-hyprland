@@ -11,7 +11,8 @@ CARGO_FLAGS ?= --release
 BINARIES := nwg-dock-hyprland nwg-drawer nwg-notifications
 
 .PHONY: all build install install-bin install-data install-dbus \
-        uninstall deps check-deps check-rust setup-hyprland setup-sway \
+        uninstall upgrade stop start restart \
+        deps check-deps check-rust setup-hyprland setup-sway \
         help clean
 
 # ─────────────────────────────────────────────────────────────────────
@@ -22,10 +23,14 @@ all: build
 
 help:
 	@echo "Usage:"
-	@echo "  make install         Build and install everything"
+	@echo "  make install         Build and install everything (stops running instances)"
+	@echo "  make upgrade         Rebuild, stop running instances, reinstall, restart"
 	@echo "  make build           Build release binaries only"
 	@echo "  make deps            Install system dependencies (requires sudo)"
 	@echo "  make uninstall       Remove all installed files"
+	@echo "  make stop            Stop all running instances"
+	@echo "  make start           Start dock and notification daemon"
+	@echo "  make restart         Stop then start"
 	@echo "  make setup-hyprland  Print Hyprland autostart configuration"
 	@echo "  make setup-sway      Print Sway autostart configuration"
 	@echo "  make clean           Remove build artifacts"
@@ -138,7 +143,7 @@ install: build install-bin install-data install-dbus
 	fi
 	@echo ""
 
-install-bin:
+install-bin: stop
 	@echo "Installing binaries to $(BINDIR)..."
 	@mkdir -p $(BINDIR)
 	@for bin in $(BINARIES); do \
@@ -171,6 +176,45 @@ install-dbus:
 		echo "  To use nwg-notifications instead, run:"; \
 		echo "    systemctl --user mask mako"; \
 	fi
+
+# ─────────────────────────────────────────────────────────────────────
+# Compositor setup
+# ─────────────────────────────────────────────────────────────────────
+# Process management
+# ─────────────────────────────────────────────────────────────────────
+
+stop:
+	@stopped=""; \
+	for bin in $(BINARIES); do \
+		if pidof $$bin >/dev/null 2>&1; then \
+			killall $$bin 2>/dev/null && stopped="$$stopped $$bin"; \
+		fi; \
+	done; \
+	if [ -n "$$stopped" ]; then \
+		echo "Stopped:$$stopped"; \
+		sleep 1; \
+	fi
+
+start:
+	@echo "Starting dock and notification daemon..."
+	@if [ -n "$$HYPRLAND_INSTANCE_SIGNATURE" ]; then \
+		nohup $(BINDIR)/nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 >/dev/null 2>&1 & \
+		nohup $(BINDIR)/nwg-notifications --persist >/dev/null 2>&1 & \
+	elif [ -n "$$SWAYSOCK" ]; then \
+		nohup $(BINDIR)/nwg-dock-hyprland --wm sway -d -i 48 --mb 10 --hide-timeout 400 >/dev/null 2>&1 & \
+		nohup $(BINDIR)/nwg-notifications --wm sway --persist >/dev/null 2>&1 & \
+	else \
+		echo "No compositor detected. Start manually or configure autostart."; \
+		exit 1; \
+	fi
+	@echo "  nwg-dock-hyprland started"
+	@echo "  nwg-notifications started"
+
+restart: stop start
+
+upgrade: build stop install-bin install-data start
+	@echo ""
+	@echo "Upgrade complete — running instances restarted."
 
 # ─────────────────────────────────────────────────────────────────────
 # Compositor setup
