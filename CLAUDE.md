@@ -2,16 +2,19 @@
 
 ## What is this?
 
-A macOS-style dock, app drawer, and notification center for Hyprland (Sway support coming), written in Rust. Ported from Go (nwg-dock-hyprland + nwg-drawer) with enhancements: multi-monitor, shared pin state, compositor-abstracted IPC, Launchpad-style drawer, and a full notification daemon replacing mako.
+A macOS-style dock, app drawer, and notification center for Hyprland and Sway, written in Rust. Ported from Go (nwg-dock-hyprland + nwg-drawer) with enhancements: multi-monitor, shared pin state, compositor-abstracted IPC, Launchpad-style drawer, and a full notification daemon replacing mako.
 
 ## Build & test
 
 ```bash
 cargo build                    # Debug build
 cargo build --release          # Release build
-cargo test --workspace         # Run all tests
+cargo test --workspace         # Run 118 unit tests
 cargo clippy --all-targets     # Lint (should be zero warnings)
 cargo fmt --all                # Format
+make test                      # Unit tests + clippy
+make test-integration          # 18 headless Sway integration tests (requires sway, foot)
+make test-all                  # Both
 ```
 
 ## Install
@@ -44,7 +47,7 @@ nwg-dock-hyprland --wm hyprland
 Four crates in a Cargo workspace:
 
 - **nwg-dock-common** — shared library (no GTK dependency in types/IPC)
-  - `compositor/` — trait-based compositor abstraction (Hyprland backend, Sway planned)
+  - `compositor/` — trait-based compositor abstraction (Hyprland + Sway backends)
   - `hyprland/` — Hyprland IPC socket, event stream, types (internal to compositor backend)
   - `desktop/` — .desktop parser, icon resolution, categories, preferred-apps
   - `config/` — XDG paths, CSS loading
