@@ -13,7 +13,7 @@ pub struct DrawerConfig {
     pub output: String,
 
     /// Use overlay layer (otherwise top)
-    #[arg(long)]
+    #[arg(long, alias = "ovl")]
     pub overlay: bool,
 
     /// GTK theme name
@@ -25,7 +25,7 @@ pub struct DrawerConfig {
     pub icon_theme: String,
 
     /// Icon size in pixels
-    #[arg(long, default_value_t = 64)]
+    #[arg(long, alias = "is", default_value_t = 64)]
     pub icon_size: i32,
 
     /// Number of columns in the app grid
@@ -41,7 +41,7 @@ pub struct DrawerConfig {
     pub lang: String,
 
     /// File manager command
-    #[arg(long, default_value = "thunar")]
+    #[arg(long, alias = "fm", default_value = "thunar")]
     pub file_manager: String,
 
     /// Terminal emulator
@@ -49,15 +49,15 @@ pub struct DrawerConfig {
     pub term: String,
 
     /// File search name length limit
-    #[arg(long, default_value_t = 80)]
+    #[arg(long, alias = "fslen", default_value_t = 80)]
     pub fs_name_limit: usize,
 
     /// Disable category filtering
-    #[arg(long)]
+    #[arg(long, alias = "nocats")]
     pub no_cats: bool,
 
     /// Disable file search
-    #[arg(long)]
+    #[arg(long, alias = "nofs")]
     pub no_fs: bool,
 
     /// Maximum number of file search results
@@ -69,7 +69,7 @@ pub struct DrawerConfig {
     pub resident: bool,
 
     /// File search result columns
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, alias = "fscol", default_value_t = 2)]
     pub fs_columns: u32,
 
     /// Margin top
@@ -89,31 +89,31 @@ pub struct DrawerConfig {
     pub mb: i32,
 
     /// Power bar exit command
-    #[arg(long, default_value = "")]
+    #[arg(long, alias = "pbexit", default_value = "")]
     pub pb_exit: String,
 
     /// Power bar lock command
-    #[arg(long, default_value = "")]
+    #[arg(long, alias = "pblock", default_value = "")]
     pub pb_lock: String,
 
     /// Power bar poweroff command
-    #[arg(long, default_value = "")]
+    #[arg(long, alias = "pbpoweroff", default_value = "")]
     pub pb_poweroff: String,
 
     /// Power bar reboot command
-    #[arg(long, default_value = "")]
+    #[arg(long, alias = "pbreboot", default_value = "")]
     pub pb_reboot: String,
 
     /// Power bar sleep command
-    #[arg(long, default_value = "")]
+    #[arg(long, alias = "pbsleep", default_value = "")]
     pub pb_sleep: String,
 
     /// Power bar icon size
-    #[arg(long, default_value_t = 64)]
+    #[arg(long, alias = "pbsize", default_value_t = 64)]
     pub pb_size: i32,
 
     /// Use icon theme for power bar (instead of built-in)
-    #[arg(long)]
+    #[arg(long, alias = "pbuseicontheme")]
     pub pb_use_icon_theme: bool,
 
     /// Turn on debug messages
@@ -137,7 +137,7 @@ pub struct DrawerConfig {
     pub close: bool,
 
     /// Force GTK theme for libadwaita apps (prepends GTK_THEME= to launch commands)
-    #[arg(long)]
+    #[arg(long, alias = "ft")]
     pub force_theme: bool,
 
     /// Window manager override (auto-detected from environment if not specified)
