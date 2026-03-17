@@ -340,7 +340,6 @@ sleep 0.3
 
 # --- Test: Rapid window open/close (stress test) ---
 TOTAL=$((TOTAL + 1))
-STRESS_OK=true
 for i in $(seq 1 5); do
     open_test_window "stress-$i"
 done

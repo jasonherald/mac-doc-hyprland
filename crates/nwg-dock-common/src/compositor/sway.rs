@@ -109,25 +109,32 @@ impl Compositor for SwayBackend {
     }
 
     fn focus_window(&self, id: &str) -> Result<()> {
-        self.run_command(&format!("[con_id={}] focus", id))
+        self.run_command(&format!("[con_id={}] focus", validate_con_id(id)?))
     }
 
     fn close_window(&self, id: &str) -> Result<()> {
-        self.run_command(&format!("[con_id={}] kill", id))
+        self.run_command(&format!("[con_id={}] kill", validate_con_id(id)?))
     }
 
     fn toggle_floating(&self, id: &str) -> Result<()> {
-        self.run_command(&format!("[con_id={}] floating toggle", id))
+        self.run_command(&format!(
+            "[con_id={}] floating toggle",
+            validate_con_id(id)?
+        ))
     }
 
     fn toggle_fullscreen(&self, id: &str) -> Result<()> {
-        self.run_command(&format!("[con_id={}] fullscreen toggle", id))
+        self.run_command(&format!(
+            "[con_id={}] fullscreen toggle",
+            validate_con_id(id)?
+        ))
     }
 
     fn move_to_workspace(&self, id: &str, workspace: i32) -> Result<()> {
         self.run_command(&format!(
             "[con_id={}] move to workspace number {}",
-            id, workspace
+            validate_con_id(id)?,
+            workspace
         ))
     }
 
@@ -198,6 +205,18 @@ impl WmEventStream for SwayEventStream {
                 _ => continue,
             }
         }
+    }
+}
+
+/// Validates that a Sway container ID is numeric to prevent command injection.
+fn validate_con_id(id: &str) -> Result<&str> {
+    if id.chars().all(|c| c.is_ascii_digit()) {
+        Ok(id)
+    } else {
+        Err(DockError::Ipc(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("invalid Sway container id: {}", id),
+        )))
     }
 }
 

@@ -9,6 +9,7 @@ pub fn is_pinned(pinned: &[String], task_id: &str) -> bool {
 /// Adds an item to the pinned list if not already present.
 /// Returns true if the item was added.
 pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
+    let item_id = item_id.trim();
     if is_pinned(pinned, item_id) {
         log::debug!("{} already pinned", item_id);
         return false;
@@ -47,7 +48,12 @@ pub fn load_pinned(path: &Path) -> Vec<String> {
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty())
             .collect(),
-        Err(_) => Vec::new(),
+        Err(e) => {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("Failed to load pinned items from {}: {}", path.display(), e);
+            }
+            Vec::new()
+        }
     }
 }
 

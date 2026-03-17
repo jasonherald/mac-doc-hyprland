@@ -71,11 +71,15 @@ fn start_hotspot_windows(
         CSS_LOADED.call_once(|| {
             let provider = gtk4::CssProvider::new();
             provider.load_from_data(".dock-hotspot { background: rgba(0,0,0,0.01); }");
-            gtk4::style_context_add_provider_for_display(
-                &gtk4::gdk::Display::default().unwrap(),
-                &provider,
-                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-            );
+            if let Some(display) = gtk4::gdk::Display::default() {
+                gtk4::style_context_add_provider_for_display(
+                    &display,
+                    &provider,
+                    gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+                );
+            } else {
+                log::error!("No display available for hotspot CSS provider");
+            }
         });
 
         hotspot.present();

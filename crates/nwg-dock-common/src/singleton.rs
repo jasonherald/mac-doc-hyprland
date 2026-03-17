@@ -26,7 +26,9 @@ pub fn acquire_lock(app_name: &str) -> Result<LockFile, Option<u32>> {
             // Process is dead, remove stale lock
             log::info!("Removing stale lock file (pid {} no longer running)", pid);
         }
-        let _ = fs::remove_file(&lock_path);
+        if let Err(e) = fs::remove_file(&lock_path) {
+            log::warn!("Failed to remove stale lock {}: {}", lock_path.display(), e);
+        }
     }
 
     // Create lock file atomically (O_CREAT | O_EXCL — fails if file exists)
@@ -86,9 +88,9 @@ pub fn find_running_pid(app_name: &str) -> Option<u32> {
 /// Uses djb2 algorithm — deterministic across Rust versions and platforms.
 /// Not cryptographic, only used for unique file naming per user.
 fn stable_hash(text: &str) -> String {
-    let mut hash: u64 = 5381;
+    let mut hash: u64 = 5381; // djb2 initial seed
     for b in text.bytes() {
-        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+        hash = hash.wrapping_mul(33).wrapping_add(b as u64); // djb2: hash * 33 + byte
     }
     format!("{:016x}", hash)
 }

@@ -55,7 +55,7 @@ pub fn build_power_bar(
     ];
 
     for (def, command) in POWER_BUTTONS.iter().zip(commands.iter()) {
-        if command.is_empty() {
+        if command.trim().is_empty() {
             continue;
         }
 
