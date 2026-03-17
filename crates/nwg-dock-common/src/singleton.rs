@@ -1,4 +1,4 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -10,7 +10,7 @@ use crate::config::paths::temp_dir;
 /// instance holds it (pid is the running instance's PID, if readable).
 pub fn acquire_lock(app_name: &str) -> Result<LockFile, Option<u32>> {
     let user = std::env::var("USER").unwrap_or_default();
-    let user_hash = md5_hash(&user);
+    let user_hash = stable_hash(&user);
     let lock_path = temp_dir().join(format!("{}-{}.lock", app_name, user_hash));
 
     if lock_path.exists() {
@@ -29,8 +29,20 @@ pub fn acquire_lock(app_name: &str) -> Result<LockFile, Option<u32>> {
         let _ = fs::remove_file(&lock_path);
     }
 
-    // Create new lock file with our PID
-    let mut file = fs::File::create(&lock_path).map_err(|_| None)?;
+    // Create lock file atomically (O_CREAT | O_EXCL — fails if file exists)
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&lock_path)
+        .or_else(|_| {
+            // Another instance may have just created it — retry after removing stale
+            let _ = fs::remove_file(&lock_path);
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+        })
+        .map_err(|_| None)?;
     write!(file, "{}", std::process::id()).map_err(|_| None)?;
 
     Ok(LockFile { path: lock_path })
@@ -56,7 +68,7 @@ impl Drop for LockFile {
 /// Finds the PID of a running instance (if any) without acquiring the lock.
 pub fn find_running_pid(app_name: &str) -> Option<u32> {
     let user = std::env::var("USER").unwrap_or_default();
-    let user_hash = md5_hash(&user);
+    let user_hash = stable_hash(&user);
     let lock_path = temp_dir().join(format!("{}-{}.lock", app_name, user_hash));
 
     let content = fs::read_to_string(&lock_path).ok()?;
@@ -69,13 +81,14 @@ pub fn find_running_pid(app_name: &str) -> Option<u32> {
     }
 }
 
-/// Simple MD5 hash of a string, returned as hex.
-fn md5_hash(text: &str) -> String {
-    // Minimal MD5 implementation to avoid adding a dependency.
-    // We only use this for lock file naming, not cryptography.
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
-    text.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+/// Stable hash of a string for lock file naming.
+///
+/// Uses djb2 algorithm — deterministic across Rust versions and platforms.
+/// Not cryptographic, only used for unique file naming per user.
+fn stable_hash(text: &str) -> String {
+    let mut hash: u64 = 5381;
+    for b in text.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(b as u64);
+    }
+    format!("{:016x}", hash)
 }

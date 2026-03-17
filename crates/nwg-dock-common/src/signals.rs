@@ -74,19 +74,26 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
         libc::pthread_sigmask(libc::SIG_BLOCK, &set, std::ptr::null_mut());
     }
 
-    // Sigwait thread — inherits the blocked signal mask
+    // Sigwait thread — inherits the blocked signal mask.
+    // Build the signal set once before the loop for efficiency.
     std::thread::spawn(move || {
+        // SAFETY: sigset_t is a plain C struct; zeroing + sigemptyset initializes it.
+        let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
+        unsafe {
+            libc::sigemptyset(&mut set);
+            libc::sigaddset(&mut set, libc::SIGUSR1);
+            for &s in &rt_signals {
+                libc::sigaddset(&mut set, s);
+            }
+        }
+
         loop {
             let mut sig: i32 = 0;
             // SAFETY: sigwait blocks until a signal from the set is pending.
-            let mut set: libc::sigset_t = unsafe { std::mem::zeroed() };
-            unsafe {
-                libc::sigemptyset(&mut set);
-                libc::sigaddset(&mut set, libc::SIGUSR1);
-                for &s in &rt_signals {
-                    libc::sigaddset(&mut set, s);
-                }
-                libc::sigwait(&set, &mut sig);
+            let ret = unsafe { libc::sigwait(&set, &mut sig) };
+            if ret != 0 {
+                log::error!("sigwait failed with error code {}", ret);
+                break;
             }
 
             let cmd = if sig == libc::SIGUSR1 {

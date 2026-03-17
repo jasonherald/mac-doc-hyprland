@@ -26,13 +26,17 @@ pub fn unpin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
 }
 
 /// Saves the pinned list to a file (one item per line).
+///
+/// Uses atomic write (temp file + rename) to prevent corruption on crash.
 pub fn save_pinned(pinned: &[String], path: &Path) -> std::io::Result<()> {
     let content: String = pinned
         .iter()
         .filter(|line| !line.is_empty())
         .map(|line| format!("{}\n", line))
         .collect();
-    fs::write(path, content)
+    let temp_path = path.with_extension("tmp");
+    fs::write(&temp_path, content)?;
+    fs::rename(&temp_path, path)
 }
 
 /// Loads the pinned list from a file.

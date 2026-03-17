@@ -213,6 +213,9 @@ fn send_message(conn: &mut UnixStream, msg_type: u32, payload: &[u8]) -> Result<
     Ok(())
 }
 
+/// Maximum IPC response payload size (100MB safety cap).
+const MAX_PAYLOAD_SIZE: usize = 100_000_000;
+
 fn read_response(conn: &mut UnixStream) -> Result<Vec<u8>> {
     let mut header = [0u8; HEADER_SIZE];
     conn.read_exact(&mut header)?;
@@ -226,6 +229,12 @@ fn read_response(conn: &mut UnixStream) -> Result<Vec<u8>> {
     }
 
     let payload_len = u32::from_le_bytes(header[6..10].try_into().unwrap()) as usize;
+    if payload_len > MAX_PAYLOAD_SIZE {
+        return Err(DockError::Ipc(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("IPC payload too large: {} bytes", payload_len),
+        )));
+    }
     let mut body = vec![0u8; payload_len];
     conn.read_exact(&mut body)?;
     Ok(body)
@@ -388,6 +397,9 @@ fn output_to_wm_monitor(output: &serde_json::Value, idx: i32) -> WmMonitor {
 
 // --- Enhanced tree traversal with workspace context ---
 
+/// Maximum tree traversal depth to prevent stack overflow.
+const MAX_TREE_DEPTH: u32 = 128;
+
 /// Collects windows with proper workspace information by traversing
 /// the tree depth-first, tracking the current workspace and output context.
 fn collect_windows_with_context(
@@ -397,6 +409,29 @@ fn collect_windows_with_context(
     current_output: i32,
     is_floating: bool,
 ) {
+    collect_windows_recursive(
+        node,
+        windows,
+        current_workspace,
+        current_output,
+        is_floating,
+        0,
+    );
+}
+
+fn collect_windows_recursive(
+    node: &serde_json::Value,
+    windows: &mut Vec<WmClient>,
+    current_workspace: &WmWorkspace,
+    current_output: i32,
+    is_floating: bool,
+    depth: u32,
+) {
+    if depth > MAX_TREE_DEPTH {
+        log::warn!("Sway tree traversal depth limit exceeded");
+        return;
+    }
+
     let node_type = node.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
     match node_type {
@@ -415,7 +450,7 @@ fn collect_windows_with_context(
                 id: ws_num,
                 name: ws_name,
             };
-            recurse_children(node, windows, &ws, current_output, false);
+            recurse_children(node, windows, &ws, current_output, false, depth);
             return;
         }
         "output" => {
@@ -424,12 +459,26 @@ fn collect_windows_with_context(
             if name.starts_with("__") {
                 return;
             }
-            recurse_children(node, windows, current_workspace, current_output, false);
+            recurse_children(
+                node,
+                windows,
+                current_workspace,
+                current_output,
+                false,
+                depth,
+            );
             return;
         }
         // floating_con is the container that wraps floating windows
         "floating_con" => {
-            recurse_children(node, windows, current_workspace, current_output, true);
+            recurse_children(
+                node,
+                windows,
+                current_workspace,
+                current_output,
+                true,
+                depth,
+            );
             return;
         }
         _ => {}
@@ -449,6 +498,7 @@ fn collect_windows_with_context(
         current_workspace,
         current_output,
         is_floating,
+        depth,
     );
 }
 
@@ -458,16 +508,17 @@ fn recurse_children(
     ws: &WmWorkspace,
     output: i32,
     is_floating: bool,
+    depth: u32,
 ) {
     if let Some(nodes) = node.get("nodes").and_then(|v| v.as_array()) {
         for child in nodes {
-            collect_windows_with_context(child, windows, ws, output, is_floating);
+            collect_windows_recursive(child, windows, ws, output, is_floating, depth + 1);
         }
     }
     if let Some(floating) = node.get("floating_nodes").and_then(|v| v.as_array()) {
         for child in floating {
             // Children of floating_nodes are floating
-            collect_windows_with_context(child, windows, ws, output, true);
+            collect_windows_recursive(child, windows, ws, output, true, depth + 1);
         }
     }
 }

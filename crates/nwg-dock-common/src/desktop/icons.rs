@@ -42,7 +42,7 @@ pub fn get_exec(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
     let lines = load_text_lines(&desktop_path).ok()?;
 
     for line in &lines {
-        if line.to_uppercase().starts_with("EXEC") {
+        if line.to_uppercase().starts_with("EXEC=") {
             let exec = &line[5..]; // Skip "Exec="
             // Strip field codes like %u, %f, etc.
             let exec = if let Some(pos) = exec.find('%') {

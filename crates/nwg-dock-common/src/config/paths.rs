@@ -18,7 +18,8 @@ pub fn config_dir(app_name: &str) -> PathBuf {
     if let Ok(home) = env::var("HOME") {
         return PathBuf::from(home).join(".config").join(app_name);
     }
-    PathBuf::from(".config").join(app_name)
+    log::warn!("HOME not set, using /tmp fallback for config directory");
+    PathBuf::from("/tmp").join(app_name)
 }
 
 /// Returns the temp directory, checking TMPDIR/TEMP/TMP then falling back to /tmp.

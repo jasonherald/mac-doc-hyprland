@@ -12,6 +12,9 @@ pub enum HyprEvent {
     Other(String),
 }
 
+/// Maximum event line buffer size (64KB) to prevent OOM from a misbehaving socket.
+const MAX_EVENT_BUFFER: usize = 65536;
+
 /// Blocking event stream reader for Hyprland socket2.
 ///
 /// Connects to Hyprland's event socket and yields events.
@@ -48,6 +51,13 @@ impl EventStream {
                     return Ok(parse_event(&line));
                 }
                 continue;
+            }
+
+            if self.remainder.len() > MAX_EVENT_BUFFER {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "event line too long (exceeds 64KB)",
+                ));
             }
 
             let n = self.conn.read(&mut self.buf)?;

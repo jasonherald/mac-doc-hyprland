@@ -45,10 +45,11 @@ pub fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
 /// Sanitizes a command string before passing to compositor exec.
 ///
 /// Strips characters that could be used for command injection via
-/// compositor IPC (semicolons chain commands in both Sway and Hyprland).
+/// compositor IPC (semicolons chain commands, newlines start new commands,
+/// backticks/dollar signs enable substitution).
 pub(crate) fn sanitize_exec_command(cmd: &str) -> String {
     cmd.chars()
-        .filter(|c| !matches!(c, ';' | '`' | '$' | '|' | '&'))
+        .filter(|c| !matches!(c, ';' | '`' | '$' | '|' | '&' | '\n' | '\r'))
         .collect()
 }
 

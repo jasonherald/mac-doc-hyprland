@@ -3,8 +3,8 @@ use std::path::Path;
 
 /// Loads preferred app associations from a JSON file.
 ///
-/// The file maps regex patterns to commands, e.g.:
-/// `{ ".*\\.pdf$": "zathura", ".*\\.mp4$": "mpv" }`
+/// The file maps file extension patterns to commands (simple suffix matching,
+/// not regex). Examples: `{ "*.pdf": "zathura", "*.mp4": "mpv" }`
 pub fn load_preferred_apps(path: &Path) -> Option<HashMap<String, String>> {
     let content = std::fs::read_to_string(path).ok()?;
     let map: HashMap<String, serde_json::Value> = serde_json::from_str(&content).ok()?;
