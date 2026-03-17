@@ -77,6 +77,7 @@ impl PopupManager {
         let notif_app = notif.app_name.clone();
         let notif_desktop = notif.desktop_entry.clone();
         let notif_id = notif.id;
+        let has_default_action = notif.actions.iter().any(|(key, _)| key == "default");
         let state_click = Rc::clone(state);
         let win_click = win.clone();
         let on_change_click = Rc::clone(&self.on_state_change);
@@ -84,6 +85,17 @@ impl PopupManager {
         let click = gtk4::GestureClick::new();
         click.connect_released(move |gesture, _, _, _| {
             gesture.set_state(gtk4::EventSequenceState::Claimed);
+
+            // Emit ActionInvoked with "default" action so the app can deep-link
+            // to the specific item (mail message, chat thread, etc.)
+            if has_default_action {
+                let s = state_click.borrow();
+                if let Some(conn) = &s.dbus_connection {
+                    crate::dbus::emit_action_invoked(conn, notif_id, "default");
+                }
+                drop(s);
+            }
+
             focus_app(
                 &notif_app,
                 notif_desktop.as_deref(),

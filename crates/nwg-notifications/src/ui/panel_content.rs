@@ -4,7 +4,13 @@ use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Maximum notifications to show per app group before collapsing.
+const MAX_VISIBLE_PER_GROUP: usize = 3;
+
 /// Rebuilds the panel's notification list, grouped by app.
+///
+/// Groups with more than MAX_VISIBLE_PER_GROUP notifications are collapsed
+/// to show only the latest few, with a "N more" button to expand.
 pub fn build_grouped_list(
     container: &gtk4::Box,
     state: &Rc<RefCell<NotificationState>>,
@@ -66,12 +72,24 @@ pub fn build_grouped_list(
 
         container.append(&header);
 
-        // Notification rows
-        for notif in &group.notifications {
+        // Notification rows — collapse large groups
+        let total = group.notifications.len();
+        let collapsed = total > MAX_VISIBLE_PER_GROUP;
+        let visible_count = if collapsed {
+            MAX_VISIBLE_PER_GROUP
+        } else {
+            total
+        };
+
+        // Container for the overflow rows (hidden initially when collapsed)
+        let overflow_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        overflow_box.set_visible(!collapsed || visible_count == total);
+
+        for (i, notif) in group.notifications.iter().enumerate() {
             let click_cb = Rc::clone(&on_notification_click);
             let state_click = Rc::clone(state);
             let rebuild_click = Rc::clone(&on_rebuild);
-            let state_dismiss = Rc::clone(state);
+            let state_dismiss_row = Rc::clone(state);
             let rebuild_dismiss = Rc::clone(&on_rebuild);
 
             let row = notification_row::build_row(
@@ -79,16 +97,37 @@ pub fn build_grouped_list(
                 &app_dirs,
                 move |id| {
                     click_cb(id);
-                    // Remove from history after focusing app (like macOS)
                     state_click.borrow_mut().remove(id);
                     rebuild_click();
                 },
                 move |id| {
-                    state_dismiss.borrow_mut().remove(id);
+                    state_dismiss_row.borrow_mut().remove(id);
                     rebuild_dismiss();
                 },
             );
-            container.append(&row);
+
+            if i < visible_count {
+                container.append(&row);
+            } else {
+                overflow_box.append(&row);
+            }
+        }
+
+        // "N more" expand button
+        if collapsed {
+            let remaining = total - visible_count;
+            let expand_btn = gtk4::Button::with_label(&format!("{} more", remaining));
+            expand_btn.add_css_class("group-expand");
+            expand_btn.set_has_frame(false);
+
+            let overflow_ref = overflow_box.clone();
+            expand_btn.connect_clicked(move |btn| {
+                overflow_ref.set_visible(true);
+                btn.set_visible(false);
+            });
+
+            container.append(&expand_btn);
+            container.append(&overflow_box);
         }
 
         // Separator between groups

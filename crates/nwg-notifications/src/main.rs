@@ -123,8 +123,10 @@ fn activate_notifications(
     // D-Bus callbacks
     let on_notify = build_on_notify_callback(&state, &popup_mgr, &panel, &on_state_change);
     let on_change_close = Rc::clone(&on_state_change);
+    let popup_mgr_close = Rc::clone(&popup_mgr);
     let on_close: dbus::OnClose = Rc::new(move |id| {
         log::debug!("Notification {} closed via D-Bus", id);
+        popup_mgr_close.borrow_mut().dismiss(id);
         on_change_close();
     });
 
