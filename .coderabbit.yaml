@@ -1,0 +1,82 @@
+# CodeRabbit configuration for mac-doc-hyprland
+# Rust Cargo workspace: dock, drawer, notification daemon for Hyprland/Sway
+
+language: "en-US"
+tone_instructions: "Professional and concise. Prioritize idiomatic Rust, safety, and correctness."
+
+reviews:
+  profile: "assertive"
+  high_level_summary: true
+  sequence_diagrams: false
+  poem: false
+  collapse_walkthrough: false
+  changed_files_summary: true
+
+  auto_review:
+    enabled: true
+    drafts: true
+    base_branches:
+      - main
+
+  path_filters:
+    - "!target/**"
+    - "!original/**"
+
+  path_instructions:
+    - path: "crates/dock-common/src/compositor/**"
+      instructions: |
+        Core compositor abstraction layer. Review for:
+        - Trait method completeness (all WM operations covered)
+        - Sway i3-ipc protocol correctness (binary header, message types)
+        - Hyprland IPC command format accuracy
+        - Error handling: compositor errors must be surfaced, not swallowed
+        - Thread safety: Rc<dyn Compositor> must never cross thread boundaries
+        - WmEventStream must be Send (used in background threads)
+    - path: "crates/dock-common/src/**"
+      instructions: |
+        Shared library with no GTK dependency in types/IPC. Review for:
+        - No magic numbers without named constants or comments
+        - Error handling: log errors, never silently discard
+        - Unsafe code only in signals.rs with SAFETY comments
+        - Desktop entry parsing must handle malformed .desktop files gracefully
+    - path: "crates/mac-dock/src/ui/**"
+      instructions: |
+        GTK4 UI code. Review for:
+        - Rc/Weak patterns: watch for reference cycles in rebuild_fn
+        - Popover lifecycle: track open/close state for autohide
+        - Drag-and-drop: verify cursor state machine correctness
+        - Layer-shell: verify anchoring and exclusive zone usage
+    - path: "crates/mac-notifications/src/dbus.rs"
+      instructions: |
+        D-Bus notification server implementing org.freedesktop.Notifications.
+        - Verify protocol compliance with the Desktop Notifications Specification
+        - ActionInvoked signal must include correct notification ID and action key
+        - GetServerInformation must return valid version info
+    - path: "**/signals.rs"
+      instructions: |
+        Real-time signal handling via raw libc. All unsafe blocks must have
+        SAFETY comments. Only async-signal-safe operations in handler paths.
+
+  tools:
+    clippy:
+      enabled: true
+    shellcheck:
+      enabled: true
+    markdownlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    actionlint:
+      enabled: true
+    yamllint:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  opt_out: false
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true

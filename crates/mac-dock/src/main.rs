@@ -37,6 +37,18 @@ fn main() {
         config.autohide = false;
     }
 
+    // Auto-detect launcher: if command not found on PATH, hide launcher button
+    if !config.nolauncher && !config.launcher_cmd.is_empty() {
+        let cmd = config.launcher_cmd.split_whitespace().next().unwrap_or("");
+        if !cmd.is_empty() && !command_exists(cmd) {
+            log::info!(
+                "Launcher command '{}' not found on PATH, hiding launcher",
+                cmd
+            );
+            config.nolauncher = true;
+        }
+    }
+
     let wm_override = if config.wm.is_empty() {
         None
     } else {
@@ -160,4 +172,17 @@ fn main() {
     });
 
     app.run_with_args::<String>(&[]);
+}
+
+/// Checks if a command exists on PATH.
+fn command_exists(cmd: &str) -> bool {
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in path.split(':') {
+            let full = std::path::Path::new(dir).join(cmd);
+            if full.is_file() {
+                return true;
+            }
+        }
+    }
+    false
 }

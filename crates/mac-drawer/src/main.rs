@@ -112,6 +112,7 @@ fn main() {
 
     let app_dirs = get_app_dirs();
     let exclusions = paths::load_text_lines(&config_dir.join("excluded-dirs")).unwrap_or_default();
+    let data_home = paths::find_data_home("nwg-drawer");
 
     let app = gtk4::Application::builder()
         .application_id("com.mac-drawer.hyprland")
@@ -120,6 +121,7 @@ fn main() {
     let config = Rc::new(config);
     let pinned_file = Rc::new(pinned_file);
     let css_path = Rc::new(css_path);
+    let data_home = Rc::new(data_home);
 
     app.connect_activate(move |app| {
         let config = Rc::clone(&config);
@@ -211,6 +213,7 @@ fn main() {
             main_vbox.append(&ui::power_bar::build_power_bar(
                 &config,
                 Rc::clone(&on_launch),
+                data_home.as_deref(),
             ));
         }
         main_vbox.append(&status_label);

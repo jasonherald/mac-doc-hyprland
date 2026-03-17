@@ -194,6 +194,19 @@ mac-dock-hyprland/
 
 Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected instantly via inotify. Pin an app from either the dock (right-click → Pin) or the drawer (right-click any app). Drag icons in the dock to reorder; drag off to unpin.
 
+## Deviations from Go originals
+
+Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
+
+- **Shared pin file** — the Go dock uses `~/.cache/nwg-dock-pinned` and the Go drawer uses `~/.cache/nwg-pin-cache` (separate files). This Rust port shares a single pin file (`~/.cache/mac-dock-pinned`) between dock and drawer so changes in either are instantly reflected in the other.
+- **Per-monitor dock windows** — the Go dock creates one window; the Rust dock creates a separate window per monitor for better multi-monitor support.
+- **Smart rebuild** — the Go dock force-rebuilds on every active window event; the Rust dock only rebuilds when the client class list or active window actually changes (more efficient).
+- **Compositor abstraction** — the Go versions are Hyprland-only; this Rust port supports Hyprland and Sway via a trait-based compositor abstraction with auto-detection.
+- **Math evaluation** — the Go drawer uses the `expr` library for arbitrary expression evaluation; the Rust port uses a custom arithmetic parser (safer, covers the common use case).
+- **Drag-to-reorder** — new feature not in the Go dock: drag pinned icons to rearrange, drag off to unpin.
+- **CLI flag naming** — multi-word flags standardized to kebab-case (e.g., `--nocats` → `--no-cats`, `--pbsize` → `--pb-size`). Multi-char Go short forms (`-hd`, `-iw`, `-is`) not available in clap (single-char only); use the long forms instead.
+- **Launcher auto-detection** — if the configured launcher command (default `nwg-drawer`) is not found on PATH, the launcher button is automatically hidden with a log message.
+
 ## Credits
 
 Ported from the Go implementations by [Piotr Miller](https://github.com/nwg-piotr):
