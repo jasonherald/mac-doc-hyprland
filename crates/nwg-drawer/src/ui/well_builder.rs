@@ -26,8 +26,6 @@ pub fn build_normal_well(
 
     // Favorites section
     if !pinned.is_empty() {
-        well.append(&section_header("Favorites"));
-
         let pf = ui::app_grid::build_app_flow_box(
             config,
             state,
@@ -37,13 +35,12 @@ pub fn build_normal_well(
             Rc::clone(on_launch),
             status_label,
         );
-        pf.set_hexpand(true);
+        pf.set_halign(gtk4::Align::Center);
         well.append(&pf);
         well.append(&divider());
     }
 
     // All apps
-    well.append(&section_header("Applications"));
 
     let flow = ui::app_grid::build_app_flow_box(
         config,
@@ -54,7 +51,7 @@ pub fn build_normal_well(
         Rc::clone(on_launch),
         status_label,
     );
-    flow.set_hexpand(true);
+    flow.set_halign(gtk4::Align::Center);
     well.append(&flow);
 }
 
@@ -70,8 +67,6 @@ pub fn build_search_results(
 ) {
     clear_well(well);
 
-    well.append(&section_header("Search Results"));
-
     // App results
     let app_flow = ui::app_grid::build_app_flow_box(
         config,
@@ -83,7 +78,6 @@ pub fn build_search_results(
         status_label,
     );
     app_flow.set_halign(gtk4::Align::Center);
-    app_flow.set_hexpand(true);
     well.append(&app_flow);
 
     // File results (phrase > 2 chars)

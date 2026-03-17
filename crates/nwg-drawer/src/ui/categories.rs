@@ -94,7 +94,7 @@ pub fn build_category_bar(
 #[allow(clippy::too_many_arguments)]
 fn create_category_button(
     display_name: &str,
-    _icon_name: &str,
+    icon_name: &str,
     ids: Vec<String>,
     config: &Rc<DrawerConfig>,
     state: &Rc<RefCell<DrawerState>>,
@@ -104,7 +104,13 @@ fn create_category_button(
     buttons: &Rc<RefCell<Vec<gtk4::Button>>>,
     status_label: &gtk4::Label,
 ) -> gtk4::Button {
-    let btn = gtk4::Button::with_label(display_name);
+    let btn = gtk4::Button::new();
+    let btn_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
+    let icon = gtk4::Image::from_icon_name(icon_name);
+    icon.set_pixel_size(16);
+    btn_box.append(&icon);
+    btn_box.append(&gtk4::Label::new(Some(display_name)));
+    btn.set_child(Some(&btn_box));
     btn.add_css_class("category-button");
     btn.set_widget_name("category-button");
 
@@ -155,7 +161,7 @@ fn build_category_well(
         Rc::clone(on_launch),
         status_label,
     );
-    flow.set_hexpand(true);
+    flow.set_halign(gtk4::Align::Center);
     well.append(&flow);
 }
 

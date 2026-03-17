@@ -8,7 +8,7 @@ pub const SEARCH_ENTRY_WIDTH: i32 = 500;
 pub const SEARCH_TOP_MARGIN: i32 = 24;
 
 /// Side margin for the main content well (left and right padding).
-pub const WELL_SIDE_MARGIN: i32 = 48;
+pub const WELL_SIDE_MARGIN: i32 = 16;
 
 /// Maximum characters shown in an app label.
 pub const APP_NAME_MAX_CHARS: usize = 20;
