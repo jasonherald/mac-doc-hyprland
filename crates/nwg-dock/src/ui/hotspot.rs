@@ -52,73 +52,7 @@ fn start_hotspot_windows(
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
     for (i, mon) in monitors.iter().enumerate() {
-        let dock_windows = Rc::clone(dock_windows);
-
-        // --- Create the hotspot trigger window ---
-        let hotspot = gtk4::ApplicationWindow::new(app);
-        hotspot.init_layer_shell();
-        hotspot.set_namespace(Some("nwg-dock-hotspot"));
-        setup_hotspot_layer(&hotspot, position);
-        hotspot.set_monitor(Some(mon));
-
-        // Minimal content with near-zero opacity so compositor delivers input
-        let hotspot_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
-        hotspot_box.add_css_class("dock-hotspot");
-        hotspot.set_child(Some(&hotspot_box));
-
-        // Load hotspot CSS once
-        static CSS_LOADED: std::sync::Once = std::sync::Once::new();
-        CSS_LOADED.call_once(|| {
-            let provider = gtk4::CssProvider::new();
-            provider.load_from_data(".dock-hotspot { background: rgba(0,0,0,0.01); }");
-            if let Some(display) = gtk4::gdk::Display::default() {
-                gtk4::style_context_add_provider_for_display(
-                    &display,
-                    &provider,
-                    gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-                );
-            } else {
-                log::error!("No display available for hotspot CSS provider");
-            }
-        });
-
-        hotspot.present();
-
-        // Hotspot enter → show dock on this monitor
-        let dock_wins_enter = Rc::clone(&dock_windows);
-        let left_at_enter = Rc::clone(&left_at);
-        let motion = gtk4::EventControllerMotion::new();
-        motion.connect_enter(move |_, _, _| {
-            let wins = dock_wins_enter.borrow();
-            if i < wins.len() {
-                log::debug!("Hotspot entered, showing dock on monitor {}", i);
-                wins[i].set_visible(true);
-            }
-            *left_at_enter.borrow_mut() = None;
-        });
-        hotspot.add_controller(motion);
-
-        // --- Attach enter/leave to the dock window ---
-        let wins = dock_windows.borrow();
-        if i < wins.len() {
-            let dock_win = &wins[i];
-
-            // Dock enter → cancel hide timer
-            let left_at_dock_enter = Rc::clone(&left_at);
-            let dock_motion = gtk4::EventControllerMotion::new();
-            dock_motion.connect_enter(move |_, _, _| {
-                *left_at_dock_enter.borrow_mut() = None;
-            });
-            dock_win.add_controller(dock_motion);
-
-            // Dock leave → start hide timer
-            let left_at_dock_leave = Rc::clone(&left_at);
-            let leave_motion = gtk4::EventControllerMotion::new();
-            leave_motion.connect_leave(move |_| {
-                *left_at_dock_leave.borrow_mut() = Some(std::time::Instant::now());
-            });
-            dock_win.add_controller(leave_motion);
-        }
+        create_hotspot_window(app, position, mon, i, dock_windows, &left_at);
     }
 
     // Poll the hide timer to actually hide dock windows
@@ -144,6 +78,84 @@ fn start_hotspot_windows(
         }
         glib::ControlFlow::Continue
     });
+}
+
+/// Creates a single hotspot trigger window for one monitor and attaches enter/leave handlers.
+fn create_hotspot_window(
+    app: &gtk4::Application,
+    position: crate::config::Position,
+    mon: &gtk4::gdk::Monitor,
+    monitor_index: usize,
+    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
+) {
+    let dock_windows = Rc::clone(dock_windows);
+
+    // --- Create the hotspot trigger window ---
+    let hotspot = gtk4::ApplicationWindow::new(app);
+    hotspot.init_layer_shell();
+    hotspot.set_namespace(Some("nwg-dock-hotspot"));
+    setup_hotspot_layer(&hotspot, position);
+    hotspot.set_monitor(Some(mon));
+
+    // Minimal content with near-zero opacity so compositor delivers input
+    let hotspot_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    hotspot_box.add_css_class("dock-hotspot");
+    hotspot.set_child(Some(&hotspot_box));
+
+    // Load hotspot CSS once
+    static CSS_LOADED: std::sync::Once = std::sync::Once::new();
+    CSS_LOADED.call_once(|| {
+        let provider = gtk4::CssProvider::new();
+        provider.load_from_data(".dock-hotspot { background: rgba(0,0,0,0.01); }");
+        if let Some(display) = gtk4::gdk::Display::default() {
+            gtk4::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        } else {
+            log::error!("No display available for hotspot CSS provider");
+        }
+    });
+
+    hotspot.present();
+
+    // Hotspot enter → show dock on this monitor
+    let dock_wins_enter = Rc::clone(&dock_windows);
+    let left_at_enter = Rc::clone(left_at);
+    let motion = gtk4::EventControllerMotion::new();
+    motion.connect_enter(move |_, _, _| {
+        let wins = dock_wins_enter.borrow();
+        if monitor_index < wins.len() {
+            log::debug!("Hotspot entered, showing dock on monitor {}", monitor_index);
+            wins[monitor_index].set_visible(true);
+        }
+        *left_at_enter.borrow_mut() = None;
+    });
+    hotspot.add_controller(motion);
+
+    // --- Attach enter/leave to the dock window ---
+    let wins = dock_windows.borrow();
+    if monitor_index < wins.len() {
+        let dock_win = &wins[monitor_index];
+
+        // Dock enter → cancel hide timer
+        let left_at_dock_enter = Rc::clone(left_at);
+        let dock_motion = gtk4::EventControllerMotion::new();
+        dock_motion.connect_enter(move |_, _, _| {
+            *left_at_dock_enter.borrow_mut() = None;
+        });
+        dock_win.add_controller(dock_motion);
+
+        // Dock leave → start hide timer
+        let left_at_dock_leave = Rc::clone(left_at);
+        let leave_motion = gtk4::EventControllerMotion::new();
+        leave_motion.connect_leave(move |_| {
+            *left_at_dock_leave.borrow_mut() = Some(std::time::Instant::now());
+        });
+        dock_win.add_controller(leave_motion);
+    }
 }
 
 /// Configures a hotspot window as a thin strip at the dock edge.
@@ -231,58 +243,88 @@ fn start_cursor_poller(
         let any_visible = windows.borrow().iter().any(|w| w.is_visible());
 
         if !any_visible {
-            // Dock is hidden — check if cursor is at the screen edge to show
-            if is_cursor_at_edge(&cursor, &monitors, position) {
-                if let Some(mon_idx) = find_cursor_monitor(&cursor, &monitors) {
-                    let wins = windows.borrow();
-                    if mon_idx < wins.len() {
-                        log::debug!("Cursor at edge, showing dock on monitor {}", mon_idx);
-                        wins[mon_idx].set_visible(true);
-                    }
-                }
-                *left_at.borrow_mut() = None;
-            }
+            handle_hidden_dock(&cursor, &monitors, position, &windows, &left_at);
         } else {
-            // Dock is visible — check if cursor is inside dock area or at edge
-            let in_dock_area = is_cursor_in_visible_dock(&cursor, &windows, &monitors, position);
-            let at_edge = is_cursor_at_edge(&cursor, &monitors, position);
-
-            // Don't hide while a popover menu is open or a drag is in progress
-            let s = state.borrow();
-            let dragging = s.drag_source_index.is_some();
-            let keep_visible = s.popover_open || dragging;
-            drop(s);
-
-            // Track whether cursor is outside dock during a drag
-            if dragging {
-                let was_outside = state.borrow().drag_outside_dock;
-                let now_outside = !in_dock_area && !at_edge;
-                if was_outside != now_outside {
-                    state.borrow_mut().drag_outside_dock = now_outside;
-                }
-            }
-
-            if in_dock_area || at_edge || keep_visible {
-                // Cursor is in dock, at edge, or menu open — reset hide timer
-                *left_at.borrow_mut() = None;
-            } else {
-                // Cursor left the dock area — start or check hide timer
-                let mut left = left_at.borrow_mut();
-                if left.is_none() {
-                    *left = Some(std::time::Instant::now());
-                } else if left.unwrap().elapsed().as_millis() >= hide_timeout as u128 {
-                    // Timer expired — hide all dock windows
-                    log::debug!("Cursor left dock area, hiding");
-                    for win in windows.borrow().iter() {
-                        win.set_visible(false);
-                    }
-                    *left = None;
-                }
-            }
+            handle_visible_dock(
+                &cursor,
+                &monitors,
+                position,
+                &windows,
+                &state,
+                &left_at,
+                hide_timeout,
+            );
         }
 
         glib::ControlFlow::Continue
     });
+}
+
+/// Handles cursor polling when the dock is hidden: shows the dock if cursor is at edge.
+fn handle_hidden_dock(
+    cursor: &CursorPos,
+    monitors: &[WmMonitor],
+    position: crate::config::Position,
+    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
+) {
+    if is_cursor_at_edge(cursor, monitors, position) {
+        if let Some(mon_idx) = find_cursor_monitor(cursor, monitors) {
+            let wins = windows.borrow();
+            if mon_idx < wins.len() {
+                log::debug!("Cursor at edge, showing dock on monitor {}", mon_idx);
+                wins[mon_idx].set_visible(true);
+            }
+        }
+        *left_at.borrow_mut() = None;
+    }
+}
+
+/// Handles cursor polling when the dock is visible: hides after timeout if cursor leaves.
+fn handle_visible_dock(
+    cursor: &CursorPos,
+    monitors: &[WmMonitor],
+    position: crate::config::Position,
+    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    state: &Rc<RefCell<DockState>>,
+    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
+    hide_timeout: u64,
+) {
+    let in_dock_area = is_cursor_in_visible_dock(cursor, windows, monitors, position);
+    let at_edge = is_cursor_at_edge(cursor, monitors, position);
+
+    // Don't hide while a popover menu is open or a drag is in progress
+    let s = state.borrow();
+    let dragging = s.drag_source_index.is_some();
+    let keep_visible = s.popover_open || dragging;
+    drop(s);
+
+    // Track whether cursor is outside dock during a drag
+    if dragging {
+        let was_outside = state.borrow().drag_outside_dock;
+        let now_outside = !in_dock_area && !at_edge;
+        if was_outside != now_outside {
+            state.borrow_mut().drag_outside_dock = now_outside;
+        }
+    }
+
+    if in_dock_area || at_edge || keep_visible {
+        // Cursor is in dock, at edge, or menu open — reset hide timer
+        *left_at.borrow_mut() = None;
+    } else {
+        // Cursor left the dock area — start or check hide timer
+        let mut left = left_at.borrow_mut();
+        if left.is_none() {
+            *left = Some(std::time::Instant::now());
+        } else if left.unwrap().elapsed().as_millis() >= hide_timeout as u128 {
+            // Timer expired — hide all dock windows
+            log::debug!("Cursor left dock area, hiding");
+            for win in windows.borrow().iter() {
+                win.set_visible(false);
+            }
+            *left = None;
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -328,6 +370,21 @@ fn find_cursor_monitor(cursor: &CursorPos, monitors: &[WmMonitor]) -> Option<usi
     None
 }
 
+/// Computes the (x, y) origin of a dock window on a given monitor based on position.
+fn dock_bounds_for_position(
+    mon: &WmMonitor,
+    w: i32,
+    h: i32,
+    position: crate::config::Position,
+) -> (i32, i32) {
+    match position {
+        crate::config::Position::Bottom => (mon.x + (mon.width - w) / 2, mon.y + mon.height - h),
+        crate::config::Position::Top => (mon.x + (mon.width - w) / 2, mon.y),
+        crate::config::Position::Left => (mon.x, mon.y + (mon.height - h) / 2),
+        crate::config::Position::Right => (mon.x + mon.width - w, mon.y + (mon.height - h) / 2),
+    }
+}
+
 /// Checks if the cursor is within the bounds of any visible dock window.
 /// Uses the window's allocated size and monitor positions to compute bounds.
 fn is_cursor_in_visible_dock(
@@ -349,16 +406,7 @@ fn is_cursor_in_visible_dock(
 
         if win.surface().is_some() {
             for mon in monitors {
-                let (dock_x, dock_y) = match position {
-                    crate::config::Position::Bottom => {
-                        (mon.x + (mon.width - w) / 2, mon.y + mon.height - h)
-                    }
-                    crate::config::Position::Top => (mon.x + (mon.width - w) / 2, mon.y),
-                    crate::config::Position::Left => (mon.x, mon.y + (mon.height - h) / 2),
-                    crate::config::Position::Right => {
-                        (mon.x + mon.width - w, mon.y + (mon.height - h) / 2)
-                    }
-                };
+                let (dock_x, dock_y) = dock_bounds_for_position(mon, w, h, position);
 
                 let in_x = cursor.x >= dock_x && cursor.x < dock_x + w;
                 let in_y = cursor.y >= dock_y && cursor.y < dock_y + h;

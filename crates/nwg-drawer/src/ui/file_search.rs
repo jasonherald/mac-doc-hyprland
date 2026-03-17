@@ -117,7 +117,7 @@ fn walk_directory(
             }
             let path = entry.path();
             let relative = path.strip_prefix(root).unwrap_or(&path).to_string_lossy();
-            if exclusions.iter().any(|ex| relative.contains(ex)) {
+            if is_excluded(&relative, exclusions) {
                 continue;
             }
             if relative.to_lowercase().contains(phrase) {
@@ -141,6 +141,11 @@ fn walk_directory(
         max_results,
     );
     results
+}
+
+/// Checks whether a relative path matches any exclusion pattern.
+fn is_excluded(relative: &str, exclusions: &[String]) -> bool {
+    exclusions.iter().any(|ex| relative.contains(ex))
 }
 
 /// Creates a single file result row: [icon] [filename] [path]

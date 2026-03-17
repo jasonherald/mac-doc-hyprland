@@ -1,4 +1,4 @@
-use super::constants::*;
+use super::constants::{PANEL_BODY_CHARS, PANEL_BODY_LINES, PANEL_ICON_SIZE, PANEL_SUMMARY_CHARS};
 use crate::notification::Notification;
 use gtk4::prelude::*;
 use std::path::PathBuf;

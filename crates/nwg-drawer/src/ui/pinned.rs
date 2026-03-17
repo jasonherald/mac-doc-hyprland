@@ -2,9 +2,10 @@ use crate::config::DrawerConfig;
 use crate::state::DrawerState;
 use crate::ui::widgets;
 use gtk4::prelude::*;
+use nwg_dock_common::desktop::entry::DesktopEntry;
 use nwg_dock_common::pinning;
 use std::cell::RefCell;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// Builds the pinned items FlowBox.
@@ -38,53 +39,75 @@ pub fn build_pinned_flow_box(
             }
         };
 
-        let name = if !entry.name_loc.is_empty() {
-            &entry.name_loc
-        } else {
-            &entry.name
-        };
-        let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, &app_dirs);
-
-        // Left click → launch
-        let exec = entry.exec.clone();
-        let terminal = entry.terminal;
-        let term = config.term.clone();
-        let on_launch_ref = Rc::clone(&on_launch);
-        let compositor = Rc::clone(&state.borrow().compositor);
-        button.connect_clicked(move |_| {
-            let clean = widgets::clean_exec(&exec);
-            if !clean.is_empty() {
-                if terminal {
-                    nwg_dock_common::launch::launch_terminal_via_compositor(
-                        &clean,
-                        &term,
-                        &*compositor,
-                    );
-                } else {
-                    nwg_dock_common::launch::launch_via_compositor(&clean, &*compositor);
-                }
-            }
-            on_launch_ref();
-        });
-
-        // Right-click → unpin
-        let id = desktop_id.clone();
-        let state_ref = Rc::clone(state);
-        let pinned_path = pinned_file.to_path_buf();
-        let gesture = gtk4::GestureClick::new();
-        gesture.set_button(3);
-        gesture.connect_released(move |gesture, _, _, _| {
-            gesture.set_state(gtk4::EventSequenceState::Claimed);
-            let mut s = state_ref.borrow_mut();
-            if pinning::unpin_item(&mut s.pinned, &id) {
-                let _ = pinning::save_pinned(&s.pinned, &pinned_path);
-                log::info!("Unpinned {}", id);
-            }
-        });
-        button.add_controller(gesture);
-
+        let button = create_pinned_button(
+            entry,
+            config,
+            state,
+            pinned_file,
+            desktop_id,
+            &app_dirs,
+            &on_launch,
+        );
         flow_box.insert(&button, -1);
     }
 
     flow_box
+}
+
+/// Creates a single pinned app button with launch (left-click) and unpin (right-click) actions.
+fn create_pinned_button(
+    entry: &DesktopEntry,
+    config: &DrawerConfig,
+    state: &Rc<RefCell<DrawerState>>,
+    pinned_file: &Path,
+    desktop_id: &str,
+    app_dirs: &[PathBuf],
+    on_launch: &Rc<dyn Fn()>,
+) -> gtk4::Button {
+    let name = if !entry.name_loc.is_empty() {
+        &entry.name_loc
+    } else {
+        &entry.name
+    };
+    let button = widgets::app_icon_button(&entry.icon, name, config.icon_size, app_dirs);
+
+    // Left click → launch
+    let exec = entry.exec.clone();
+    let terminal = entry.terminal;
+    let term = config.term.clone();
+    let on_launch_ref = Rc::clone(on_launch);
+    let compositor = Rc::clone(&state.borrow().compositor);
+    button.connect_clicked(move |_| {
+        let clean = widgets::clean_exec(&exec);
+        if !clean.is_empty() {
+            if terminal {
+                nwg_dock_common::launch::launch_terminal_via_compositor(
+                    &clean,
+                    &term,
+                    &*compositor,
+                );
+            } else {
+                nwg_dock_common::launch::launch_via_compositor(&clean, &*compositor);
+            }
+        }
+        on_launch_ref();
+    });
+
+    // Right-click → unpin
+    let id = desktop_id.to_string();
+    let state_ref = Rc::clone(state);
+    let pinned_path = pinned_file.to_path_buf();
+    let gesture = gtk4::GestureClick::new();
+    gesture.set_button(3);
+    gesture.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        let mut s = state_ref.borrow_mut();
+        if pinning::unpin_item(&mut s.pinned, &id) {
+            let _ = pinning::save_pinned(&s.pinned, &pinned_path);
+            log::info!("Unpinned {}", id);
+        }
+    });
+    button.add_controller(gesture);
+
+    button
 }

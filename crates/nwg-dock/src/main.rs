@@ -21,6 +21,25 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
 
+/// Detects and creates the compositor backend, exiting on failure.
+fn init_compositor(wm: &str) -> Rc<dyn nwg_dock_common::compositor::Compositor> {
+    let wm_override = if wm.is_empty() { None } else { Some(wm) };
+    let compositor_kind = match nwg_dock_common::compositor::detect(wm_override) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    match nwg_dock_common::compositor::create(compositor_kind) {
+        Ok(c) => Rc::from(c),
+        Err(e) => {
+            log::error!("{}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
 fn main() {
     let mut config = DockConfig::parse();
 
@@ -49,26 +68,7 @@ fn main() {
         }
     }
 
-    let wm_override = if config.wm.is_empty() {
-        None
-    } else {
-        Some(config.wm.as_str())
-    };
-    let compositor_kind = match nwg_dock_common::compositor::detect(wm_override) {
-        Ok(k) => k,
-        Err(e) => {
-            log::error!("{}", e);
-            std::process::exit(1);
-        }
-    };
-    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        match nwg_dock_common::compositor::create(compositor_kind) {
-            Ok(c) => Rc::from(c),
-            Err(e) => {
-                log::error!("{}", e);
-                std::process::exit(1);
-            }
-        };
+    let compositor = init_compositor(&config.wm);
 
     let _lock = if !config.multi {
         match singleton::acquire_lock("mac-dock") {

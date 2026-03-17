@@ -96,36 +96,7 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
                 break;
             }
 
-            let cmd = if sig == libc::SIGUSR1 {
-                log::warn!("SIGUSR1 for toggling is deprecated, use SIGRTMIN+1");
-                if is_resident {
-                    Some(WindowCommand::Toggle)
-                } else {
-                    None
-                }
-            } else if sig == sig_toggle() {
-                if is_resident {
-                    Some(WindowCommand::Toggle)
-                } else {
-                    None
-                }
-            } else if sig == sig_show() {
-                if is_resident {
-                    Some(WindowCommand::Show)
-                } else {
-                    None
-                }
-            } else if sig == sig_hide() {
-                if is_resident {
-                    Some(WindowCommand::Hide)
-                } else {
-                    None
-                }
-            } else {
-                None
-            };
-
-            if let Some(cmd) = cmd
+            if let Some(cmd) = map_signal_to_command(sig, is_resident)
                 && tx.send(cmd).is_err()
             {
                 break;
@@ -134,6 +105,27 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
     });
 
     rx
+}
+
+/// Maps a received signal number to a `WindowCommand`, if applicable.
+fn map_signal_to_command(sig: i32, is_resident: bool) -> Option<WindowCommand> {
+    if sig == libc::SIGUSR1 {
+        log::warn!("SIGUSR1 for toggling is deprecated, use SIGRTMIN+1");
+    }
+
+    if !is_resident {
+        return None;
+    }
+
+    if sig == libc::SIGUSR1 || sig == sig_toggle() {
+        Some(WindowCommand::Toggle)
+    } else if sig == sig_show() {
+        Some(WindowCommand::Show)
+    } else if sig == sig_hide() {
+        Some(WindowCommand::Hide)
+    } else {
+        None
+    }
 }
 
 /// Sends a signal to a running instance by PID.

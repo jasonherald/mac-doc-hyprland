@@ -142,39 +142,14 @@ impl DndMenu {
             vbox.append(&sep);
 
             for &(minutes, label) in TIMED_OPTIONS {
-                let btn = gtk4::Button::with_label(label);
-                btn.add_css_class("dnd-menu-item");
-                btn.set_has_frame(false);
-
-                let state_btn = Rc::clone(&self.state);
-                let on_change = Rc::clone(&self.on_state_change);
-                let win_btn = self.win.clone();
-                let bd_btn = self.backdrop.clone();
-                btn.connect_clicked(move |_| {
-                    state_btn.borrow_mut().dnd = true;
-                    let expiry =
-                        std::time::SystemTime::now() + std::time::Duration::from_secs(minutes * 60);
-                    state_btn.borrow_mut().dnd_expires = Some(expiry);
-                    log::info!("DND enabled for {} minutes", minutes);
-
-                    let state_timer = Rc::clone(&state_btn);
-                    let on_change_timer = Rc::clone(&on_change);
-                    gtk4::glib::timeout_add_local_once(
-                        std::time::Duration::from_secs(minutes * 60),
-                        move || {
-                            if state_timer.borrow().dnd_expires.is_some() {
-                                state_timer.borrow_mut().dnd = false;
-                                state_timer.borrow_mut().dnd_expires = None;
-                                log::info!("Timed DND expired");
-                                on_change_timer();
-                            }
-                        },
-                    );
-
-                    on_change();
-                    win_btn.set_visible(false);
-                    bd_btn.set_visible(false);
-                });
+                let btn = build_timed_dnd_button(
+                    minutes,
+                    label,
+                    &self.state,
+                    &self.on_state_change,
+                    &self.win,
+                    &self.backdrop,
+                );
                 vbox.append(&btn);
             }
         }
@@ -207,4 +182,49 @@ fn setup_menu_window(win: &gtk4::ApplicationWindow) {
     win.set_anchor(gtk4_layer_shell::Edge::Right, true);
     win.set_margin(gtk4_layer_shell::Edge::Top, 30);
     win.set_margin(gtk4_layer_shell::Edge::Right, 16);
+}
+
+/// Creates a button that enables DND for a fixed duration, with an auto-expire timer.
+fn build_timed_dnd_button(
+    minutes: u64,
+    label: &str,
+    state: &Rc<RefCell<NotificationState>>,
+    on_state_change: &Rc<dyn Fn()>,
+    win: &gtk4::ApplicationWindow,
+    backdrop: &gtk4::ApplicationWindow,
+) -> gtk4::Button {
+    let btn = gtk4::Button::with_label(label);
+    btn.add_css_class("dnd-menu-item");
+    btn.set_has_frame(false);
+
+    let state_btn = Rc::clone(state);
+    let on_change = Rc::clone(on_state_change);
+    let win_btn = win.clone();
+    let bd_btn = backdrop.clone();
+    btn.connect_clicked(move |_| {
+        state_btn.borrow_mut().dnd = true;
+        let expiry = std::time::SystemTime::now() + std::time::Duration::from_secs(minutes * 60);
+        state_btn.borrow_mut().dnd_expires = Some(expiry);
+        log::info!("DND enabled for {} minutes", minutes);
+
+        let state_timer = Rc::clone(&state_btn);
+        let on_change_timer = Rc::clone(&on_change);
+        gtk4::glib::timeout_add_local_once(
+            std::time::Duration::from_secs(minutes * 60),
+            move || {
+                if state_timer.borrow().dnd_expires.is_some() {
+                    state_timer.borrow_mut().dnd = false;
+                    state_timer.borrow_mut().dnd_expires = None;
+                    log::info!("Timed DND expired");
+                    on_change_timer();
+                }
+            },
+        );
+
+        on_change();
+        win_btn.set_visible(false);
+        bd_btn.set_visible(false);
+    });
+
+    btn
 }

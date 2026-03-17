@@ -1,4 +1,4 @@
-use super::constants::*;
+use super::constants::{PANEL_REVEAL_DURATION_MS, PANEL_WIDTH};
 use super::panel_content;
 use crate::state::NotificationState;
 use gtk4::prelude::*;

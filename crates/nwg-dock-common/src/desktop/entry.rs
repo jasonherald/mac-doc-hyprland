@@ -61,42 +61,14 @@ pub fn parse_desktop_entry<R: BufRead>(id: &str, reader: R) -> DesktopEntry {
             continue;
         }
 
-        match key {
-            "Name" => entry.name = value.to_string(),
-            "Comment" => entry.comment = value.to_string(),
-            "Icon" => entry.icon = value.to_string(),
-            "Categories" => entry.category = value.to_string(),
-            "Terminal" => entry.terminal = value.parse().unwrap_or(false),
-            "NoDisplay" if !entry.no_display => {
-                entry.no_display = value.parse().unwrap_or(false);
-            }
-            "Hidden" if !entry.no_display => {
-                entry.no_display = value.parse().unwrap_or(false);
-            }
-            "OnlyShowIn" if !entry.no_display => {
-                entry.no_display = true;
-                if !current_desktop.is_empty() {
-                    for item in value.split(';') {
-                        if !item.is_empty() && item == current_desktop {
-                            entry.no_display = false;
-                        }
-                    }
-                }
-            }
-            "NotShowIn" if !entry.no_display && !current_desktop.is_empty() => {
-                for item in value.split(';') {
-                    if !item.is_empty() && item == current_desktop {
-                        entry.no_display = true;
-                    }
-                }
-            }
-            "Exec" => {
-                entry.exec = value.replace(['"', '\''], "");
-            }
-            k if k == localized_name => entry.name_loc = value.to_string(),
-            k if k == localized_comment => entry.comment_loc = value.to_string(),
-            _ => {}
-        }
+        apply_key_value(
+            &mut entry,
+            key,
+            value,
+            &localized_name,
+            &localized_comment,
+            &current_desktop,
+        );
     }
 
     // Fallback: if localized name not found, use base name
@@ -108,6 +80,53 @@ pub fn parse_desktop_entry<R: BufRead>(id: &str, reader: R) -> DesktopEntry {
     }
 
     entry
+}
+
+/// Applies a single key-value pair from a .desktop file to the entry.
+fn apply_key_value(
+    entry: &mut DesktopEntry,
+    key: &str,
+    value: &str,
+    localized_name: &str,
+    localized_comment: &str,
+    current_desktop: &str,
+) {
+    match key {
+        "Name" => entry.name = value.to_string(),
+        "Comment" => entry.comment = value.to_string(),
+        "Icon" => entry.icon = value.to_string(),
+        "Categories" => entry.category = value.to_string(),
+        "Terminal" => entry.terminal = value.parse().unwrap_or(false),
+        "NoDisplay" if !entry.no_display => {
+            entry.no_display = value.parse().unwrap_or(false);
+        }
+        "Hidden" if !entry.no_display => {
+            entry.no_display = value.parse().unwrap_or(false);
+        }
+        "OnlyShowIn" if !entry.no_display => {
+            entry.no_display = true;
+            if !current_desktop.is_empty() {
+                for item in value.split(';') {
+                    if !item.is_empty() && item == current_desktop {
+                        entry.no_display = false;
+                    }
+                }
+            }
+        }
+        "NotShowIn" if !entry.no_display && !current_desktop.is_empty() => {
+            for item in value.split(';') {
+                if !item.is_empty() && item == current_desktop {
+                    entry.no_display = true;
+                }
+            }
+        }
+        "Exec" => {
+            entry.exec = value.replace(['"', '\''], "");
+        }
+        k if k == localized_name => entry.name_loc = value.to_string(),
+        k if k == localized_comment => entry.comment_loc = value.to_string(),
+        _ => {}
+    }
 }
 
 /// Splits a line at the first `=` into (key, value), both trimmed.

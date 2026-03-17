@@ -1,5 +1,5 @@
 use notify::{Event, EventKind, RecursiveMode, Watcher};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 
 /// Events from the file watcher.
@@ -55,24 +55,34 @@ pub fn start_watcher(
         }
 
         for event in notify_rx {
-            match event.kind {
-                EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) => {
-                    let is_pin = event.paths.iter().any(|p| p == &pin_path);
-                    let is_desktop = event
-                        .paths
-                        .iter()
-                        .any(|p| p.extension().is_some_and(|ext| ext == "desktop"));
-
-                    if is_pin {
-                        let _ = tx.send(WatchEvent::PinnedChanged);
-                    } else if is_desktop {
-                        let _ = tx.send(WatchEvent::DesktopFilesChanged);
-                    }
-                }
-                _ => {}
+            if let Some(watch_event) = classify_watch_event(&event, &pin_path) {
+                let _ = tx.send(watch_event);
             }
         }
     });
 
     rx
+}
+
+/// Determines if a file-system event corresponds to a desktop file change or pin file change.
+/// Returns `None` for irrelevant events (e.g. access-only or unrelated file types).
+fn classify_watch_event(event: &Event, pin_path: &PathBuf) -> Option<WatchEvent> {
+    match event.kind {
+        EventKind::Create(_) | EventKind::Remove(_) | EventKind::Modify(_) => {
+            let is_pin = event.paths.iter().any(|p| p == pin_path);
+            let is_desktop = event
+                .paths
+                .iter()
+                .any(|p| p.extension().is_some_and(|ext| ext == "desktop"));
+
+            if is_pin {
+                Some(WatchEvent::PinnedChanged)
+            } else if is_desktop {
+                Some(WatchEvent::DesktopFilesChanged)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }

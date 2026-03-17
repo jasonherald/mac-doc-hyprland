@@ -1,8 +1,73 @@
+use crate::config::DockConfig;
 use crate::context::DockContext;
+use crate::state::DockState;
 use crate::ui::buttons;
 use gtk4::prelude::*;
+use nwg_dock_common::compositor::WmClient;
 use nwg_dock_common::pinning;
 use std::rc::Rc;
+
+/// Collects the ordered list of all dock items (pinned first, then running clients).
+///
+/// Handles workspace filtering, sorting, class deduplication, and child-window grouping.
+fn collect_all_items(s: &mut DockState, config: &DockConfig) -> Vec<String> {
+    let mut all_items: Vec<String> = Vec::new();
+    for pin in &s.pinned {
+        if !all_items.contains(pin) {
+            all_items.push(pin.clone());
+        }
+    }
+
+    s.clients.sort_by(|a, b| {
+        a.workspace
+            .id
+            .cmp(&b.workspace.id)
+            .then_with(|| a.class.cmp(&b.class))
+    });
+
+    let ignored_ws = config.ignored_workspaces();
+    s.clients.retain(|cl| {
+        let ws_base = cl.workspace.name.split(':').next().unwrap_or("");
+        !ignored_ws.contains(&cl.workspace.id.to_string())
+            && !ignored_ws.iter().any(|iw| iw == ws_base)
+    });
+
+    for task in &s.clients {
+        if !all_items.contains(&task.class)
+            && !config.launcher_cmd.contains(&task.class)
+            && !task.class.is_empty()
+        {
+            // Skip if this window's initial_class already has an icon
+            // (groups child windows like Playwright browsers under VSCode)
+            if is_child_window_grouped(task, &all_items) {
+                continue;
+            }
+            all_items.push(task.class.clone());
+        }
+    }
+
+    all_items
+}
+
+/// Returns true if a client is a child window whose initial_class is already represented.
+fn is_child_window_grouped(task: &WmClient, all_items: &[String]) -> bool {
+    !task.initial_class.is_empty()
+        && task.initial_class != task.class
+        && all_items
+            .iter()
+            .any(|item| item.eq_ignore_ascii_case(&task.initial_class))
+}
+
+/// Scales icon size down when too many apps would overflow the dock.
+fn scale_icon_size(item_count: usize, config: &DockConfig) -> i32 {
+    let count = item_count.max(1);
+    if config.icon_size * 6 / (count as i32) < config.icon_size {
+        let overflow = (item_count as i32 - 6) / 3;
+        config.icon_size * 6 / (6 + overflow)
+    } else {
+        config.icon_size
+    }
+}
 
 /// Builds the main dock content box with pinned and task buttons.
 ///
@@ -35,56 +100,9 @@ pub fn build(
     let mut s = ctx.state.borrow_mut();
     s.pinned = pinning::load_pinned(&ctx.pinned_file);
 
-    let mut all_items: Vec<String> = Vec::new();
-    for pin in &s.pinned {
-        if !all_items.contains(pin) {
-            all_items.push(pin.clone());
-        }
-    }
-
-    s.clients.sort_by(|a, b| {
-        a.workspace
-            .id
-            .cmp(&b.workspace.id)
-            .then_with(|| a.class.cmp(&b.class))
-    });
-
-    let ignored_ws = config.ignored_workspaces();
-    s.clients.retain(|cl| {
-        let ws_base = cl.workspace.name.split(':').next().unwrap_or("");
-        !ignored_ws.contains(&cl.workspace.id.to_string())
-            && !ignored_ws.iter().any(|iw| iw == ws_base)
-    });
-
     let ignored_classes = config.ignored_classes();
-
-    for task in &s.clients {
-        if !all_items.contains(&task.class)
-            && !config.launcher_cmd.contains(&task.class)
-            && !task.class.is_empty()
-        {
-            // Skip if this window's initial_class already has an icon
-            // (groups child windows like Playwright browsers under VSCode)
-            if !task.initial_class.is_empty()
-                && task.initial_class != task.class
-                && all_items
-                    .iter()
-                    .any(|item| item.eq_ignore_ascii_case(&task.initial_class))
-            {
-                continue;
-            }
-            all_items.push(task.class.clone());
-        }
-    }
-
-    // Scale icons down when too many apps
-    let count = all_items.len().max(1);
-    if config.icon_size * 6 / (count as i32) < config.icon_size {
-        let overflow = (all_items.len() as i32 - 6) / 3;
-        s.img_size_scaled = config.icon_size * 6 / (6 + overflow);
-    } else {
-        s.img_size_scaled = config.icon_size;
-    }
+    let all_items = collect_all_items(&mut s, config);
+    s.img_size_scaled = scale_icon_size(all_items.len(), config);
 
     log::debug!(
         "Dock build: {} items, icon_size={}, img_size_scaled={}, pinned={}",
@@ -163,6 +181,7 @@ pub fn build(
         {
             continue;
         }
+
         let instances = ctx.state.borrow().task_instances(&task.class);
         if instances.len() == 1 || !already_added.contains(&task.class) {
             let btn = buttons::task_button(task, &instances, ctx);

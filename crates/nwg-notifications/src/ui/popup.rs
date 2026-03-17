@@ -1,4 +1,7 @@
-use super::constants::*;
+use super::constants::{
+    POPUP_BODY_CHARS, POPUP_GAP, POPUP_ICON_SIZE, POPUP_MAX_BODY_LINES, POPUP_PADDING,
+    POPUP_SUMMARY_CHARS, POPUP_TOP_MARGIN, POPUP_WIDTH,
+};
 use super::window;
 use crate::config::NotificationConfig;
 use crate::notification::{Notification, Urgency};
