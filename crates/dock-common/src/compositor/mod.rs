@@ -1,4 +1,5 @@
 mod hyprland;
+mod sway;
 pub mod traits;
 pub mod types;
 
@@ -37,9 +38,7 @@ pub fn detect(wm_override: Option<&str>) -> Result<CompositorKind> {
 pub fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
     match kind {
         CompositorKind::Hyprland => Ok(Box::new(hyprland::HyprlandBackend::new()?)),
-        CompositorKind::Sway => Err(DockError::UnsupportedCompositor(
-            "Sway support not yet implemented".to_string(),
-        )),
+        CompositorKind::Sway => Ok(Box::new(sway::SwayBackend::new()?)),
     }
 }
 
