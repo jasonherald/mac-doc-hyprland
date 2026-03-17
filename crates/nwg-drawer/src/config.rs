@@ -16,6 +16,10 @@ pub struct DrawerConfig {
     #[arg(long, alias = "ovl")]
     pub overlay: bool,
 
+    /// Window background opacity 0-100 (default: 88)
+    #[arg(long, default_value_t = 88)]
+    pub opacity: u8,
+
     /// GTK theme name
     #[arg(short = 'g', long, default_value = "")]
     pub gtk_theme: String,

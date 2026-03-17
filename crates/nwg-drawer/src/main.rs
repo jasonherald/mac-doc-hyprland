@@ -108,6 +108,15 @@ fn activate_drawer(
     // CSS
     nwg_dock_common::config::css::load_css(css_path);
     nwg_dock_common::config::css::load_css_from_data(DRAWER_CSS);
+
+    // Apply user-configurable opacity (overrides the default in embedded CSS)
+    let opacity = config.opacity.min(100) as f64 / 100.0;
+    let opacity_css = format!(
+        "window {{ background-color: rgba(22, 22, 30, {:.2}); }}",
+        opacity
+    );
+    nwg_dock_common::config::css::load_css_from_data(&opacity_css);
+
     apply_theme_settings(&config);
 
     // State
