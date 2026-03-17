@@ -9,15 +9,14 @@ const MAX_VISIBLE_PER_GROUP: usize = 3;
 
 /// Rebuilds the panel's notification list, grouped by app.
 ///
-/// Groups with more than MAX_VISIBLE_PER_GROUP notifications are collapsed
-/// to show only the latest few, with a "N more" button to expand.
+/// Groups with more than MAX_VISIBLE_PER_GROUP notifications start collapsed,
+/// showing only the latest few. Click the group header to expand/collapse.
 pub fn build_grouped_list(
     container: &gtk4::Box,
     state: &Rc<RefCell<NotificationState>>,
     on_notification_click: Rc<dyn Fn(u32)>,
     on_rebuild: Rc<dyn Fn()>,
 ) {
-    // Clear existing content
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
@@ -35,7 +34,10 @@ pub fn build_grouped_list(
     let app_dirs = state.borrow().app_dirs.clone();
 
     for group in &groups {
-        // Group header: icon + app name + count + dismiss-group button
+        let total = group.notifications.len();
+        let should_collapse = total > MAX_VISIBLE_PER_GROUP;
+
+        // --- Group header (clickable to toggle collapse) ---
         let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
         header.add_css_class("group-header");
 
@@ -53,9 +55,15 @@ pub fn build_grouped_list(
         name_label.set_halign(gtk4::Align::Start);
         header.append(&name_label);
 
-        let count = gtk4::Label::new(Some(&format!("{}", group.notifications.len())));
-        count.add_css_class("group-count");
-        header.append(&count);
+        // Collapse indicator: shows count and arrow
+        let collapse_text = if should_collapse {
+            format!("{} \u{25BC}", total) // ▼ collapsed
+        } else {
+            format!("{}", total)
+        };
+        let count_label = gtk4::Label::new(Some(&collapse_text));
+        count_label.add_css_class("group-count");
+        header.append(&count_label);
 
         // Dismiss all for this app
         let dismiss_group = gtk4::Button::from_icon_name("edit-clear-symbolic");
@@ -72,18 +80,11 @@ pub fn build_grouped_list(
 
         container.append(&header);
 
-        // Notification rows — collapse large groups
-        let total = group.notifications.len();
-        let collapsed = total > MAX_VISIBLE_PER_GROUP;
-        let visible_count = if collapsed {
-            MAX_VISIBLE_PER_GROUP
-        } else {
-            total
-        };
-
-        // Container for the overflow rows (hidden initially when collapsed)
+        // --- Visible rows (always shown) ---
+        let visible_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+        // --- Overflow rows (hidden when collapsed) ---
         let overflow_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-        overflow_box.set_visible(!collapsed || visible_count == total);
+        overflow_box.set_visible(false);
 
         for (i, notif) in group.notifications.iter().enumerate() {
             let click_cb = Rc::clone(&on_notification_click);
@@ -106,28 +107,33 @@ pub fn build_grouped_list(
                 },
             );
 
-            if i < visible_count {
-                container.append(&row);
+            if !should_collapse || i < MAX_VISIBLE_PER_GROUP {
+                visible_box.append(&row);
             } else {
                 overflow_box.append(&row);
             }
         }
 
-        // "N more" expand button
-        if collapsed {
-            let remaining = total - visible_count;
-            let expand_btn = gtk4::Button::with_label(&format!("{} more", remaining));
-            expand_btn.add_css_class("group-expand");
-            expand_btn.set_has_frame(false);
+        container.append(&visible_box);
+        container.append(&overflow_box);
 
-            let overflow_ref = overflow_box.clone();
-            expand_btn.connect_clicked(move |btn| {
-                overflow_ref.set_visible(true);
-                btn.set_visible(false);
+        // --- Click header to toggle collapse ---
+        if should_collapse {
+            let overflow_ref = overflow_box;
+            let count_ref = count_label;
+            let total_count = total;
+            let expanded = Rc::new(RefCell::new(false));
+
+            let click = gtk4::GestureClick::new();
+            click.connect_released(move |gesture, _, _, _| {
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
+                let mut is_expanded = expanded.borrow_mut();
+                *is_expanded = !*is_expanded;
+                overflow_ref.set_visible(*is_expanded);
+                let arrow = if *is_expanded { "\u{25B2}" } else { "\u{25BC}" };
+                count_ref.set_text(&format!("{} {}", total_count, arrow));
             });
-
-            container.append(&expand_btn);
-            container.append(&overflow_box);
+            header.add_controller(click);
         }
 
         // Separator between groups
