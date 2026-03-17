@@ -205,8 +205,7 @@ fn activate_drawer(
     win.present();
 }
 
-/// Detects the compositor kind and creates the compositor instance.
-/// Exits with an error if detection or creation fails.
+/// Applies GTK theme and icon theme settings from the config.
 fn apply_theme_settings(config: &DrawerConfig) {
     if let Some(settings) = gtk4::Settings::default() {
         if !config.gtk_theme.is_empty() {

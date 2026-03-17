@@ -90,6 +90,8 @@ fn activate_notifications(
                 s.history.push(notif);
             }
             s.history.sort_by_key(|n| std::cmp::Reverse(n.timestamp));
+            let max = s.max_history;
+            s.history.truncate(max);
         }
     }
 

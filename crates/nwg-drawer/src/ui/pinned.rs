@@ -89,8 +89,8 @@ fn create_pinned_button(
             } else {
                 nwg_dock_common::launch::launch_via_compositor(&clean, &*compositor);
             }
+            on_launch_ref();
         }
-        on_launch_ref();
     });
 
     // Right-click → unpin

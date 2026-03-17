@@ -353,7 +353,7 @@ cargo fmt --all                # Format (like gofmt)
 
 ## Project structure
 
-```
+```text
 crates/
 ├── nwg-dock-common/       # Shared library (like a Go internal package)
 │   └── src/

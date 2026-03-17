@@ -149,7 +149,8 @@ fi
 
 # Find the Wayland display socket Sway created
 WAYLAND_SOCK=$(find "$TEST_RUNTIME" -maxdepth 1 -name "wayland-*" ! -name "*.lock" 2>/dev/null | head -1)
-export WAYLAND_DISPLAY=$(basename "$WAYLAND_SOCK")
+WAYLAND_DISPLAY=$(basename "$WAYLAND_SOCK")
+export WAYLAND_DISPLAY
 # Override to prevent binaries connecting to real compositor
 export GDK_BACKEND=wayland
 # Clear Hyprland env so our binaries detect Sway, not Hyprland

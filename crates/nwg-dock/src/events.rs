@@ -10,6 +10,7 @@ fn drain_new_events(receiver: &mpsc::Receiver<String>, state: &Rc<RefCell<DockSt
     let mut changed = false;
     while let Ok(win_addr) = receiver.try_recv() {
         let last = state.borrow().last_win_addr.clone();
+        // Filter out Hyprland layer/redirect events that aren't real window addresses
         if win_addr != last && !win_addr.contains(">>") {
             state.borrow_mut().last_win_addr = win_addr;
             changed = true;
