@@ -24,14 +24,20 @@ pub fn app_icon_button(
     let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
     vbox.set_halign(gtk4::Align::Center);
 
-    // Icon
-    if !icon_name.is_empty()
-        && let Some(image) = icons::create_image(icon_name, icon_size, app_dirs)
-    {
-        image.set_pixel_size(icon_size);
-        image.set_halign(gtk4::Align::Center);
-        vbox.append(&image);
-    }
+    // Icon — try theme/file, fall back to generic "application-x-executable"
+    let image = if !icon_name.is_empty() {
+        icons::create_image(icon_name, icon_size, app_dirs)
+    } else {
+        None
+    };
+    let image = image.unwrap_or_else(|| {
+        let fallback = gtk4::Image::from_icon_name("application-x-executable");
+        fallback.set_pixel_size(icon_size);
+        fallback
+    });
+    image.set_pixel_size(icon_size);
+    image.set_halign(gtk4::Align::Center);
+    vbox.append(&image);
 
     // Label
     let label = gtk4::Label::new(Some(&truncate(display_name, constants::APP_NAME_MAX_CHARS)));

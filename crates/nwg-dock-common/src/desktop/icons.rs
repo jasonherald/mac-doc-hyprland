@@ -95,17 +95,37 @@ fn find_desktop_file(app_name: &str, app_dirs: &[PathBuf]) -> Option<PathBuf> {
 /// Otherwise, tries the icon theme, then falls back to desktop file lookup.
 pub fn create_pixbuf(icon: &str, size: i32) -> Option<gtk4::gdk_pixbuf::Pixbuf> {
     // Absolute path
-    if icon.starts_with('/') {
+    if icon.contains('/') {
         return gtk4::gdk_pixbuf::Pixbuf::from_file_at_size(icon, size, size).ok();
     }
+
+    // Strip file extensions (matches Go behavior for entries like "Icon=firefox.svg")
+    let icon_name = icon
+        .strip_suffix(".svg")
+        .or_else(|| icon.strip_suffix(".png"))
+        .or_else(|| icon.strip_suffix(".xpm"))
+        .unwrap_or(icon);
 
     // Try icon theme
     let display = gtk4::gdk::Display::default()?;
     let theme = gtk4::IconTheme::for_display(&display);
 
-    if theme.has_icon(icon) {
-        // Use the icon theme's paintable, but we need a pixbuf for compatibility
-        // Try loading via the theme lookup
+    if theme.has_icon(icon_name) {
+        let icon_paintable = theme.lookup_icon(
+            icon_name,
+            &[],
+            size,
+            1,
+            gtk4::TextDirection::None,
+            gtk4::IconLookupFlags::FORCE_REGULAR,
+        );
+        let file = icon_paintable.file()?;
+        let path = file.path()?;
+        return gtk4::gdk_pixbuf::Pixbuf::from_file_at_size(path, size, size).ok();
+    }
+
+    // Fallback: try original name (with extension) in case it's a custom theme icon
+    if icon_name != icon && theme.has_icon(icon) {
         let icon_paintable = theme.lookup_icon(
             icon,
             &[],
@@ -117,6 +137,15 @@ pub fn create_pixbuf(icon: &str, size: i32) -> Option<gtk4::gdk_pixbuf::Pixbuf> 
         let file = icon_paintable.file()?;
         let path = file.path()?;
         return gtk4::gdk_pixbuf::Pixbuf::from_file_at_size(path, size, size).ok();
+    }
+
+    // Fallback: try /usr/share/pixmaps (many apps install icons there)
+    for ext in &["svg", "png", "xpm"] {
+        let path =
+            std::path::Path::new("/usr/share/pixmaps").join(format!("{}.{}", icon_name, ext));
+        if path.exists() {
+            return gtk4::gdk_pixbuf::Pixbuf::from_file_at_size(path, size, size).ok();
+        }
     }
 
     None
