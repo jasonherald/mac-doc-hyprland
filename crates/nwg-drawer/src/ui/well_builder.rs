@@ -6,12 +6,11 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Builds the normal (non-search) well content: pinned → divider → all apps.
+/// Builds the normal (non-search) well content as a single unified FlowBox.
 ///
-/// Both FlowBoxes use SelectionMode::None with non-focusable FlowBoxChildren.
-/// The buttons inside are focusable, so GTK4's standard Tab/arrow focus chain
-/// moves naturally between all buttons across both sections — no custom
-/// cross-boundary navigation needed (matches Go nwg-drawer behavior).
+/// Pinned items come first, followed by spacer padding to fill the row,
+/// then all non-pinned apps. Everything is in one focus group so arrow
+/// keys flow naturally without Tab boundaries.
 pub fn build_normal_well(
     well: &gtk4::Box,
     config: &DrawerConfig,
@@ -22,34 +21,40 @@ pub fn build_normal_well(
 ) {
     clear_well(well);
 
-    let pinned = state.borrow().pinned.clone();
+    // Create on_rebuild callback that rebuilds this well
+    let well_ref = well.clone();
+    let config_ref = config.clone();
+    let state_ref = Rc::clone(state);
+    let pinned_file_ref = pinned_file.to_path_buf();
+    let on_launch_ref = Rc::clone(on_launch);
+    let status_label_ref = status_label.clone();
+    let on_rebuild: Rc<dyn Fn()> = Rc::new(move || {
+        let well = well_ref.clone();
+        let config = config_ref.clone();
+        let state = Rc::clone(&state_ref);
+        let pinned_file = pinned_file_ref.clone();
+        let on_launch = Rc::clone(&on_launch_ref);
+        let status_label = status_label_ref.clone();
+        // Defer rebuild to next idle to avoid reentrancy
+        gtk4::glib::idle_add_local_once(move || {
+            build_normal_well(
+                &well,
+                &config,
+                &state,
+                &pinned_file,
+                &on_launch,
+                &status_label,
+            );
+        });
+    });
 
-    // Favorites section
-    if !pinned.is_empty() {
-        let pf = ui::app_grid::build_app_flow_box(
-            config,
-            state,
-            Some(&pinned),
-            "",
-            pinned_file,
-            Rc::clone(on_launch),
-            status_label,
-        );
-        pf.set_halign(gtk4::Align::Center);
-        well.append(&pf);
-        well.append(&divider());
-    }
-
-    // All apps
-
-    let flow = ui::app_grid::build_app_flow_box(
+    let flow = ui::app_grid::build_unified_flow_box(
         config,
         state,
-        None,
-        "",
         pinned_file,
         Rc::clone(on_launch),
         status_label,
+        on_rebuild,
     );
     flow.set_halign(gtk4::Align::Center);
     well.append(&flow);

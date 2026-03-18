@@ -53,9 +53,11 @@ window {
     margin-top: 2px;
 }
 
-/* Pinned section */
-#pinned-box {
-    padding-bottom: 8px;
+/* Invisible spacers between pinned and app rows */
+.pinned-row-spacer {
+    min-height: 0;
+    min-width: 0;
+    opacity: 0;
 }
 
 /* Category buttons */
