@@ -83,7 +83,6 @@ pub fn build_search_results(
     // File results (phrase > 2 chars)
     if !config.no_fs && phrase.len() > 2 {
         well.append(&divider());
-        well.append(&section_header("Files"));
 
         let file_results =
             ui::file_search::search_files(phrase, config, state, Rc::clone(on_launch));
@@ -97,6 +96,7 @@ pub fn build_search_results(
             ));
         }
 
+        file_results.set_halign(gtk4::Align::Center);
         well.append(&file_results);
     }
 }
@@ -105,15 +105,6 @@ fn clear_well(well: &gtk4::Box) {
     while let Some(child) = well.first_child() {
         well.remove(&child);
     }
-}
-
-fn section_header(text: &str) -> gtk4::Label {
-    let label = gtk4::Label::new(Some(text));
-    label.add_css_class("section-header");
-    label.set_halign(gtk4::Align::Start);
-    label.set_margin_start(8);
-    label.set_margin_bottom(4);
-    label
 }
 
 fn divider() -> gtk4::Separator {
