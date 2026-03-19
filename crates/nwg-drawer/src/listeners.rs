@@ -37,10 +37,22 @@ pub fn setup_keyboard(
     let app = app.clone();
     let compositor = Rc::clone(compositor);
 
+    // Key press handler — intercepts Escape, Return, and auto-focus-search.
+    // Navigation keys return Proceed so GTK handles focus movement.
     let key_ctrl = gtk4::EventControllerKey::new();
-    key_ctrl.connect_key_released(move |_, keyval, _, _| {
+    key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
         match keyval {
-            // Navigation keys — let them propagate to FlowBox for keyboard nav
+            gtk4::gdk::Key::Escape => {
+                handle_escape(&search_entry, &win, config.resident);
+                gtk4::glib::Propagation::Stop
+            }
+
+            gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
+                handle_return(&search_entry, &*compositor, &on_launch, &app);
+                gtk4::glib::Propagation::Proceed
+            }
+
+            // Navigation keys — let GTK handle focus movement
             gtk4::gdk::Key::Up
             | gtk4::gdk::Key::Down
             | gtk4::gdk::Key::Left
@@ -50,21 +62,14 @@ pub fn setup_keyboard(
             | gtk4::gdk::Key::Page_Up
             | gtk4::gdk::Key::Page_Down
             | gtk4::gdk::Key::Home
-            | gtk4::gdk::Key::End => {}
-
-            gtk4::gdk::Key::Escape => {
-                handle_escape(&search_entry, &win, config.resident);
-            }
-
-            gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                handle_return(&search_entry, &*compositor, &on_launch, &app);
-            }
+            | gtk4::gdk::Key::End => gtk4::glib::Propagation::Proceed,
 
             // Any other key — auto-focus search entry so typing starts a search
             _ => {
                 if !search_entry.has_focus() {
                     search_entry.grab_focus();
                 }
+                gtk4::glib::Propagation::Proceed
             }
         }
     });
@@ -111,10 +116,12 @@ pub fn setup_focus_detector(
 }
 
 /// Sets up inotify-based file watcher for pin and desktop file changes.
+#[allow(clippy::too_many_arguments)]
 pub fn setup_file_watcher(
     app_dirs: &[std::path::PathBuf],
     pinned_file: &Rc<PathBuf>,
     well: &gtk4::Box,
+    pinned_box: &gtk4::Box,
     config: &Rc<DrawerConfig>,
     state: &Rc<RefCell<DrawerState>>,
     on_launch: &Rc<dyn Fn()>,
@@ -124,6 +131,7 @@ pub fn setup_file_watcher(
     let state = Rc::clone(state);
     let pinned_file = Rc::clone(pinned_file);
     let well = well.clone();
+    let pinned_box = pinned_box.clone();
     let config = Rc::clone(config);
     let on_launch = Rc::clone(on_launch);
     let status_label = status_label.clone();
@@ -136,6 +144,7 @@ pub fn setup_file_watcher(
                     desktop_loader::load_desktop_entries(&mut state.borrow_mut());
                     well_builder::build_normal_well(
                         &well,
+                        &pinned_box,
                         &config,
                         &state,
                         &pinned_file,
@@ -148,6 +157,7 @@ pub fn setup_file_watcher(
                     state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
                     well_builder::build_normal_well(
                         &well,
+                        &pinned_box,
                         &config,
                         &state,
                         &pinned_file,

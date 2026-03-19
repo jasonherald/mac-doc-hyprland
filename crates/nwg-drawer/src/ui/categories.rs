@@ -4,18 +4,15 @@ use crate::ui;
 use gtk4::prelude::*;
 use nwg_dock_common::desktop::categories::default_categories;
 use std::cell::RefCell;
-use std::path::Path;
 use std::rc::Rc;
 
 /// Builds the category filter button bar.
-///
-/// Shows an "All" button followed by one button per non-empty category.
-/// Clicking a category rebuilds the well with only apps from that category.
-/// Clicking "All" restores the full app list.
+#[allow(clippy::too_many_arguments)]
 pub fn build_category_bar(
     config: &Rc<DrawerConfig>,
     state: &Rc<RefCell<DrawerState>>,
     well: &gtk4::Box,
+    pinned_box: &gtk4::Box,
     pinned_file: &Rc<std::path::PathBuf>,
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
@@ -26,10 +23,9 @@ pub fn build_category_bar(
     hbox.set_margin_top(8);
     hbox.set_margin_bottom(4);
 
-    // Collect all buttons so we can update their CSS class on click
     let buttons: Rc<RefCell<Vec<gtk4::Button>>> = Rc::new(RefCell::new(Vec::new()));
 
-    // "All" button
+    // "All" button — restores full view
     let all_btn = gtk4::Button::with_label("All");
     all_btn.add_css_class("category-button");
     all_btn.add_css_class("category-selected");
@@ -37,6 +33,7 @@ pub fn build_category_bar(
 
     {
         let well = well.clone();
+        let pinned_box = pinned_box.clone();
         let config = Rc::clone(config);
         let state = Rc::clone(state);
         let pinned_file = Rc::clone(pinned_file);
@@ -45,8 +42,10 @@ pub fn build_category_bar(
         let status_label = status_label.clone();
         all_btn.connect_clicked(move |btn| {
             select_button(btn, &buttons);
+            pinned_box.set_visible(true);
             ui::well_builder::build_normal_well(
                 &well,
+                &pinned_box,
                 &config,
                 &state,
                 &pinned_file,
@@ -64,7 +63,7 @@ pub fn build_category_bar(
 
     for cat in &categories {
         if cat.name == "Other" {
-            continue; // "Other" shown in "All" view only
+            continue;
         }
         let ids = match cat_lists.get(&cat.name) {
             Some(ids) if !ids.is_empty() => ids.clone(),
@@ -78,6 +77,7 @@ pub fn build_category_bar(
             config,
             state,
             well,
+            pinned_box,
             pinned_file,
             on_launch,
             &buttons,
@@ -99,6 +99,7 @@ fn create_category_button(
     config: &Rc<DrawerConfig>,
     state: &Rc<RefCell<DrawerState>>,
     well: &gtk4::Box,
+    pinned_box: &gtk4::Box,
     pinned_file: &Rc<std::path::PathBuf>,
     on_launch: &Rc<dyn Fn()>,
     buttons: &Rc<RefCell<Vec<gtk4::Button>>>,
@@ -115,6 +116,7 @@ fn create_category_button(
     btn.set_widget_name("category-button");
 
     let well = well.clone();
+    let pinned_box = pinned_box.clone();
     let config = Rc::clone(config);
     let state = Rc::clone(state);
     let pinned_file = Rc::clone(pinned_file);
@@ -123,8 +125,10 @@ fn create_category_button(
     let status_label = status_label.clone();
     btn.connect_clicked(move |btn| {
         select_button(btn, &buttons);
+        // Keep pinned visible when filtering by category
         build_category_well(
             &well,
+            &pinned_box,
             &config,
             &state,
             &ids,
@@ -138,16 +142,17 @@ fn create_category_button(
 }
 
 /// Builds the well content filtered to a specific category.
+#[allow(clippy::too_many_arguments)]
 fn build_category_well(
     well: &gtk4::Box,
+    pinned_box: &gtk4::Box,
     config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
     category_ids: &[String],
-    pinned_file: &Path,
+    pinned_file: &std::path::Path,
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
 ) {
-    // Clear well
     while let Some(child) = well.first_child() {
         well.remove(&child);
     }
@@ -163,6 +168,18 @@ fn build_category_well(
     );
     flow.set_halign(gtk4::Align::Center);
     well.append(&flow);
+
+    // Install grid navigation linked to pinned section above
+    let pinned_flow = pinned_box
+        .first_child()
+        .and_then(|w| w.downcast::<gtk4::FlowBox>().ok());
+    ui::well_builder::install_grid_nav(&flow, config.columns, pinned_flow.as_ref(), None);
+    // Re-link pinned's Down target to this new flow
+    if let Some(ref pf) = pinned_flow {
+        let pinned = state.borrow().pinned.clone();
+        let pinned_cols = config.columns.min(pinned.len() as u32).max(1);
+        ui::well_builder::install_grid_nav(pf, pinned_cols, None, Some(&flow));
+    }
 }
 
 /// Updates CSS classes so only the clicked button has "category-selected".
