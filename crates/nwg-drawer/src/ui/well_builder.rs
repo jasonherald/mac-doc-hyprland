@@ -62,7 +62,6 @@ pub fn build_normal_well(
     well.append(&flow);
 
     // Install grid navigation on both FlowBoxes.
-    let pinned = state.borrow().pinned.clone();
     let has_pinned = !pinned.is_empty();
     let pinned_flow_opt = if has_pinned {
         pinned_box
@@ -348,8 +347,12 @@ pub fn install_grid_nav(
     let down_ref = down_target.cloned();
     let cols = columns;
 
+    // Remove any previous grid-nav controller to avoid stacking
+    remove_named_controller(flow, "grid-nav");
+
     let ctrl = gtk4::EventControllerKey::new();
     ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    ctrl.set_name(Some("grid-nav"));
 
     ctrl.connect_key_pressed(move |_, keyval, _, _| {
         let total = count_flow_children(&flow_ref);
@@ -574,6 +577,23 @@ fn count_flow_children(flow: &gtk4::FlowBox) -> i32 {
         child = c.next_sibling();
     }
     n
+}
+
+/// Removes an event controller by name from a widget.
+fn remove_named_controller(widget: &impl IsA<gtk4::Widget>, name: &str) {
+    let mut controllers = Vec::new();
+    let list = widget.observe_controllers();
+    for i in 0..list.n_items() {
+        if let Some(obj) = list.item(i)
+            && let Ok(ctrl) = obj.downcast::<gtk4::EventController>()
+            && ctrl.name().as_deref() == Some(name)
+        {
+            controllers.push(ctrl);
+        }
+    }
+    for ctrl in controllers {
+        widget.remove_controller(&ctrl);
+    }
 }
 
 fn clear_box(container: &gtk4::Box) {
