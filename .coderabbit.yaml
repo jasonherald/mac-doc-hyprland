@@ -58,6 +58,8 @@ reviews:
         SAFETY comments. Only async-signal-safe operations in handler paths.
 
   tools:
+    osv-scanner:
+      enabled: true
     clippy:
       enabled: true
     shellcheck:

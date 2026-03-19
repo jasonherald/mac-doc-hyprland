@@ -123,21 +123,21 @@ pub fn build_search_results(
 
     // File results
     if !config.no_fs && phrase.len() > 2 {
-        well.append(&divider());
         let file_results =
             ui::file_search::search_files(phrase, config, state, Rc::clone(on_launch));
         let count = count_children(&file_results);
         if count > 0 {
+            well.append(&divider());
             status_label.set_text(&format!(
                 "{} file results | LMB: open | RMB: file manager",
                 count
             ));
-        }
-        file_results.set_halign(gtk4::Align::Center);
-        well.append(&file_results);
+            file_results.set_halign(gtk4::Align::Center);
+            well.append(&file_results);
 
-        // Up from first file result → back to app search results
-        install_file_results_nav(&file_results);
+            // Up from first file result → back to app search results
+            install_file_results_nav(&file_results);
+        }
     }
 }
 
@@ -271,7 +271,12 @@ fn build_pinned_button(
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         let mut s = state_ref.borrow_mut();
         if pinning::unpin_item(&mut s.pinned, &id) {
-            let _ = pinning::save_pinned(&s.pinned, &path);
+            if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
+                log::error!("Failed to save pinned state: {}", e);
+                // Restore the pin so UI stays in sync with disk
+                s.pinned.push(id.clone());
+                return;
+            }
             log::info!("Unpinned {}", id);
             drop(s);
             rebuild();
@@ -345,7 +350,7 @@ pub fn install_grid_nav(
     let flow_ref = flow.clone();
     let up_ref = up_target.cloned();
     let down_ref = down_target.cloned();
-    let cols = columns;
+    let cols = columns.max(1);
 
     // Remove any previous grid-nav controller to avoid stacking
     remove_named_controller(flow, "grid-nav");
@@ -411,8 +416,9 @@ fn nav_down(
         let target_total = count_flow_children(target);
         if target_total > 0 {
             focus_child_button(target, col.min(target_total - 1));
+            return gtk4::glib::Propagation::Stop;
         }
-        return gtk4::glib::Propagation::Stop;
+        // Target exists but is empty — fall through to widget search
     }
     // No FlowBox target — try next visible widget (e.g. file results)
     if focus_next_visible(flow) {
@@ -445,8 +451,9 @@ fn nav_up(
                 .min(target_total as u32)
                 .max(1);
             focus_child_button(target, find_column_from_bottom(col, target_cols, target_total));
+            return gtk4::glib::Propagation::Stop;
         }
-        return gtk4::glib::Propagation::Stop;
+        // Target exists but is empty — fall through to widget search
     }
     // No FlowBox target — focus nearest widget above (categories, search)
     if focus_prev_visible(flow) {
