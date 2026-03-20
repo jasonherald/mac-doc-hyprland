@@ -147,6 +147,41 @@ pub fn build_search_results(
     }
 }
 
+/// Rebuilds the well, then re-applies the active category filter if one is set.
+#[allow(clippy::too_many_arguments)]
+pub fn rebuild_preserving_category(
+    well: &gtk4::Box,
+    pinned_box: &gtk4::Box,
+    config: &DrawerConfig,
+    state: &Rc<RefCell<DrawerState>>,
+    pinned_file: &Path,
+    on_launch: &Rc<dyn Fn()>,
+    status_label: &gtk4::Label,
+) {
+    let active_cat = state.borrow().active_category.clone();
+    build_normal_well(
+        well,
+        pinned_box,
+        config,
+        state,
+        pinned_file,
+        on_launch,
+        status_label,
+    );
+    if !active_cat.is_empty() {
+        crate::ui::categories::apply_category_filter(
+            well,
+            pinned_box,
+            config,
+            state,
+            &active_cat,
+            pinned_file,
+            on_launch,
+            status_label,
+        );
+    }
+}
+
 /// Restores the normal well (used when clearing search).
 pub fn restore_normal_well(
     well: &gtk4::Box,
@@ -324,8 +359,7 @@ pub fn build_rebuild_callback(
         let on_launch = Rc::clone(&on_launch);
         let status_label = status_label.clone();
         gtk4::glib::idle_add_local_once(move || {
-            let active_cat = state.borrow().active_category.clone();
-            build_normal_well(
+            rebuild_preserving_category(
                 &well,
                 &pinned_box,
                 &config,
@@ -334,19 +368,6 @@ pub fn build_rebuild_callback(
                 &on_launch,
                 &status_label,
             );
-            // Restore category filter if one was active
-            if !active_cat.is_empty() {
-                crate::ui::categories::apply_category_filter(
-                    &well,
-                    &pinned_box,
-                    &config,
-                    &state,
-                    &active_cat,
-                    &pinned_file,
-                    &on_launch,
-                    &status_label,
-                );
-            }
         });
     })
 }

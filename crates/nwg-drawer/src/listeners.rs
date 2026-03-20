@@ -142,7 +142,7 @@ pub fn setup_file_watcher(
                 watcher::WatchEvent::DesktopFilesChanged => {
                     log::info!("Desktop files changed, reloading...");
                     desktop_loader::load_desktop_entries(&mut state.borrow_mut());
-                    well_builder::build_normal_well(
+                    well_builder::rebuild_preserving_category(
                         &well,
                         &pinned_box,
                         &config,
@@ -155,7 +155,7 @@ pub fn setup_file_watcher(
                 watcher::WatchEvent::PinnedChanged => {
                     log::info!("Pinned file changed, rebuilding...");
                     state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
-                    well_builder::build_normal_well(
+                    well_builder::rebuild_preserving_category(
                         &well,
                         &pinned_box,
                         &config,
