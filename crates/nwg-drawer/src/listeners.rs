@@ -38,8 +38,10 @@ pub fn setup_keyboard(
     let compositor = Rc::clone(compositor);
 
     // Key press handler — intercepts Escape, Return, and auto-focus-search.
+    // Capture phase so it fires even when no widget has focus (e.g. fresh open).
     // Navigation keys return Proceed so GTK handles focus movement.
     let key_ctrl = gtk4::EventControllerKey::new();
+    key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
     key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
         match keyval {
             gtk4::gdk::Key::Escape => {
@@ -82,6 +84,18 @@ pub fn setup_focus_detector(
     on_launch: &Rc<dyn Fn()>,
     compositor: &Rc<dyn Compositor>,
 ) {
+    // Close immediately when the GTK window loses focus (user clicked elsewhere,
+    // including empty desktop on another monitor). Works cross-compositor.
+    {
+        let on_launch = Rc::clone(on_launch);
+        let win_ref = win.clone();
+        win.connect_is_active_notify(move |_| {
+            if !win_ref.is_active() {
+                on_launch();
+            }
+        });
+    }
+
     let win = win.clone();
     let on_launch = Rc::clone(on_launch);
     let compositor = Rc::clone(compositor);
@@ -92,25 +106,7 @@ pub fn setup_focus_detector(
             *baseline.borrow_mut() = None;
             return glib::ControlFlow::Continue;
         }
-
-        if let Ok(active) = compositor.get_active_window() {
-            let id = active.id;
-            let class = active.class;
-
-            if id.is_empty() || class.is_empty() {
-                return glib::ControlFlow::Continue;
-            }
-
-            let mut b = baseline.borrow_mut();
-            if b.is_none() {
-                *b = Some(id);
-            } else if b.as_deref() != Some(&id) {
-                *b = None;
-                drop(b);
-                on_launch();
-            }
-        }
-
+        poll_active_window(&compositor, &baseline, &on_launch);
         glib::ControlFlow::Continue
     });
 }
@@ -190,6 +186,52 @@ pub fn setup_signal_poller(
         }
         glib::ControlFlow::Continue
     });
+}
+
+/// Checks if the active window changed and closes the drawer if so.
+fn poll_active_window(
+    compositor: &Rc<dyn Compositor>,
+    baseline: &Rc<RefCell<Option<String>>>,
+    on_launch: &Rc<dyn Fn()>,
+) {
+    let active = match compositor.get_active_window() {
+        Ok(a) => a,
+        Err(_) => {
+            // Compositor error (e.g. workspace with no windows) — close
+            close_if_baseline_set(baseline, on_launch);
+            return;
+        }
+    };
+
+    // Empty id+class means no window focused (e.g. switched workspace) — close
+    if active.id.is_empty() && active.class.is_empty() {
+        close_if_baseline_set(baseline, on_launch);
+        return;
+    }
+
+    // Skip partial responses (e.g. layer-shell surfaces)
+    if active.id.is_empty() || active.class.is_empty() {
+        return;
+    }
+
+    let mut b = baseline.borrow_mut();
+    if b.is_none() {
+        *b = Some(active.id);
+    } else if b.as_deref() != Some(&active.id) {
+        *b = None;
+        drop(b);
+        on_launch();
+    }
+}
+
+/// Clears baseline and fires on_launch if a baseline was set.
+fn close_if_baseline_set(baseline: &Rc<RefCell<Option<String>>>, on_launch: &Rc<dyn Fn()>) {
+    let mut b = baseline.borrow_mut();
+    if b.is_some() {
+        *b = None;
+        drop(b);
+        on_launch();
+    }
 }
 
 /// Handles Escape key: clear search, or close/hide drawer.

@@ -15,12 +15,6 @@ reviews:
   auto_resolve:
     enabled: true
 
-  auto_review:
-    enabled: true
-    drafts: true
-    base_branches:
-      - main
-
   path_filters:
     - "!target/**"
     - "!original/**"

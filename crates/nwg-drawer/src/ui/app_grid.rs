@@ -110,7 +110,28 @@ fn build_button(
         desc,
     );
 
-    // Click → launch
+    connect_launch(&button, entry, config, state, on_launch);
+
+    if let Some(rebuild) = on_rebuild {
+        connect_pin(&button, entry, state, pinned_file, rebuild);
+    }
+
+    let tooltip = widgets::truncate(desc, 120);
+    if !tooltip.is_empty() {
+        button.set_tooltip_text(Some(&tooltip));
+    }
+
+    button
+}
+
+/// Connects left-click to launch the app.
+fn connect_launch(
+    button: &gtk4::Button,
+    entry: &DesktopEntry,
+    config: &DrawerConfig,
+    state: &Rc<RefCell<DrawerState>>,
+    on_launch: &Rc<dyn Fn()>,
+) {
     let exec = entry.exec.clone();
     let terminal = entry.terminal;
     let term_cmd = config.term.clone();
@@ -133,38 +154,36 @@ fn build_button(
             on_launch_click();
         }
     });
+}
 
-    // Right-click → pin + immediate rebuild
-    if let Some(rebuild) = on_rebuild {
-        let id = entry.desktop_id.clone();
-        let state_ref = Rc::clone(state);
-        let path = pinned_file.to_path_buf();
-        let rebuild = Rc::clone(rebuild);
-        let gesture = gtk4::GestureClick::new();
-        gesture.set_button(3);
-        gesture.connect_released(move |gesture, _, _, _| {
-            gesture.set_state(gtk4::EventSequenceState::Claimed);
-            let mut s = state_ref.borrow_mut();
-            if !s.pinned.contains(&id) {
-                pinning::pin_item(&mut s.pinned, &id);
-                if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
-                    log::error!("Failed to save pinned state: {}", e);
-                    s.pinned.retain(|p| p != &id);
-                    return;
-                }
-                log::info!("Pinned {}", id);
-                drop(s);
-                rebuild();
+/// Connects right-click to pin the app and trigger a rebuild.
+fn connect_pin(
+    button: &gtk4::Button,
+    entry: &DesktopEntry,
+    state: &Rc<RefCell<DrawerState>>,
+    pinned_file: &std::path::Path,
+    rebuild: &Rc<dyn Fn()>,
+) {
+    let id = entry.desktop_id.clone();
+    let state_ref = Rc::clone(state);
+    let path = pinned_file.to_path_buf();
+    let rebuild = Rc::clone(rebuild);
+    let gesture = gtk4::GestureClick::new();
+    gesture.set_button(3);
+    gesture.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        let mut s = state_ref.borrow_mut();
+        if !s.pinned.contains(&id) {
+            pinning::pin_item(&mut s.pinned, &id);
+            if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
+                log::error!("Failed to save pinned state: {}", e);
+                s.pinned.retain(|p| p != &id);
+                return;
             }
-        });
-        button.add_controller(gesture);
-    }
-
-    // Tooltip
-    let tooltip = widgets::truncate(desc, 120);
-    if !tooltip.is_empty() {
-        button.set_tooltip_text(Some(&tooltip));
-    }
-
-    button
+            log::info!("Pinned {}", id);
+            drop(s);
+            rebuild();
+        }
+    });
+    button.add_controller(gesture);
 }
