@@ -12,6 +12,9 @@ reviews:
   collapse_walkthrough: false
   changed_files_summary: true
 
+  auto_resolve:
+    enabled: true
+
   auto_review:
     enabled: true
     drafts: true
