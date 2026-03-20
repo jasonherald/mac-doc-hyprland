@@ -125,12 +125,14 @@ pub fn build_search_results(
     if !config.no_fs && phrase.len() > 2 {
         let file_results =
             ui::file_search::search_files(phrase, config, state, Rc::clone(on_launch));
-        let count = count_children(&file_results);
-        if count > 0 {
+        // file_search::search_files adds a header + separator before result rows
+        let total_children = count_children(&file_results);
+        let file_count = total_children.saturating_sub(2);
+        if file_count > 0 {
             well.append(&divider());
             status_label.set_text(&format!(
                 "{} file results | LMB: open | RMB: file manager",
-                count
+                file_count
             ));
             file_results.set_halign(gtk4::Align::Center);
             well.append(&file_results);
@@ -314,6 +316,7 @@ fn build_rebuild_callback(
         let on_launch = Rc::clone(&on_launch);
         let status_label = status_label.clone();
         gtk4::glib::idle_add_local_once(move || {
+            let active_cat = state.borrow().active_category.clone();
             build_normal_well(
                 &well,
                 &pinned_box,
@@ -323,6 +326,19 @@ fn build_rebuild_callback(
                 &on_launch,
                 &status_label,
             );
+            // Restore category filter if one was active
+            if !active_cat.is_empty() {
+                crate::ui::categories::apply_category_filter(
+                    &well,
+                    &pinned_box,
+                    &config,
+                    &state,
+                    &active_cat,
+                    &pinned_file,
+                    &on_launch,
+                    &status_label,
+                );
+            }
         });
     })
 }

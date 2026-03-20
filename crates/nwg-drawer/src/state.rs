@@ -42,6 +42,8 @@ pub struct DrawerState {
     pub gtk_theme_prefix: String,
     /// Compositor backend for launching apps.
     pub compositor: Rc<dyn Compositor>,
+    /// Active category filter (empty = show all apps).
+    pub active_category: Vec<String>,
 }
 
 impl DrawerState {
@@ -55,6 +57,7 @@ impl DrawerState {
             preferred_apps: HashMap::new(),
             gtk_theme_prefix: String::new(),
             compositor,
+            active_category: Vec::new(),
         }
     }
 }

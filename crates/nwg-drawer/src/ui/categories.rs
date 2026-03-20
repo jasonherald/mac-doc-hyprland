@@ -42,6 +42,7 @@ pub fn build_category_bar(
         let status_label = status_label.clone();
         all_btn.connect_clicked(move |btn| {
             select_button(btn, &buttons);
+            state.borrow_mut().active_category.clear();
             pinned_box.set_visible(true);
             ui::well_builder::build_normal_well(
                 &well,
@@ -125,8 +126,8 @@ fn create_category_button(
     let status_label = status_label.clone();
     btn.connect_clicked(move |btn| {
         select_button(btn, &buttons);
-        // Keep pinned visible when filtering by category
-        build_category_well(
+        state.borrow_mut().active_category = ids.clone();
+        apply_category_filter(
             &well,
             &pinned_box,
             &config,
@@ -142,8 +143,9 @@ fn create_category_button(
 }
 
 /// Builds the well content filtered to a specific category.
+/// Public so the rebuild callback can restore the active filter after unpin.
 #[allow(clippy::too_many_arguments)]
-fn build_category_well(
+pub fn apply_category_filter(
     well: &gtk4::Box,
     pinned_box: &gtk4::Box,
     config: &DrawerConfig,
