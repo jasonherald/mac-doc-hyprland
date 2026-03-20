@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Creates the app FlowBox with optional category filter and search.
+#[allow(clippy::too_many_arguments)]
 pub fn build_app_flow_box(
     config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
@@ -17,6 +18,7 @@ pub fn build_app_flow_box(
     pinned_file: &std::path::Path,
     on_launch: Rc<dyn Fn()>,
     status_label: &gtk4::Label,
+    on_rebuild: Option<&Rc<dyn Fn()>>,
 ) -> gtk4::FlowBox {
     let flow_box = create_flow_box(config);
     let entries = state.borrow().apps.entries.clone();
@@ -47,99 +49,10 @@ pub fn build_app_flow_box(
                 pinned_file,
                 &on_launch,
                 status_label,
-                None,
+                on_rebuild,
             );
-            insert_non_focusable(&flow_box, &button);
+            insert_into_flow(&flow_box, &button);
         }
-    }
-
-    flow_box
-}
-
-/// Builds a single unified FlowBox: pinned items first, then all other apps.
-///
-/// Everything is in one focus group so arrow keys flow naturally through
-/// pinned → apps without Tab boundaries. Pinned row is padded with spacers
-/// so apps always start on a fresh row. Right-click pin/unpin triggers
-/// an immediate rebuild via `on_rebuild`.
-#[allow(clippy::too_many_arguments)]
-pub fn build_unified_flow_box(
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &std::path::Path,
-    on_launch: Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-    on_rebuild: Rc<dyn Fn()>,
-) -> gtk4::FlowBox {
-    let flow_box = create_flow_box(config);
-    let pinned = state.borrow().pinned.clone();
-    let entries = state.borrow().apps.entries.clone();
-    let id2entry = state.borrow().apps.id2entry.clone();
-
-    // 1. Add pinned items
-    let mut pinned_count: u32 = 0;
-    for desktop_id in &pinned {
-        if let Some(entry) = id2entry.get(desktop_id) {
-            if entry.desktop_id.is_empty() || entry.no_display {
-                continue;
-            }
-            let button = build_button(
-                entry,
-                config,
-                state,
-                pinned_file,
-                &on_launch,
-                status_label,
-                Some(Rc::clone(&on_rebuild)),
-            );
-            // Right-click on pinned item → unpin
-            add_unpin_handler(&button, desktop_id, state, pinned_file, &on_rebuild);
-            insert_non_focusable(&flow_box, &button);
-            pinned_count += 1;
-        }
-    }
-
-    // 2. Pad remaining slots in the pinned row with spacers
-    if pinned_count > 0 {
-        let remainder = pinned_count % config.columns;
-        if remainder != 0 {
-            let pad = config.columns - remainder;
-            for _ in 0..pad {
-                let spacer = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-                spacer.add_css_class("pinned-row-spacer");
-                spacer.set_focusable(false);
-                spacer.set_can_target(false);
-                spacer.set_sensitive(false);
-                flow_box.insert(&spacer, -1);
-                if let Some(child) = flow_box.last_child() {
-                    child.set_focusable(false);
-                    child.set_can_target(false);
-                    child.set_sensitive(false);
-                }
-            }
-        }
-    }
-
-    // 3. Add all non-pinned apps
-    for entry in &entries {
-        if entry.no_display {
-            continue;
-        }
-        if pinned.iter().any(|p| p == &entry.desktop_id) {
-            continue;
-        }
-        let button = build_button(
-            entry,
-            config,
-            state,
-            pinned_file,
-            &on_launch,
-            status_label,
-            Some(Rc::clone(&on_rebuild)),
-        );
-        // Right-click on app → pin
-        add_pin_handler(&button, &entry.desktop_id, state, pinned_file, &on_rebuild);
-        insert_non_focusable(&flow_box, &button);
     }
 
     flow_box
@@ -158,22 +71,23 @@ fn create_flow_box(config: &DrawerConfig) -> gtk4::FlowBox {
 }
 
 /// Inserts a button into a FlowBox with a non-focusable FlowBoxChild wrapper.
-fn insert_non_focusable(flow_box: &gtk4::FlowBox, button: &gtk4::Button) {
+/// Navigation is handled by our capture-phase controller, not FlowBox internals.
+fn insert_into_flow(flow_box: &gtk4::FlowBox, button: &gtk4::Button) {
     flow_box.insert(button, -1);
     if let Some(child) = flow_box.last_child() {
         child.set_focusable(false);
     }
 }
 
-/// Builds an app button with click-to-launch and optional right-click rebuild.
+/// Builds an app button with click-to-launch and right-click-to-pin.
 fn build_button(
     entry: &DesktopEntry,
     config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
-    _pinned_file: &std::path::Path,
+    pinned_file: &std::path::Path,
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
-    _on_rebuild: Option<Rc<dyn Fn()>>,
+    on_rebuild: Option<&Rc<dyn Fn()>>,
 ) -> gtk4::Button {
     let app_dirs = state.borrow().app_dirs.clone();
     let name = if !entry.name_loc.is_empty() {
@@ -196,7 +110,28 @@ fn build_button(
         desc,
     );
 
-    // Click → launch
+    connect_launch(&button, entry, config, state, on_launch);
+
+    if let Some(rebuild) = on_rebuild {
+        connect_pin(&button, entry, state, pinned_file, rebuild);
+    }
+
+    let tooltip = widgets::truncate(desc, 120);
+    if !tooltip.is_empty() {
+        button.set_tooltip_text(Some(&tooltip));
+    }
+
+    button
+}
+
+/// Connects left-click to launch the app.
+fn connect_launch(
+    button: &gtk4::Button,
+    entry: &DesktopEntry,
+    config: &DrawerConfig,
+    state: &Rc<RefCell<DrawerState>>,
+    on_launch: &Rc<dyn Fn()>,
+) {
     let exec = entry.exec.clone();
     let terminal = entry.terminal;
     let term_cmd = config.term.clone();
@@ -219,63 +154,33 @@ fn build_button(
             on_launch_click();
         }
     });
-
-    // Tooltip
-    let tooltip = widgets::truncate(desc, 120);
-    if !tooltip.is_empty() {
-        button.set_tooltip_text(Some(&tooltip));
-    }
-
-    button
 }
 
-/// Adds a right-click handler that PINS the app and triggers immediate rebuild.
-fn add_pin_handler(
+/// Connects right-click to pin the app and trigger a rebuild.
+fn connect_pin(
     button: &gtk4::Button,
-    desktop_id: &str,
+    entry: &DesktopEntry,
     state: &Rc<RefCell<DrawerState>>,
     pinned_file: &std::path::Path,
-    on_rebuild: &Rc<dyn Fn()>,
+    rebuild: &Rc<dyn Fn()>,
 ) {
-    let id = desktop_id.to_string();
+    let id = entry.desktop_id.clone();
     let state_ref = Rc::clone(state);
     let path = pinned_file.to_path_buf();
-    let rebuild = Rc::clone(on_rebuild);
+    let rebuild = Rc::clone(rebuild);
     let gesture = gtk4::GestureClick::new();
     gesture.set_button(3);
     gesture.connect_released(move |gesture, _, _, _| {
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         let mut s = state_ref.borrow_mut();
-        if pinning::pin_item(&mut s.pinned, &id) {
-            let _ = pinning::save_pinned(&s.pinned, &path);
+        if !s.pinned.contains(&id) {
+            pinning::pin_item(&mut s.pinned, &id);
+            if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
+                log::error!("Failed to save pinned state: {}", e);
+                s.pinned.retain(|p| p != &id);
+                return;
+            }
             log::info!("Pinned {}", id);
-            drop(s);
-            rebuild();
-        }
-    });
-    button.add_controller(gesture);
-}
-
-/// Adds a right-click handler that UNPINS the app and triggers immediate rebuild.
-fn add_unpin_handler(
-    button: &gtk4::Button,
-    desktop_id: &str,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &std::path::Path,
-    on_rebuild: &Rc<dyn Fn()>,
-) {
-    let id = desktop_id.to_string();
-    let state_ref = Rc::clone(state);
-    let path = pinned_file.to_path_buf();
-    let rebuild = Rc::clone(on_rebuild);
-    let gesture = gtk4::GestureClick::new();
-    gesture.set_button(3);
-    gesture.connect_released(move |gesture, _, _, _| {
-        gesture.set_state(gtk4::EventSequenceState::Claimed);
-        let mut s = state_ref.borrow_mut();
-        if pinning::unpin_item(&mut s.pinned, &id) {
-            let _ = pinning::save_pinned(&s.pinned, &path);
-            log::info!("Unpinned {}", id);
             drop(s);
             rebuild();
         }

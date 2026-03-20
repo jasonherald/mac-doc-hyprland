@@ -166,31 +166,6 @@ fn activate_drawer(
     search_entry.set_margin_top(ui::constants::SEARCH_TOP_MARGIN);
     main_vbox.append(&search_entry);
 
-    let scrolled = gtk4::ScrolledWindow::new();
-    scrolled.set_vexpand(true);
-    scrolled.set_hexpand(true);
-
-    // Right-click on scrolled area → close drawer (matches Go behavior)
-    let right_click = gtk4::GestureClick::new();
-    right_click.set_button(3);
-    let win_rc = win.clone();
-    let config_rc = Rc::clone(&config);
-    right_click.connect_released(move |gesture, _, _, _| {
-        gesture.set_state(gtk4::EventSequenceState::Claimed);
-        if !config_rc.resident {
-            win_rc.close();
-        } else {
-            win_rc.set_visible(false);
-        }
-    });
-    scrolled.add_controller(right_click);
-
-    main_vbox.append(&scrolled);
-
-    let content_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    content_box.set_margin_top(ui::constants::CONTENT_TOP_MARGIN);
-    scrolled.set_child(Some(&content_box));
-
     let status_label = gtk4::Label::new(None);
     status_label.add_css_class("status-label");
 
@@ -209,16 +184,64 @@ fn activate_drawer(
         })
     };
 
-    // Well — fills available width with padding (no fixed width constraint)
+    // Pinned items (above scroll, fixed — never scrolls out of view)
+    let pinned_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
+    pinned_box.set_halign(gtk4::Align::Center);
+    pinned_box.set_margin_top(4);
+
+    // Scrolled window (only app grid scrolls)
+    let scrolled = gtk4::ScrolledWindow::new();
+    scrolled.set_vexpand(true);
+    scrolled.set_hexpand(true);
+
+    // Right-click on scrolled area → close drawer
+    let right_click = gtk4::GestureClick::new();
+    right_click.set_button(3);
+    let win_rc = win.clone();
+    let config_rc = Rc::clone(&config);
+    right_click.connect_released(move |gesture, _, _, _| {
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        if !config_rc.resident {
+            win_rc.close();
+        } else {
+            win_rc.set_visible(false);
+        }
+    });
+    scrolled.add_controller(right_click);
+    // Allow focus to pass through scrolled window to app grid buttons
+    scrolled.set_focus_on_click(false);
+
+    // App grid well (inside scrolled window)
     let well = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     well.add_css_class("section-well");
     well.set_hexpand(true);
     well.set_margin_start(ui::constants::WELL_SIDE_MARGIN);
     well.set_margin_end(ui::constants::WELL_SIDE_MARGIN);
-    content_box.append(&well);
+    well.set_margin_top(ui::constants::CONTENT_TOP_MARGIN);
+    scrolled.set_child(Some(&well));
 
+    // Categories (above scroll, fixed)
+    if !config.no_cats {
+        let cat_bar = ui::categories::build_category_bar(
+            &config,
+            &state,
+            &well,
+            &pinned_box,
+            &pinned_file,
+            &on_launch,
+            &status_label,
+        );
+        main_vbox.append(&cat_bar);
+    }
+
+    // Add pinned + scrolled to layout (after categories)
+    main_vbox.append(&pinned_box);
+    main_vbox.append(&scrolled);
+
+    // Build initial content
     ui::well_builder::build_normal_well(
         &well,
+        &pinned_box,
         &config,
         &state,
         &pinned_file,
@@ -226,24 +249,11 @@ fn activate_drawer(
         &status_label,
     );
 
-    // Categories
-    if !config.no_cats {
-        let cat_bar = ui::categories::build_category_bar(
-            &config,
-            &state,
-            &well,
-            &pinned_file,
-            &on_launch,
-            &status_label,
-        );
-        // Insert category bar between search and scrolled content
-        main_vbox.insert_child_after(&cat_bar, Some(&search_entry));
-    }
-
     // Search
     ui::search_handler::connect_search(
         &search_entry,
         &well,
+        &pinned_box,
         &status_label,
         &config,
         &state,
@@ -269,6 +279,7 @@ fn activate_drawer(
         app_dirs,
         &pinned_file,
         &well,
+        &pinned_box,
         &config,
         &state,
         &on_launch,

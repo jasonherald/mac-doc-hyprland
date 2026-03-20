@@ -37,10 +37,24 @@ pub fn setup_keyboard(
     let app = app.clone();
     let compositor = Rc::clone(compositor);
 
+    // Key press handler — intercepts Escape, Return, and auto-focus-search.
+    // Capture phase so it fires even when no widget has focus (e.g. fresh open).
+    // Navigation keys return Proceed so GTK handles focus movement.
     let key_ctrl = gtk4::EventControllerKey::new();
-    key_ctrl.connect_key_released(move |_, keyval, _, _| {
+    key_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
         match keyval {
-            // Navigation keys — let them propagate to FlowBox for keyboard nav
+            gtk4::gdk::Key::Escape => {
+                handle_escape(&search_entry, &win, config.resident);
+                gtk4::glib::Propagation::Stop
+            }
+
+            gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
+                handle_return(&search_entry, &*compositor, &on_launch, &app);
+                gtk4::glib::Propagation::Proceed
+            }
+
+            // Navigation keys — let GTK handle focus movement
             gtk4::gdk::Key::Up
             | gtk4::gdk::Key::Down
             | gtk4::gdk::Key::Left
@@ -50,21 +64,14 @@ pub fn setup_keyboard(
             | gtk4::gdk::Key::Page_Up
             | gtk4::gdk::Key::Page_Down
             | gtk4::gdk::Key::Home
-            | gtk4::gdk::Key::End => {}
-
-            gtk4::gdk::Key::Escape => {
-                handle_escape(&search_entry, &win, config.resident);
-            }
-
-            gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                handle_return(&search_entry, &*compositor, &on_launch, &app);
-            }
+            | gtk4::gdk::Key::End => gtk4::glib::Propagation::Proceed,
 
             // Any other key — auto-focus search entry so typing starts a search
             _ => {
                 if !search_entry.has_focus() {
                     search_entry.grab_focus();
                 }
+                gtk4::glib::Propagation::Proceed
             }
         }
     });
@@ -77,6 +84,18 @@ pub fn setup_focus_detector(
     on_launch: &Rc<dyn Fn()>,
     compositor: &Rc<dyn Compositor>,
 ) {
+    // Close immediately when the GTK window loses focus (user clicked elsewhere,
+    // including empty desktop on another monitor). Works cross-compositor.
+    {
+        let on_launch = Rc::clone(on_launch);
+        let win_ref = win.clone();
+        win.connect_is_active_notify(move |_| {
+            if !win_ref.is_active() {
+                on_launch();
+            }
+        });
+    }
+
     let win = win.clone();
     let on_launch = Rc::clone(on_launch);
     let compositor = Rc::clone(compositor);
@@ -87,34 +106,18 @@ pub fn setup_focus_detector(
             *baseline.borrow_mut() = None;
             return glib::ControlFlow::Continue;
         }
-
-        if let Ok(active) = compositor.get_active_window() {
-            let id = active.id;
-            let class = active.class;
-
-            if id.is_empty() || class.is_empty() {
-                return glib::ControlFlow::Continue;
-            }
-
-            let mut b = baseline.borrow_mut();
-            if b.is_none() {
-                *b = Some(id);
-            } else if b.as_deref() != Some(&id) {
-                *b = None;
-                drop(b);
-                on_launch();
-            }
-        }
-
+        poll_active_window(&compositor, &baseline, &on_launch);
         glib::ControlFlow::Continue
     });
 }
 
 /// Sets up inotify-based file watcher for pin and desktop file changes.
+#[allow(clippy::too_many_arguments)]
 pub fn setup_file_watcher(
     app_dirs: &[std::path::PathBuf],
     pinned_file: &Rc<PathBuf>,
     well: &gtk4::Box,
+    pinned_box: &gtk4::Box,
     config: &Rc<DrawerConfig>,
     state: &Rc<RefCell<DrawerState>>,
     on_launch: &Rc<dyn Fn()>,
@@ -124,6 +127,7 @@ pub fn setup_file_watcher(
     let state = Rc::clone(state);
     let pinned_file = Rc::clone(pinned_file);
     let well = well.clone();
+    let pinned_box = pinned_box.clone();
     let config = Rc::clone(config);
     let on_launch = Rc::clone(on_launch);
     let status_label = status_label.clone();
@@ -134,8 +138,9 @@ pub fn setup_file_watcher(
                 watcher::WatchEvent::DesktopFilesChanged => {
                     log::info!("Desktop files changed, reloading...");
                     desktop_loader::load_desktop_entries(&mut state.borrow_mut());
-                    well_builder::build_normal_well(
+                    well_builder::rebuild_preserving_category(
                         &well,
+                        &pinned_box,
                         &config,
                         &state,
                         &pinned_file,
@@ -146,8 +151,9 @@ pub fn setup_file_watcher(
                 watcher::WatchEvent::PinnedChanged => {
                     log::info!("Pinned file changed, rebuilding...");
                     state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
-                    well_builder::build_normal_well(
+                    well_builder::rebuild_preserving_category(
                         &well,
+                        &pinned_box,
                         &config,
                         &state,
                         &pinned_file,
@@ -180,6 +186,52 @@ pub fn setup_signal_poller(
         }
         glib::ControlFlow::Continue
     });
+}
+
+/// Checks if the active window changed and closes the drawer if so.
+fn poll_active_window(
+    compositor: &Rc<dyn Compositor>,
+    baseline: &Rc<RefCell<Option<String>>>,
+    on_launch: &Rc<dyn Fn()>,
+) {
+    let active = match compositor.get_active_window() {
+        Ok(a) => a,
+        Err(_) => {
+            // Compositor error (e.g. workspace with no windows) — close
+            close_if_baseline_set(baseline, on_launch);
+            return;
+        }
+    };
+
+    // Empty id+class means no window focused (e.g. switched workspace) — close
+    if active.id.is_empty() && active.class.is_empty() {
+        close_if_baseline_set(baseline, on_launch);
+        return;
+    }
+
+    // Skip partial responses (e.g. layer-shell surfaces)
+    if active.id.is_empty() || active.class.is_empty() {
+        return;
+    }
+
+    let mut b = baseline.borrow_mut();
+    if b.is_none() {
+        *b = Some(active.id);
+    } else if b.as_deref() != Some(&active.id) {
+        *b = None;
+        drop(b);
+        on_launch();
+    }
+}
+
+/// Clears baseline and fires on_launch if a baseline was set.
+fn close_if_baseline_set(baseline: &Rc<RefCell<Option<String>>>, on_launch: &Rc<dyn Fn()>) {
+    let mut b = baseline.borrow_mut();
+    if b.is_some() {
+        *b = None;
+        drop(b);
+        on_launch();
+    }
 }
 
 /// Handles Escape key: clear search, or close/hide drawer.

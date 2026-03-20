@@ -73,6 +73,11 @@ window {
 #category-button:hover {
     background-color: rgba(255, 255, 255, 0.12);
 }
+.category-selected {
+    background-color: rgba(100, 149, 237, 0.3);
+    border-color: rgba(100, 149, 237, 0.6);
+    color: #ffffff;
+}
 
 /* File search results — columnar list */
 .file-list-header {

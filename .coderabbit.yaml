@@ -12,12 +12,6 @@ reviews:
   collapse_walkthrough: false
   changed_files_summary: true
 
-  auto_review:
-    enabled: true
-    drafts: true
-    base_branches:
-      - main
-
   path_filters:
     - "!target/**"
     - "!original/**"
@@ -58,6 +52,8 @@ reviews:
         SAFETY comments. Only async-signal-safe operations in handler paths.
 
   tools:
+    osvScanner:
+      enabled: true
     clippy:
       enabled: true
     shellcheck:
