@@ -374,7 +374,7 @@ pub fn install_grid_nav(
                 nav_down(&flow_ref, idx, col, cols, total, &down_ref)
             }
             gtk4::gdk::Key::Up => {
-                nav_up(&flow_ref, idx, col, cols, total, &up_ref)
+                nav_up(&flow_ref, idx, col, cols, &up_ref)
             }
             _ => gtk4::glib::Propagation::Proceed,
         }
@@ -433,10 +433,8 @@ fn nav_up(
     idx: i32,
     col: i32,
     cols: u32,
-    total: i32,
     up_target: &Option<gtk4::FlowBox>,
 ) -> gtk4::glib::Propagation {
-    let _ = total; // used by callers for context
     let prev = idx - cols as i32;
     if prev >= 0 {
         focus_child_button(flow, prev);
