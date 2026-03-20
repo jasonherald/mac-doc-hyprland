@@ -25,17 +25,19 @@ pub fn build_normal_well(
 
     let pinned = state.borrow().pinned.clone();
 
+    // Rebuild callback shared by pinned unpin + app grid pin
+    let on_rebuild = build_rebuild_callback(
+        well,
+        pinned_box,
+        config,
+        state,
+        pinned_file,
+        on_launch,
+        status_label,
+    );
+
     // Pinned items (above scroll)
     if !pinned.is_empty() {
-        let on_rebuild = build_rebuild_callback(
-            well,
-            pinned_box,
-            config,
-            state,
-            pinned_file,
-            on_launch,
-            status_label,
-        );
         let pf = build_pinned_flow(
             config,
             state,
@@ -57,6 +59,7 @@ pub fn build_normal_well(
         pinned_file,
         Rc::clone(on_launch),
         status_label,
+        Some(&on_rebuild),
     );
     flow.set_halign(gtk4::Align::Center);
     well.append(&flow);
@@ -114,6 +117,7 @@ pub fn build_search_results(
         pinned_file,
         Rc::clone(on_launch),
         status_label,
+        None,
     );
     app_flow.set_halign(gtk4::Align::Center);
     well.append(&app_flow);
@@ -193,7 +197,14 @@ fn build_pinned_flow(
             _ => continue,
         };
         let button = build_pinned_button(
-            entry, config, state, &app_dirs, pinned_file, on_launch, status_label, on_rebuild,
+            entry,
+            config,
+            state,
+            &app_dirs,
+            pinned_file,
+            on_launch,
+            status_label,
+            on_rebuild,
             desktop_id,
         );
         flow_box.insert(&button, -1);
@@ -250,11 +261,7 @@ fn build_pinned_button(
         if !clean.is_empty() {
             let cmd = crate::ui::widgets::prepend_theme(&clean, &theme_prefix);
             if terminal {
-                nwg_dock_common::launch::launch_terminal_via_compositor(
-                    &cmd,
-                    &term,
-                    &*compositor,
-                );
+                nwg_dock_common::launch::launch_terminal_via_compositor(&cmd, &term, &*compositor);
             } else {
                 nwg_dock_common::launch::launch_via_compositor(&cmd, &*compositor);
             }
@@ -290,8 +297,9 @@ fn build_pinned_button(
 }
 
 /// Creates a callback that rebuilds the entire well + pinned_box.
+/// Public so category filter can create rebuild callbacks for pin/unpin.
 #[allow(clippy::too_many_arguments)]
-fn build_rebuild_callback(
+pub fn build_rebuild_callback(
     well: &gtk4::Box,
     pinned_box: &gtk4::Box,
     config: &DrawerConfig,
@@ -386,12 +394,8 @@ pub fn install_grid_nav(
         match keyval {
             gtk4::gdk::Key::Right => nav_horizontal(&flow_ref, idx, 1, total),
             gtk4::gdk::Key::Left => nav_horizontal(&flow_ref, idx, -1, total),
-            gtk4::gdk::Key::Down => {
-                nav_down(&flow_ref, idx, col, cols, total, &down_ref)
-            }
-            gtk4::gdk::Key::Up => {
-                nav_up(&flow_ref, idx, col, cols, &up_ref)
-            }
+            gtk4::gdk::Key::Down => nav_down(&flow_ref, idx, col, cols, total, &down_ref),
+            gtk4::gdk::Key::Up => nav_up(&flow_ref, idx, col, cols, &up_ref),
             _ => gtk4::glib::Propagation::Proceed,
         }
     });
@@ -464,7 +468,10 @@ fn nav_up(
                 .max_children_per_line()
                 .min(target_total as u32)
                 .max(1);
-            focus_child_button(target, find_column_from_bottom(col, target_cols, target_total));
+            focus_child_button(
+                target,
+                find_column_from_bottom(col, target_cols, target_total),
+            );
             return gtk4::glib::Propagation::Stop;
         }
         // Target exists but is empty — fall through to widget search

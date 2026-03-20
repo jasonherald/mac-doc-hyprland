@@ -159,6 +159,15 @@ pub fn apply_category_filter(
         well.remove(&child);
     }
 
+    let on_rebuild = ui::well_builder::build_rebuild_callback(
+        well,
+        pinned_box,
+        config,
+        state,
+        pinned_file,
+        on_launch,
+        status_label,
+    );
     let flow = ui::app_grid::build_app_flow_box(
         config,
         state,
@@ -167,6 +176,7 @@ pub fn apply_category_filter(
         pinned_file,
         Rc::clone(on_launch),
         status_label,
+        Some(&on_rebuild),
     );
     flow.set_halign(gtk4::Align::Center);
     well.append(&flow);

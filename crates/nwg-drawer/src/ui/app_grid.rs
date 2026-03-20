@@ -4,10 +4,12 @@ use crate::ui::search::subsequence_match;
 use crate::ui::widgets;
 use gtk4::prelude::*;
 use nwg_dock_common::desktop::entry::DesktopEntry;
+use nwg_dock_common::pinning;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 /// Creates the app FlowBox with optional category filter and search.
+#[allow(clippy::too_many_arguments)]
 pub fn build_app_flow_box(
     config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
@@ -16,6 +18,7 @@ pub fn build_app_flow_box(
     pinned_file: &std::path::Path,
     on_launch: Rc<dyn Fn()>,
     status_label: &gtk4::Label,
+    on_rebuild: Option<&Rc<dyn Fn()>>,
 ) -> gtk4::FlowBox {
     let flow_box = create_flow_box(config);
     let entries = state.borrow().apps.entries.clone();
@@ -46,7 +49,7 @@ pub fn build_app_flow_box(
                 pinned_file,
                 &on_launch,
                 status_label,
-                None,
+                on_rebuild,
             );
             insert_into_flow(&flow_box, &button);
         }
@@ -76,15 +79,15 @@ fn insert_into_flow(flow_box: &gtk4::FlowBox, button: &gtk4::Button) {
     }
 }
 
-/// Builds an app button with click-to-launch and optional right-click rebuild.
+/// Builds an app button with click-to-launch and right-click-to-pin.
 fn build_button(
     entry: &DesktopEntry,
     config: &DrawerConfig,
     state: &Rc<RefCell<DrawerState>>,
-    _pinned_file: &std::path::Path,
+    pinned_file: &std::path::Path,
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
-    _on_rebuild: Option<Rc<dyn Fn()>>,
+    on_rebuild: Option<&Rc<dyn Fn()>>,
 ) -> gtk4::Button {
     let app_dirs = state.borrow().app_dirs.clone();
     let name = if !entry.name_loc.is_empty() {
@@ -130,6 +133,32 @@ fn build_button(
             on_launch_click();
         }
     });
+
+    // Right-click → pin + immediate rebuild
+    if let Some(rebuild) = on_rebuild {
+        let id = entry.desktop_id.clone();
+        let state_ref = Rc::clone(state);
+        let path = pinned_file.to_path_buf();
+        let rebuild = Rc::clone(rebuild);
+        let gesture = gtk4::GestureClick::new();
+        gesture.set_button(3);
+        gesture.connect_released(move |gesture, _, _, _| {
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+            let mut s = state_ref.borrow_mut();
+            if !s.pinned.contains(&id) {
+                pinning::pin_item(&mut s.pinned, &id);
+                if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
+                    log::error!("Failed to save pinned state: {}", e);
+                    s.pinned.retain(|p| p != &id);
+                    return;
+                }
+                log::info!("Pinned {}", id);
+                drop(s);
+                rebuild();
+            }
+        });
+        button.add_controller(gesture);
+    }
 
     // Tooltip
     let tooltip = widgets::truncate(desc, 120);
