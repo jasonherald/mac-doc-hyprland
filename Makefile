@@ -12,8 +12,8 @@ BINARIES := nwg-dock-hyprland nwg-drawer nwg-notifications
 
 .PHONY: all build install install-bin install-data install-dbus \
         uninstall upgrade stop start restart \
-        deps check-deps check-rust setup-hyprland setup-sway \
-        test test-integration test-all \
+        deps check-deps check-rust check-tools setup-hyprland setup-sway \
+        test test-integration test-all lint \
         help clean
 
 # ─────────────────────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ help:
 	@echo "  make restart         Stop then start"
 	@echo "  make setup-hyprland  Print Hyprland autostart configuration"
 	@echo "  make setup-sway      Print Sway autostart configuration"
+	@echo "  make lint            Run all checks (fmt, clippy, test, deny, audit)"
 	@echo "  make clean           Remove build artifacts"
 	@echo ""
 	@echo "Options:"
@@ -291,6 +292,38 @@ test-integration: build
 	@bash tests/integration/test_runner.sh
 
 test-all: test test-integration
+
+# ─────────────────────────────────────────────────────────────────────
+# Lint — full local check matching CI (install tools if missing)
+# ─────────────────────────────────────────────────────────────────────
+
+check-tools:
+	@if ! command -v cargo-deny >/dev/null 2>&1; then \
+		echo "Installing cargo-deny..."; \
+		$(CARGO) install cargo-deny; \
+	fi
+	@if ! command -v cargo-audit >/dev/null 2>&1; then \
+		echo "Installing cargo-audit..."; \
+		$(CARGO) install cargo-audit; \
+	fi
+
+lint: check-tools
+	@echo "── Format ──"
+	$(CARGO) fmt --all --check
+	@echo ""
+	@echo "── Clippy ──"
+	$(CARGO) clippy --all-targets -- -D warnings
+	@echo ""
+	@echo "── Tests ──"
+	$(CARGO) test --workspace
+	@echo ""
+	@echo "── Cargo Deny (licenses, advisories, bans, sources) ──"
+	$(CARGO) deny check
+	@echo ""
+	@echo "── Cargo Audit (dependency CVEs) ──"
+	$(CARGO) audit
+	@echo ""
+	@echo "All checks passed."
 
 sonar:
 	@echo "Running SonarQube scan..."

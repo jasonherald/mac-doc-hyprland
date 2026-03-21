@@ -9,12 +9,15 @@ A macOS-style dock, app drawer, and notification center for Hyprland and Sway, w
 ```bash
 cargo build                    # Debug build
 cargo build --release          # Release build
-cargo test --workspace         # Run 118 unit tests
+cargo test --workspace         # Run 128 unit tests
 cargo clippy --all-targets     # Lint (should be zero warnings)
 cargo fmt --all                # Format
+cargo deny check               # License, advisory, ban, source checks
+cargo audit                    # Dependency CVE scan
 make test                      # Unit tests + clippy
 make test-integration          # 18 headless Sway integration tests (requires sway, foot)
 make test-all                  # Both
+make lint                      # Full check: fmt + clippy + test + deny + audit (installs tools if needed)
 ```
 
 ## Install
