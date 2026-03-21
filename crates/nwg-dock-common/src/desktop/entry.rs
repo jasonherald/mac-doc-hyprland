@@ -297,4 +297,25 @@ mod tests {
         // fall back to the base Name value.
         assert_eq!(entry.name_loc, "English");
     }
+
+    #[test]
+    fn startup_wm_class_parsed() {
+        let desktop = "[Desktop Entry]\n\
+            Name=Slack\n\
+            Icon=slack\n\
+            StartupWMClass=Slack\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("slack", reader);
+        assert_eq!(entry.startup_wm_class, "Slack");
+    }
+
+    #[test]
+    fn missing_startup_wm_class_is_empty() {
+        let desktop = "[Desktop Entry]\n\
+            Name=Simple\n\
+            Icon=simple\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("simple", reader);
+        assert!(entry.startup_wm_class.is_empty());
+    }
 }

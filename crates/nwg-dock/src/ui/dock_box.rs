@@ -255,9 +255,10 @@ fn build_running_items(
     ignored_classes: &[String],
 ) {
     let mut already_added: Vec<String> = Vec::new();
-    let wm_map = &ctx.state.borrow().wm_class_to_desktop_id.clone();
+    // Clone once — needed across borrow boundaries (task_instances borrows state)
+    let wm_map = ctx.state.borrow().wm_class_to_desktop_id.clone();
     for task in clients {
-        if should_skip_running(task, pinned, ignored_classes, &already_added, wm_map) {
+        if should_skip_running(task, pinned, ignored_classes, &already_added, &wm_map) {
             continue;
         }
         let instances = ctx.state.borrow().task_instances(&task.class);

@@ -214,12 +214,13 @@ fn build_wm_class_map(app_dirs: &[PathBuf]) -> HashMap<String, String> {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            if let Ok(entry) = nwg_dock_common::desktop::entry::parse_desktop_file(&id, &path)
-                && !entry.startup_wm_class.is_empty()
-            {
-                map.insert(entry.startup_wm_class.clone(), id.clone());
-                // Also map lowercase variant for case-insensitive lookup
-                map.insert(entry.startup_wm_class.to_lowercase(), id);
+            match nwg_dock_common::desktop::entry::parse_desktop_file(&id, &path) {
+                Ok(entry) if !entry.startup_wm_class.is_empty() => {
+                    map.insert(entry.startup_wm_class.clone(), id.clone());
+                    map.insert(entry.startup_wm_class.to_lowercase(), id);
+                }
+                Ok(_) => {} // no StartupWMClass — skip
+                Err(e) => log::warn!("Failed to parse {}: {}", path.display(), e),
             }
         }
     }
