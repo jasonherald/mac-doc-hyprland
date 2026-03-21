@@ -1,5 +1,38 @@
 use clap::{Parser, ValueEnum};
 
+/// Go's `flag` package uses single-dash for all flags (e.g. `-hd 20`, `-ico path`).
+/// Clap only supports single-dash for single-character flags.
+/// This preprocessor converts known Go-style single-dash flags to double-dash
+/// so existing user configs continue to work after migration.
+pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
+    const LEGACY_FLAGS: &[&str] = &[
+        "debug",
+        "hd",
+        "hl",
+        "ico",
+        "iw",
+        "lp",
+        "mb",
+        "ml",
+        "mr",
+        "mt",
+        "nolauncher",
+        "opacity",
+        "wm",
+    ];
+
+    args.map(|arg| {
+        if let Some(name) = arg.strip_prefix('-')
+            && !name.starts_with('-')
+            && LEGACY_FLAGS.contains(&name)
+        {
+            return format!("--{}", name);
+        }
+        arg
+    })
+    .collect()
+}
+
 /// Dock position on screen edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Position {
