@@ -18,6 +18,7 @@ use nwg_dock_common::pinning;
 use nwg_dock_common::signals;
 use nwg_dock_common::singleton;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -111,6 +112,7 @@ fn activate_dock(
     )));
     state.borrow_mut().pinned = pinning::load_pinned(pinned_file);
     state.borrow_mut().locked = ui::dock_menu::load_lock_state();
+    state.borrow_mut().wm_class_to_desktop_id = build_wm_class_map(app_dirs);
     if let Err(e) = state.borrow_mut().refresh_clients() {
         log::error!("Couldn't list clients: {}", e);
     }
@@ -197,4 +199,30 @@ fn command_exists(cmd: &str) -> bool {
         }
     }
     false
+}
+
+/// Scans .desktop files and builds a map from StartupWMClass to desktop ID.
+/// Used to match compositor window classes to pinned desktop IDs when they differ
+/// (e.g. "com.billz.app" → "billz", "Slack" → "slack").
+fn build_wm_class_map(app_dirs: &[PathBuf]) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    for dir in app_dirs {
+        let files = nwg_dock_common::desktop::dirs::list_desktop_files(dir);
+        for path in files {
+            let id = path
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            match nwg_dock_common::desktop::entry::parse_desktop_file(&id, &path) {
+                Ok(entry) if !entry.startup_wm_class.is_empty() => {
+                    map.insert(entry.startup_wm_class.clone(), id.clone());
+                    map.insert(entry.startup_wm_class.to_lowercase(), id);
+                }
+                Ok(_) => {} // no StartupWMClass — skip
+                Err(e) => log::warn!("Failed to parse {}: {}", path.display(), e),
+            }
+        }
+    }
+    map
 }

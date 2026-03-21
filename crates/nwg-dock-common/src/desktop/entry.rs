@@ -14,6 +14,9 @@ pub struct DesktopEntry {
     pub category: String,
     pub terminal: bool,
     pub no_display: bool,
+    /// StartupWMClass from the .desktop file — used to match compositor window class
+    /// to desktop ID when they differ (e.g. "com.billz.app" → "billz").
+    pub startup_wm_class: String,
 }
 
 /// Parses a .desktop file at the given path.
@@ -112,6 +115,7 @@ fn apply_key_value(
         "Exec" => {
             entry.exec = value.replace(['"', '\''], "");
         }
+        "StartupWMClass" => entry.startup_wm_class = value.to_string(),
         k if k == localized_name => entry.name_loc = value.to_string(),
         k if k == localized_comment => entry.comment_loc = value.to_string(),
         _ => {}
@@ -292,5 +296,26 @@ mod tests {
         // LANG is unlikely to start with "zz", so name_loc should
         // fall back to the base Name value.
         assert_eq!(entry.name_loc, "English");
+    }
+
+    #[test]
+    fn startup_wm_class_parsed() {
+        let desktop = "[Desktop Entry]\n\
+            Name=Slack\n\
+            Icon=slack\n\
+            StartupWMClass=Slack\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("slack", reader);
+        assert_eq!(entry.startup_wm_class, "Slack");
+    }
+
+    #[test]
+    fn missing_startup_wm_class_is_empty() {
+        let desktop = "[Desktop Entry]\n\
+            Name=Simple\n\
+            Icon=simple\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("simple", reader);
+        assert!(entry.startup_wm_class.is_empty());
     }
 }

@@ -1,12 +1,15 @@
 use std::fs;
 use std::path::Path;
 
-/// Checks if a task ID is in the pinned list.
+/// Checks if a task ID is in the pinned list (case-insensitive).
 pub fn is_pinned(pinned: &[String], task_id: &str) -> bool {
-    pinned.iter().any(|p| p.trim() == task_id.trim())
+    let task_id = task_id.trim();
+    pinned
+        .iter()
+        .any(|p| p.trim().eq_ignore_ascii_case(task_id))
 }
 
-/// Adds an item to the pinned list if not already present.
+/// Adds an item to the pinned list if not already present (case-insensitive).
 /// Returns true if the item was added.
 pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
     let item_id = item_id.trim();
@@ -18,11 +21,12 @@ pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
     true
 }
 
-/// Removes an item from the pinned list.
+/// Removes an item from the pinned list (case-insensitive).
 /// Returns true if the item was removed.
 pub fn unpin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
+    let item_id = item_id.trim();
     let len = pinned.len();
-    pinned.retain(|p| p.trim() != item_id.trim());
+    pinned.retain(|p| !p.trim().eq_ignore_ascii_case(item_id));
     pinned.len() < len
 }
 
@@ -142,6 +146,30 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn is_pinned_case_insensitive() {
+        let pinned = vec!["slack".to_string()];
+        assert!(is_pinned(&pinned, "Slack"));
+        assert!(is_pinned(&pinned, "SLACK"));
+        assert!(is_pinned(&pinned, "slack"));
+    }
+
+    #[test]
+    fn unpin_case_insensitive() {
+        let mut pinned = vec!["slack".to_string(), "firefox".to_string()];
+        assert!(unpin_item(&mut pinned, "Slack"));
+        assert!(!is_pinned(&pinned, "slack"));
+        assert_eq!(pinned.len(), 1); // only "firefox" remains
+    }
+
+    #[test]
+    fn pin_rejects_case_insensitive_duplicate() {
+        let mut pinned = Vec::new();
+        assert!(pin_item(&mut pinned, "slack"));
+        assert!(!pin_item(&mut pinned, "Slack"));
+        assert_eq!(pinned.len(), 1); // "Slack" rejected as duplicate of "slack"
     }
 
     #[test]
