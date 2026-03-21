@@ -161,7 +161,7 @@ mod tests {
         let mut pinned = vec!["slack".to_string(), "firefox".to_string()];
         assert!(unpin_item(&mut pinned, "Slack"));
         assert!(!is_pinned(&pinned, "slack"));
-        assert_eq!(pinned.len(), 1);
+        assert_eq!(pinned.len(), 1); // only "firefox" remains
     }
 
     #[test]
@@ -169,7 +169,7 @@ mod tests {
         let mut pinned = Vec::new();
         assert!(pin_item(&mut pinned, "slack"));
         assert!(!pin_item(&mut pinned, "Slack"));
-        assert_eq!(pinned.len(), 1);
+        assert_eq!(pinned.len(), 1); // "Slack" rejected as duplicate of "slack"
     }
 
     #[test]
