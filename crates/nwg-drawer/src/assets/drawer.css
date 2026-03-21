@@ -73,6 +73,11 @@ window {
 #category-button:hover {
     background-color: rgba(255, 255, 255, 0.12);
 }
+#category-button:focus {
+    outline: 2px solid rgba(100, 149, 237, 0.6);
+    outline-offset: -2px;
+    background-color: rgba(100, 149, 237, 0.15);
+}
 .category-selected {
     background-color: rgba(100, 149, 237, 0.3);
     border-color: rgba(100, 149, 237, 0.6);
@@ -94,6 +99,11 @@ window {
 }
 .file-result-row:hover {
     background-color: rgba(255, 255, 255, 0.08);
+}
+.file-result-row:focus {
+    background-color: rgba(100, 149, 237, 0.2);
+    outline: 2px solid rgba(100, 149, 237, 0.5);
+    outline-offset: -2px;
 }
 .file-result-name {
     font-size: 13px;
