@@ -268,14 +268,10 @@ fn handle_hidden_dock(
     windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
 ) {
-    if is_cursor_at_edge(cursor, monitors, position) {
-        if let Some(mon_idx) = find_cursor_monitor(cursor, monitors) {
-            let wins = windows.borrow();
-            if mon_idx < wins.len() {
-                log::debug!("Cursor at edge, showing dock on monitor {}", mon_idx);
-                wins[mon_idx].set_visible(true);
-            }
-        }
+    if is_cursor_at_edge(cursor, monitors, position)
+        && let Some(mon_idx) = find_cursor_monitor(cursor, monitors)
+    {
+        show_on_monitor_only(windows, mon_idx);
         *left_at.borrow_mut() = None;
     }
 }
@@ -299,7 +295,42 @@ fn handle_visible_dock(
     let keep_visible = s.popover_open || dragging;
     drop(s);
 
-    // Track whether cursor is outside dock during a drag
+    update_drag_state(state, dragging, in_dock_area, at_edge);
+
+    // Cursor is at edge of a different monitor — migrate dock there (macOS behavior)
+    if at_edge
+        && !in_dock_area
+        && !keep_visible
+        && let Some(mon_idx) = find_cursor_monitor(cursor, monitors)
+    {
+        show_on_monitor_only(windows, mon_idx);
+        *left_at.borrow_mut() = None;
+        return;
+    }
+
+    if in_dock_area || at_edge || keep_visible {
+        *left_at.borrow_mut() = None;
+    } else {
+        check_hide_timer(windows, left_at, hide_timeout);
+    }
+}
+
+/// Shows the dock on the given monitor and hides it on all others.
+fn show_on_monitor_only(windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>, mon_idx: usize) {
+    let wins = windows.borrow();
+    for (i, win) in wins.iter().enumerate() {
+        win.set_visible(i == mon_idx);
+    }
+    log::debug!("Dock shown on monitor {}", mon_idx);
+}
+
+/// Tracks whether cursor is outside dock during a drag operation.
+fn update_drag_state(
+    state: &Rc<RefCell<DockState>>,
+    dragging: bool,
+    in_dock_area: bool,
+    at_edge: bool,
+) {
     if dragging {
         let was_outside = state.borrow().drag_outside_dock;
         let now_outside = !in_dock_area && !at_edge;
@@ -307,23 +338,23 @@ fn handle_visible_dock(
             state.borrow_mut().drag_outside_dock = now_outside;
         }
     }
+}
 
-    if in_dock_area || at_edge || keep_visible {
-        // Cursor is in dock, at edge, or menu open — reset hide timer
-        *left_at.borrow_mut() = None;
-    } else {
-        // Cursor left the dock area — start or check hide timer
-        let mut left = left_at.borrow_mut();
-        if left.is_none() {
-            *left = Some(std::time::Instant::now());
-        } else if left.unwrap().elapsed().as_millis() >= hide_timeout as u128 {
-            // Timer expired — hide all dock windows
-            log::debug!("Cursor left dock area, hiding");
-            for win in windows.borrow().iter() {
-                win.set_visible(false);
-            }
-            *left = None;
+/// Starts or checks the hide timer, hiding all dock windows when expired.
+fn check_hide_timer(
+    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
+    hide_timeout: u64,
+) {
+    let mut left = left_at.borrow_mut();
+    if left.is_none() {
+        *left = Some(std::time::Instant::now());
+    } else if left.unwrap().elapsed().as_millis() >= hide_timeout as u128 {
+        log::debug!("Cursor left dock area, hiding");
+        for win in windows.borrow().iter() {
+            win.set_visible(false);
         }
+        *left = None;
     }
 }
 
@@ -385,8 +416,8 @@ fn dock_bounds_for_position(
     }
 }
 
-/// Checks if the cursor is within the bounds of any visible dock window.
-/// Uses the window's allocated size and monitor positions to compute bounds.
+/// Checks if the cursor is within the bounds of the visible dock window.
+/// Only checks the monitor where the dock is actually shown, not all monitors.
 fn is_cursor_in_visible_dock(
     cursor: &CursorPos,
     windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
@@ -394,32 +425,24 @@ fn is_cursor_in_visible_dock(
     position: crate::config::Position,
 ) -> bool {
     let wins = windows.borrow();
-    for win in wins.iter() {
+    for (i, win) in wins.iter().enumerate() {
         if !win.is_visible() || win.surface().is_none() {
             continue;
         }
         let w = win.width();
         let h = win.height();
-        if w == 0 || h == 0 {
+        if w == 0 || h == 0 || i >= monitors.len() {
             continue;
         }
-        if cursor_in_any_monitor_bounds(cursor, monitors, w, h, position) {
+        // Only check the dock bounds on the monitor where this window is shown
+        let (dock_x, dock_y) = dock_bounds_for_position(&monitors[i], w, h, position);
+        if cursor.x >= dock_x
+            && cursor.x < dock_x + w
+            && cursor.y >= dock_y
+            && cursor.y < dock_y + h
+        {
             return true;
         }
     }
     false
-}
-
-/// Returns true if the cursor falls within the dock bounds on any monitor.
-fn cursor_in_any_monitor_bounds(
-    cursor: &CursorPos,
-    monitors: &[WmMonitor],
-    w: i32,
-    h: i32,
-    position: crate::config::Position,
-) -> bool {
-    monitors.iter().any(|mon| {
-        let (dock_x, dock_y) = dock_bounds_for_position(mon, w, h, position);
-        cursor.x >= dock_x && cursor.x < dock_x + w && cursor.y >= dock_y && cursor.y < dock_y + h
-    })
 }
