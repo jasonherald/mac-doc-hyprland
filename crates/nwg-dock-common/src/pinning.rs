@@ -24,7 +24,7 @@ pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
 /// Returns true if the item was removed.
 pub fn unpin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
     let len = pinned.len();
-    pinned.retain(|p| p.trim() != item_id.trim());
+    pinned.retain(|p| !p.trim().eq_ignore_ascii_case(item_id.trim()));
     pinned.len() < len
 }
 
@@ -144,6 +144,30 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn is_pinned_case_insensitive() {
+        let pinned = vec!["slack".to_string()];
+        assert!(is_pinned(&pinned, "Slack"));
+        assert!(is_pinned(&pinned, "SLACK"));
+        assert!(is_pinned(&pinned, "slack"));
+    }
+
+    #[test]
+    fn unpin_case_insensitive() {
+        let mut pinned = vec!["slack".to_string(), "firefox".to_string()];
+        assert!(unpin_item(&mut pinned, "Slack"));
+        assert!(!is_pinned(&pinned, "slack"));
+        assert_eq!(pinned.len(), 1);
+    }
+
+    #[test]
+    fn pin_rejects_case_insensitive_duplicate() {
+        let mut pinned = Vec::new();
+        assert!(pin_item(&mut pinned, "slack"));
+        assert!(!pin_item(&mut pinned, "Slack"));
+        assert_eq!(pinned.len(), 1);
     }
 
     #[test]
