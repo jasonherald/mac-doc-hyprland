@@ -1,9 +1,11 @@
 use std::fs;
 use std::path::Path;
 
-/// Checks if a task ID is in the pinned list.
+/// Checks if a task ID is in the pinned list (case-insensitive).
 pub fn is_pinned(pinned: &[String], task_id: &str) -> bool {
-    pinned.iter().any(|p| p.trim() == task_id.trim())
+    pinned
+        .iter()
+        .any(|p| p.trim().eq_ignore_ascii_case(task_id.trim()))
 }
 
 /// Adds an item to the pinned list if not already present.

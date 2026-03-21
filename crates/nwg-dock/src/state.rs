@@ -1,4 +1,5 @@
 use nwg_dock_common::compositor::{Compositor, WmClient, WmMonitor};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -31,6 +32,10 @@ pub struct DockState {
     /// True when a drag is active and cursor is outside the dock area.
     /// Used to show a "remove" indicator on the dragged item's slot.
     pub drag_outside_dock: bool,
+
+    /// Maps StartupWMClass → desktop_id for apps where the compositor class
+    /// differs from the desktop file stem (e.g. "com.billz.app" → "billz").
+    pub wm_class_to_desktop_id: HashMap<String, String>,
 }
 
 impl DockState {
@@ -48,20 +53,34 @@ impl DockState {
             locked: false,
             drag_source_index: None,
             drag_outside_dock: false,
+            wm_class_to_desktop_id: HashMap::new(),
         }
     }
 
-    /// Finds all client instances matching a class (case-insensitive).
+    /// Finds all client instances matching a class or desktop ID (case-insensitive).
     ///
-    /// Also matches windows whose initial_class equals the query, so that
-    /// child windows (e.g., Playwright browsers spawned by VSCode) are
-    /// grouped with their parent app. (Fixes nwg-piotr/nwg-dock#49)
+    /// Also matches via StartupWMClass mapping (e.g. "billz" finds windows with
+    /// class "com.billz.app") and windows whose initial_class equals the query
+    /// (groups child windows like Playwright browsers under VSCode).
     pub fn task_instances(&self, class: &str) -> Vec<WmClient> {
+        // Build set of classes to match: the query itself + any WMClass that maps to it
+        let mut match_classes = vec![class.to_string()];
+        for (wm_class, desktop_id) in &self.wm_class_to_desktop_id {
+            if desktop_id.eq_ignore_ascii_case(class) {
+                match_classes.push(wm_class.clone());
+            }
+        }
+
         self.clients
             .iter()
             .filter(|c| {
-                c.class.eq_ignore_ascii_case(class)
-                    || (!c.initial_class.is_empty() && c.initial_class.eq_ignore_ascii_case(class))
+                match_classes
+                    .iter()
+                    .any(|m| c.class.eq_ignore_ascii_case(m))
+                    || (!c.initial_class.is_empty()
+                        && match_classes
+                            .iter()
+                            .any(|m| c.initial_class.eq_ignore_ascii_case(m)))
             })
             .cloned()
             .collect()

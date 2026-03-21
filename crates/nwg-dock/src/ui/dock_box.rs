@@ -5,6 +5,7 @@ use crate::ui::buttons;
 use gtk4::prelude::*;
 use nwg_dock_common::compositor::WmClient;
 use nwg_dock_common::pinning;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Collects the ordered list of all dock items (pinned first, then running clients).
@@ -32,21 +33,40 @@ fn collect_all_items(s: &mut DockState, config: &DockConfig) -> Vec<String> {
             && !ignored_ws.iter().any(|iw| iw == ws_base)
     });
 
+    let wm_map = &s.wm_class_to_desktop_id;
     for task in &s.clients {
-        if !all_items.contains(&task.class)
-            && !config.launcher_cmd.contains(&task.class)
-            && !task.class.is_empty()
-        {
-            // Skip if this window's initial_class already has an icon
-            // (groups child windows like Playwright browsers under VSCode)
-            if is_child_window_grouped(task, &all_items) {
-                continue;
-            }
-            all_items.push(task.class.clone());
+        if task.class.is_empty() || config.launcher_cmd.contains(&task.class) {
+            continue;
         }
+        // Check if this class (or its WMClass mapping) is already represented
+        if is_class_represented(&task.class, &all_items, wm_map) {
+            continue;
+        }
+        if is_child_window_grouped(task, &all_items) {
+            continue;
+        }
+        all_items.push(task.class.clone());
     }
 
     all_items
+}
+
+/// Returns true if a compositor class is already represented in the items list,
+/// either by direct case-insensitive match or via WMClass → desktop ID mapping.
+fn is_class_represented(class: &str, items: &[String], wm_map: &HashMap<String, String>) -> bool {
+    // Direct case-insensitive match
+    if items.iter().any(|i| i.eq_ignore_ascii_case(class)) {
+        return true;
+    }
+    // WMClass → desktop ID mapping (e.g. "com.billz.app" → "billz")
+    if let Some(desktop_id) = wm_map
+        .get(class)
+        .or_else(|| wm_map.get(&class.to_lowercase()))
+        && items.iter().any(|i| i.eq_ignore_ascii_case(desktop_id))
+    {
+        return true;
+    }
+    false
 }
 
 /// Returns true if a client is a child window whose initial_class is already represented.
@@ -235,14 +255,9 @@ fn build_running_items(
     ignored_classes: &[String],
 ) {
     let mut already_added: Vec<String> = Vec::new();
+    let wm_map = &ctx.state.borrow().wm_class_to_desktop_id.clone();
     for task in clients {
-        if task.class.is_empty()
-            || pinning::is_pinned(pinned, &task.class)
-            || ignored_classes.contains(&task.class)
-        {
-            continue;
-        }
-        if is_child_already_shown(task, pinned, &already_added) {
+        if should_skip_running(task, pinned, ignored_classes, &already_added, wm_map) {
             continue;
         }
         let instances = ctx.state.borrow().task_instances(&task.class);
@@ -255,6 +270,21 @@ fn build_running_items(
             already_added.push(task.class.clone());
         }
     }
+}
+
+/// Returns true if a running task should be skipped (empty, ignored, pinned, or child window).
+fn should_skip_running(
+    task: &WmClient,
+    pinned: &[String],
+    ignored_classes: &[String],
+    already_added: &[String],
+    wm_map: &HashMap<String, String>,
+) -> bool {
+    task.class.is_empty()
+        || ignored_classes.contains(&task.class)
+        || pinning::is_pinned(pinned, &task.class)
+        || is_class_represented(&task.class, pinned, wm_map)
+        || is_child_already_shown(task, pinned, already_added)
 }
 
 /// Returns true if a child window's initial_class is already represented by a pinned or added item.

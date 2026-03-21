@@ -14,6 +14,9 @@ pub struct DesktopEntry {
     pub category: String,
     pub terminal: bool,
     pub no_display: bool,
+    /// StartupWMClass from the .desktop file — used to match compositor window class
+    /// to desktop ID when they differ (e.g. "com.billz.app" → "billz").
+    pub startup_wm_class: String,
 }
 
 /// Parses a .desktop file at the given path.
@@ -112,6 +115,7 @@ fn apply_key_value(
         "Exec" => {
             entry.exec = value.replace(['"', '\''], "");
         }
+        "StartupWMClass" => entry.startup_wm_class = value.to_string(),
         k if k == localized_name => entry.name_loc = value.to_string(),
         k if k == localized_comment => entry.comment_loc = value.to_string(),
         _ => {}
