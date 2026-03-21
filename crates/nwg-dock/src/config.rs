@@ -22,11 +22,17 @@ pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String>
     ];
 
     args.map(|arg| {
+        // Convert -flag or -flag=value to --flag or --flag=value
         if let Some(name) = arg.strip_prefix('-')
             && !name.starts_with('-')
-            && LEGACY_FLAGS.contains(&name)
         {
-            return format!("--{}", name);
+            if let Some((flag, value)) = name.split_once('=') {
+                if LEGACY_FLAGS.contains(&flag) {
+                    return format!("--{}={}", flag, value);
+                }
+            } else if LEGACY_FLAGS.contains(&name) {
+                return format!("--{}", name);
+            }
         }
         arg
     })

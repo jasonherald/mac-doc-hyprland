@@ -39,12 +39,18 @@ pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String>
     ];
 
     args.map(|arg| {
-        // Convert -flag to --flag for known multi-char flags
+        // Convert -flag or -flag=value to --flag or --flag=value
         if let Some(name) = arg.strip_prefix('-')
             && !name.starts_with('-')
-            && LEGACY_FLAGS.contains(&name)
         {
-            return format!("--{}", name);
+            // Handle -flag=value form
+            if let Some((flag, value)) = name.split_once('=') {
+                if LEGACY_FLAGS.contains(&flag) {
+                    return format!("--{}={}", flag, value);
+                }
+            } else if LEGACY_FLAGS.contains(&name) {
+                return format!("--{}", name);
+            }
         }
         arg
     })
@@ -274,6 +280,27 @@ mod tests {
                 "48"
             ]
         );
+    }
+
+    #[test]
+    fn legacy_equals_form() {
+        let args = vec!["nwg-drawer", "-is=48", "-term=foot", "-fscol=3"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(
+            normalized,
+            vec!["nwg-drawer", "--is=48", "--term=foot", "--fscol=3"]
+        );
+    }
+
+    #[test]
+    fn unknown_flags_unchanged() {
+        let args = vec!["nwg-drawer", "-unknown=value", "-x"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["nwg-drawer", "-unknown=value", "-x"]);
     }
 
     #[test]
