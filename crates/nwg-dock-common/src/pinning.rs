@@ -3,9 +3,10 @@ use std::path::Path;
 
 /// Checks if a task ID is in the pinned list (case-insensitive).
 pub fn is_pinned(pinned: &[String], task_id: &str) -> bool {
+    let task_id = task_id.trim();
     pinned
         .iter()
-        .any(|p| p.trim().eq_ignore_ascii_case(task_id.trim()))
+        .any(|p| p.trim().eq_ignore_ascii_case(task_id))
 }
 
 /// Adds an item to the pinned list if not already present (case-insensitive).
@@ -23,8 +24,9 @@ pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
 /// Removes an item from the pinned list (case-insensitive).
 /// Returns true if the item was removed.
 pub fn unpin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
+    let item_id = item_id.trim();
     let len = pinned.len();
-    pinned.retain(|p| !p.trim().eq_ignore_ascii_case(item_id.trim()));
+    pinned.retain(|p| !p.trim().eq_ignore_ascii_case(item_id));
     pinned.len() < len
 }
 
