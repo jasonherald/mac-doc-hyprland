@@ -1,5 +1,44 @@
 use clap::{Parser, ValueEnum};
 
+/// Go's `flag` package uses single-dash for all flags (e.g. `-hd 20`, `-ico path`).
+/// Clap only supports single-dash for single-character flags.
+/// This preprocessor converts known Go-style single-dash flags to double-dash
+/// so existing user configs continue to work after migration.
+pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
+    const LEGACY_FLAGS: &[&str] = &[
+        "debug",
+        "hd",
+        "hl",
+        "ico",
+        "iw",
+        "lp",
+        "mb",
+        "ml",
+        "mr",
+        "mt",
+        "nolauncher",
+        "opacity",
+        "wm",
+    ];
+
+    args.map(|arg| {
+        // Convert -flag or -flag=value to --flag or --flag=value
+        if let Some(name) = arg.strip_prefix('-')
+            && !name.starts_with('-')
+        {
+            if let Some((flag, value)) = name.split_once('=') {
+                if LEGACY_FLAGS.contains(&flag) {
+                    return format!("--{}={}", flag, value);
+                }
+            } else if LEGACY_FLAGS.contains(&name) {
+                return format!("--{}", name);
+            }
+        }
+        arg
+    })
+    .collect()
+}
+
 /// Dock position on screen edge.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Position {
@@ -272,6 +311,71 @@ mod tests {
     #[test]
     fn hotspot_delay_default() {
         let config = DockConfig::parse_from(["test"]);
-        assert_eq!(config.hotspot_delay, 20);
+        assert_eq!(config.hotspot_delay, 20); // Go default
+    }
+
+    const TEST_HOTSPOT_DELAY: i64 = 50;
+    const TEST_HOTSPOT_DELAY_STR: &str = "50";
+
+    #[test]
+    fn legacy_single_dash_flags() {
+        let args = vec![
+            "test",
+            "-hd",
+            TEST_HOTSPOT_DELAY_STR,
+            "-ico",
+            "launcher",
+            "-nolauncher",
+        ]
+        .into_iter()
+        .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(
+            normalized,
+            vec![
+                "test",
+                "--hd",
+                TEST_HOTSPOT_DELAY_STR,
+                "--ico",
+                "launcher",
+                "--nolauncher",
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_equals_form() {
+        let args = vec!["test", "-hd=50", "-ico=launcher"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["test", "--hd=50", "--ico=launcher"]);
+    }
+
+    #[test]
+    fn unknown_flags_unchanged() {
+        let args = vec!["test", "-unknown=value", "-d"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["test", "-unknown=value", "-d"]);
+    }
+
+    #[test]
+    fn legacy_flags_parse_correctly() {
+        let config = DockConfig::parse_from(normalize_legacy_flags(
+            vec![
+                "test",
+                "-hd",
+                TEST_HOTSPOT_DELAY_STR,
+                "-nolauncher",
+                "-debug",
+            ]
+            .into_iter()
+            .map(String::from),
+        ));
+        assert_eq!(config.hotspot_delay, TEST_HOTSPOT_DELAY);
+        assert!(config.nolauncher);
+        assert!(config.debug);
     }
 }

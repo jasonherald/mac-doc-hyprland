@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 fn main() {
-    let mut config = DockConfig::parse();
+    let mut config = DockConfig::parse_from(config::normalize_legacy_flags(std::env::args()));
 
     if config.debug {
         env_logger::Builder::from_default_env()

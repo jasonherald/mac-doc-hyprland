@@ -1,5 +1,62 @@
 use clap::{Parser, ValueEnum};
 
+/// Go's `flag` package uses single-dash for all flags (e.g. `-is 64`, `-term foot`).
+/// Clap only supports single-dash for single-character flags.
+/// This preprocessor converts known Go-style single-dash flags to double-dash
+/// so existing user configs continue to work after migration.
+pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
+    // All Go-style flags that are longer than one character and used with single dash.
+    // Single-character flags (-s, -o, -g, -i, -c, -r, -d, -k, -v) work natively.
+    const LEGACY_FLAGS: &[&str] = &[
+        "is",
+        "ovl",
+        "open",
+        "close",
+        "mt",
+        "ml",
+        "mr",
+        "mb",
+        "fscol",
+        "ft",
+        "fm",
+        "spacing",
+        "lang",
+        "term",
+        "wm",
+        "fslen",
+        "nocats",
+        "nofs",
+        "pbexit",
+        "pblock",
+        "pbpoweroff",
+        "pbreboot",
+        "pbsleep",
+        "pbsize",
+        "pbuseicontheme",
+        "pbauto",
+        "closebtn",
+        "opacity",
+    ];
+
+    args.map(|arg| {
+        // Convert -flag or -flag=value to --flag or --flag=value
+        if let Some(name) = arg.strip_prefix('-')
+            && !name.starts_with('-')
+        {
+            // Handle -flag=value form
+            if let Some((flag, value)) = name.split_once('=') {
+                if LEGACY_FLAGS.contains(&flag) {
+                    return format!("--{}={}", flag, value);
+                }
+            } else if LEGACY_FLAGS.contains(&name) {
+                return format!("--{}", name);
+            }
+        }
+        arg
+    })
+    .collect()
+}
+
 /// A macOS-style application drawer/launcher for Hyprland/Sway.
 #[derive(Parser, Debug, Clone)]
 #[command(name = "nwg-drawer", version, about)]
@@ -169,5 +226,123 @@ impl DrawerConfig {
             || !self.pb_poweroff.is_empty()
             || !self.pb_reboot.is_empty()
             || !self.pb_sleep.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_ICON_SIZE: i32 = 48;
+    const TEST_ICON_SIZE_STR: &str = "48";
+    const TEST_FS_COLS: u32 = 3;
+    const TEST_FS_COLS_STR: &str = "3";
+
+    #[test]
+    fn legacy_single_dash_flags() {
+        let args = vec![
+            "nwg-drawer",
+            "-is",
+            TEST_ICON_SIZE_STR,
+            "-term",
+            "foot",
+            "-fscol",
+            TEST_FS_COLS_STR,
+        ]
+        .into_iter()
+        .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(
+            normalized,
+            vec![
+                "nwg-drawer",
+                "--is",
+                TEST_ICON_SIZE_STR,
+                "--term",
+                "foot",
+                "--fscol",
+                TEST_FS_COLS_STR,
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_bool_flags() {
+        let args = vec!["nwg-drawer", "-ft", "-nocats", "-nofs"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["nwg-drawer", "--ft", "--nocats", "--nofs"]);
+    }
+
+    #[test]
+    fn native_flags_unchanged() {
+        let args = vec![
+            "nwg-drawer",
+            "-d",
+            "-r",
+            "-s",
+            "custom.css",
+            "--icon-size",
+            TEST_ICON_SIZE_STR,
+        ]
+        .into_iter()
+        .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(
+            normalized,
+            vec![
+                "nwg-drawer",
+                "-d",
+                "-r",
+                "-s",
+                "custom.css",
+                "--icon-size",
+                TEST_ICON_SIZE_STR,
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_equals_form() {
+        let args = vec!["nwg-drawer", "-is=48", "-term=foot", "-fscol=3"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(
+            normalized,
+            vec!["nwg-drawer", "--is=48", "--term=foot", "--fscol=3"]
+        );
+    }
+
+    #[test]
+    fn unknown_flags_unchanged() {
+        let args = vec!["nwg-drawer", "-unknown=value", "-x"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["nwg-drawer", "-unknown=value", "-x"]);
+    }
+
+    #[test]
+    fn legacy_flags_parse_correctly() {
+        let config = DrawerConfig::parse_from(normalize_legacy_flags(
+            vec![
+                "nwg-drawer",
+                "-is",
+                TEST_ICON_SIZE_STR,
+                "-term",
+                "alacritty",
+                "-fscol",
+                TEST_FS_COLS_STR,
+                "-ft",
+            ]
+            .into_iter()
+            .map(String::from),
+        ));
+        assert_eq!(config.icon_size, TEST_ICON_SIZE);
+        assert_eq!(config.term, "alacritty");
+        assert_eq!(config.fs_columns, TEST_FS_COLS);
+        assert!(config.force_theme);
     }
 }

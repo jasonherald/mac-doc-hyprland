@@ -21,7 +21,7 @@ use std::rc::Rc;
 const DRAWER_CSS: &str = include_str!("assets/drawer.css");
 
 fn main() {
-    let mut config = DrawerConfig::parse();
+    let mut config = DrawerConfig::parse_from(config::normalize_legacy_flags(std::env::args()));
 
     if config.debug {
         env_logger::Builder::from_default_env()
