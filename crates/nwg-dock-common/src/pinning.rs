@@ -8,7 +8,7 @@ pub fn is_pinned(pinned: &[String], task_id: &str) -> bool {
         .any(|p| p.trim().eq_ignore_ascii_case(task_id.trim()))
 }
 
-/// Adds an item to the pinned list if not already present.
+/// Adds an item to the pinned list if not already present (case-insensitive).
 /// Returns true if the item was added.
 pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
     let item_id = item_id.trim();
@@ -20,7 +20,7 @@ pub fn pin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
     true
 }
 
-/// Removes an item from the pinned list.
+/// Removes an item from the pinned list (case-insensitive).
 /// Returns true if the item was removed.
 pub fn unpin_item(pinned: &mut Vec<String>, item_id: &str) -> bool {
     let len = pinned.len();
