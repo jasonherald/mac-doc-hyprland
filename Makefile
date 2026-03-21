@@ -300,11 +300,11 @@ test-all: test test-integration
 check-tools:
 	@if ! command -v cargo-deny >/dev/null 2>&1; then \
 		echo "Installing cargo-deny..."; \
-		cargo install cargo-deny; \
+		$(CARGO) install cargo-deny; \
 	fi
 	@if ! command -v cargo-audit >/dev/null 2>&1; then \
 		echo "Installing cargo-audit..."; \
-		cargo install cargo-audit; \
+		$(CARGO) install cargo-audit; \
 	fi
 
 lint: check-tools
@@ -318,10 +318,10 @@ lint: check-tools
 	$(CARGO) test --workspace
 	@echo ""
 	@echo "── Cargo Deny (licenses, advisories, bans, sources) ──"
-	cargo deny check
+	$(CARGO) deny check
 	@echo ""
 	@echo "── Cargo Audit (dependency CVEs) ──"
-	cargo audit
+	$(CARGO) audit
 	@echo ""
 	@echo "All checks passed."
 
