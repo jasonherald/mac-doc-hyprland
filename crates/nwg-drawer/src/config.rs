@@ -233,15 +233,36 @@ impl DrawerConfig {
 mod tests {
     use super::*;
 
+    const TEST_ICON_SIZE: i32 = 48;
+    const TEST_ICON_SIZE_STR: &str = "48";
+    const TEST_FS_COLS: u32 = 3;
+    const TEST_FS_COLS_STR: &str = "3";
+
     #[test]
     fn legacy_single_dash_flags() {
-        let args = vec!["nwg-drawer", "-is", "48", "-term", "foot", "-fscol", "3"]
-            .into_iter()
-            .map(String::from);
+        let args = vec![
+            "nwg-drawer",
+            "-is",
+            TEST_ICON_SIZE_STR,
+            "-term",
+            "foot",
+            "-fscol",
+            TEST_FS_COLS_STR,
+        ]
+        .into_iter()
+        .map(String::from);
         let normalized = normalize_legacy_flags(args);
         assert_eq!(
             normalized,
-            vec!["nwg-drawer", "--is", "48", "--term", "foot", "--fscol", "3"]
+            vec![
+                "nwg-drawer",
+                "--is",
+                TEST_ICON_SIZE_STR,
+                "--term",
+                "foot",
+                "--fscol",
+                TEST_FS_COLS_STR,
+            ]
         );
     }
 
@@ -263,7 +284,7 @@ mod tests {
             "-s",
             "custom.css",
             "--icon-size",
-            "48",
+            TEST_ICON_SIZE_STR,
         ]
         .into_iter()
         .map(String::from);
@@ -277,7 +298,7 @@ mod tests {
                 "-s",
                 "custom.css",
                 "--icon-size",
-                "48"
+                TEST_ICON_SIZE_STR,
             ]
         );
     }
@@ -309,19 +330,19 @@ mod tests {
             vec![
                 "nwg-drawer",
                 "-is",
-                "48",
+                TEST_ICON_SIZE_STR,
                 "-term",
                 "alacritty",
                 "-fscol",
-                "3",
+                TEST_FS_COLS_STR,
                 "-ft",
             ]
             .into_iter()
             .map(String::from),
         ));
-        assert_eq!(config.icon_size, 48);
+        assert_eq!(config.icon_size, TEST_ICON_SIZE);
         assert_eq!(config.term, "alacritty");
-        assert_eq!(config.fs_columns, 3);
+        assert_eq!(config.fs_columns, TEST_FS_COLS);
         assert!(config.force_theme);
     }
 }
