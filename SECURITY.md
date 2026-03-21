@@ -24,19 +24,20 @@ Use GitHub's private vulnerability reporting to submit a report:
 - **Acknowledgment** within 48 hours
 - **Assessment** of severity and impact within 1 week
 - **Fix or mitigation** as soon as practical, depending on severity
+- **Disclosure** 90 days after the fix is released, or immediately if the vulnerability is already public
 - Credit in the fix commit (unless you prefer to remain anonymous)
 
 ## Security Scanning
 
-This project uses automated security scanning on every PR and weekly:
+This project uses automated security scanning across multiple layers:
 
-| Tool | Coverage |
-|------|----------|
-| [CodeQL](https://codeql.github.com/) | Source-level OWASP analysis (command injection, path traversal, tainted data flows) |
-| [cargo-audit](https://rustsec.org/) | Known CVEs in Rust dependencies (RustSec advisory database) |
-| [cargo-deny](https://embarkstudios.github.io/cargo-deny/) | License compliance, duplicate crates, source restrictions |
-| [CodeRabbit](https://coderabbit.ai/) | AI-assisted code review with OSV dependency scanning |
-| [SonarQube](https://www.sonarqube.org/) | Code quality, cognitive complexity, code smells |
+| Tool | Integration | Coverage |
+|------|-------------|----------|
+| [CodeQL](https://codeql.github.com/) | GitHub Actions (PR + weekly) | Source-level OWASP analysis (command injection, path traversal, tainted data flows) |
+| [cargo-audit](https://rustsec.org/) | GitHub Actions (PR + weekly) | Known CVEs in Rust dependencies (RustSec advisory database) |
+| [cargo-deny](https://embarkstudios.github.io/cargo-deny/) | GitHub Actions (PR + weekly) | License compliance, duplicate crates, source restrictions |
+| [CodeRabbit](https://coderabbit.ai/) | GitHub App (PR review) | AI-assisted code review with OSV dependency scanning |
+| [SonarQube](https://www.sonarqube.org/) | External (pre-PR) | Code quality, cognitive complexity, code smells |
 
 ## Scope
 
@@ -48,3 +49,11 @@ This project runs as a user-space application on Wayland compositors (Hyprland, 
 - Communicates with the compositor via IPC sockets
 
 Vulnerabilities in any of these areas are in scope.
+
+### Out of scope
+
+- Bugs in the compositor itself (Hyprland, Sway) — report upstream
+- Denial of service via resource exhaustion (e.g. sending thousands of notifications)
+- Malicious `.desktop` files — these are user-installed and trusted by design
+- Social engineering or phishing
+- Issues requiring physical access to the machine
