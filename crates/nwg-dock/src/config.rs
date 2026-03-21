@@ -311,6 +311,48 @@ mod tests {
     #[test]
     fn hotspot_delay_default() {
         let config = DockConfig::parse_from(["test"]);
-        assert_eq!(config.hotspot_delay, 20);
+        assert_eq!(config.hotspot_delay, 20); // Go default
+    }
+
+    #[test]
+    fn legacy_single_dash_flags() {
+        let args = vec!["test", "-hd", "50", "-ico", "launcher", "-nolauncher"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(
+            normalized,
+            vec!["test", "--hd", "50", "--ico", "launcher", "--nolauncher"]
+        );
+    }
+
+    #[test]
+    fn legacy_equals_form() {
+        let args = vec!["test", "-hd=50", "-ico=launcher"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["test", "--hd=50", "--ico=launcher"]);
+    }
+
+    #[test]
+    fn unknown_flags_unchanged() {
+        let args = vec!["test", "-unknown=value", "-d"]
+            .into_iter()
+            .map(String::from);
+        let normalized = normalize_legacy_flags(args);
+        assert_eq!(normalized, vec!["test", "-unknown=value", "-d"]);
+    }
+
+    #[test]
+    fn legacy_flags_parse_correctly() {
+        let config = DockConfig::parse_from(normalize_legacy_flags(
+            vec!["test", "-hd", "50", "-nolauncher", "-debug"]
+                .into_iter()
+                .map(String::from),
+        ));
+        assert_eq!(config.hotspot_delay, 50);
+        assert!(config.nolauncher);
+        assert!(config.debug);
     }
 }
