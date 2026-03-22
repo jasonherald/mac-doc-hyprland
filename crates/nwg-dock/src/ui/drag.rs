@@ -41,6 +41,7 @@ struct DragSession {
 /// Uses `GestureDrag` (button 1) which participates in GTK4's gesture
 /// competition: click without movement → app launches normally;
 /// drag past threshold → reorder begins, click is suppressed.
+/// Attaches manual drag-to-reorder on the item_box (parent of the button).
 pub fn setup_drag_gesture(
     button: &gtk4::Button,
     index: usize,
@@ -80,8 +81,9 @@ pub fn setup_drag_gesture(
         state_begin.borrow_mut().drag_source_index = Some(index);
         let icon_size = state_begin.borrow().img_size_scaled;
 
-        // Claim the gesture sequence so GestureClick doesn't fire on release
-        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        // Don't call set_state(Claimed) here — let GTK4's gesture competition
+        // handle it. GestureDrag claims naturally when threshold is crossed.
+        // Explicit Claimed would block Button::clicked on simple clicks.
 
         // Set grabbing cursor on the dock window
         if let Some(root) = dock_box.root() {
@@ -105,12 +107,18 @@ pub fn setup_drag_gesture(
     // --- drag-update: reorder items live, track inside/outside ---
     let state_update = Rc::clone(state);
     let session_update = Rc::clone(&session);
-    gesture.connect_drag_update(move |_gesture, offset_x, offset_y| {
+    gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
         let mut sess = session_update.borrow_mut();
         let Some(ref mut s) = *sess else { return };
 
-        let current_x = s.dock_start_x + offset_x;
-        let current_y = s.dock_start_y + offset_y;
+        // Get cursor position in dock_box coords by translating from the button's
+        // CURRENT position (which changes as items are reordered).
+        let (current_x, current_y) = gesture
+            .widget()
+            .and_then(|w| w.translate_coordinates(&s.dock_box, 0.0, 0.0))
+            .map(|(bx, by)| (bx + offset_x, by + offset_y))
+            .unwrap_or((s.dock_start_x + offset_x, s.dock_start_y + offset_y));
+
         let coord = if s.vertical { current_y } else { current_x };
 
         // Calculate where the item should be and reorder live
