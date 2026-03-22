@@ -68,6 +68,8 @@ impl Drop for LockFile {
 }
 
 /// Finds the PID of a running instance (if any) without acquiring the lock.
+/// Validates the PID by checking /proc/<pid>/exe to ensure it's actually
+/// our binary and not a recycled PID from an unrelated process.
 pub fn find_running_pid(app_name: &str) -> Option<u32> {
     let user = std::env::var("USER").unwrap_or_default();
     let user_hash = stable_hash(&user);
@@ -75,11 +77,37 @@ pub fn find_running_pid(app_name: &str) -> Option<u32> {
 
     let content = fs::read_to_string(&lock_path).ok()?;
     let pid: u32 = content.trim().parse().ok()?;
-    let proc_path = format!("/proc/{}", pid);
-    if Path::new(&proc_path).exists() {
-        Some(pid)
-    } else {
-        None
+
+    // Verify the process is actually our binary, not a recycled PID
+    let exe_path = format!("/proc/{}/exe", pid);
+    match fs::read_link(&exe_path) {
+        Ok(exe) => {
+            let exe_name = exe
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            // The binary name should contain the app name (e.g. "nwg-drawer" for "mac-drawer")
+            // or match the current executable
+            let our_exe = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+            if our_exe.as_deref() == Some(&exe_name) {
+                Some(pid)
+            } else {
+                log::debug!(
+                    "PID {} exists but exe '{}' doesn't match ours ({:?}), ignoring stale lock",
+                    pid,
+                    exe_name,
+                    our_exe
+                );
+                None
+            }
+        }
+        Err(_) => {
+            // Can't read exe link — process doesn't exist or no permission
+            None
+        }
     }
 }
 
