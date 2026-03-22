@@ -445,7 +445,15 @@ fn is_cursor_in_visible_dock(
         }
         let w = win.width();
         let h = win.height();
-        if w == 0 || h == 0 || i >= monitors.len() {
+        if w == 0 || h == 0 {
+            continue;
+        }
+        if i >= monitors.len() {
+            log::debug!(
+                "Skipping dock window {} — no matching monitor (have {})",
+                i,
+                monitors.len()
+            );
             continue;
         }
         // Only check the dock bounds on the monitor where this window is shown
