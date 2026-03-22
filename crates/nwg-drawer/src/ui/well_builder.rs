@@ -333,7 +333,7 @@ fn build_pinned_button(
     let compositor = Rc::clone(&state.borrow().compositor);
     let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
-        let clean = crate::ui::widgets::clean_exec(&exec);
+        let clean = crate::ui::widgets::strip_field_codes(&exec);
         if !clean.is_empty() {
             let cmd = crate::ui::widgets::prepend_theme(&clean, &theme_prefix);
             if terminal {

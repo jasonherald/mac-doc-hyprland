@@ -103,7 +103,10 @@ pub fn apply_pin_badge(button: &gtk4::Button) {
     vbox.remove(&label_widget);
 
     // Create horizontal box: [dot] [label]
-    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, constants::PIN_BADGE_LABEL_GAP);
+    let hbox = gtk4::Box::new(
+        gtk4::Orientation::Horizontal,
+        constants::PIN_BADGE_LABEL_GAP,
+    );
     hbox.set_halign(gtk4::Align::Center);
 
     let badge = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
@@ -117,14 +120,38 @@ pub fn apply_pin_badge(button: &gtk4::Button) {
     vbox.append(&hbox);
 }
 
-/// Strips field codes (%u, %f, etc.) and quotes from an Exec command.
-pub fn clean_exec(exec: &str) -> String {
-    let exec = exec.replace(['"', '\''], "");
-    if let Some(pos) = exec.find('%') {
-        exec[..pos.saturating_sub(1)].trim().to_string()
-    } else {
-        exec.trim().to_string()
+/// Strips desktop field codes (%u, %F, %%, etc.) from an Exec command.
+/// Per the freedesktop Desktop Entry spec, recognised single-letter codes are
+/// removed and `%%` is collapsed to a literal `%`. Arguments after field codes
+/// are preserved. Quotes are preserved — shell splitting happens at launch time
+/// via shell_words::split() (issue #11).
+pub fn strip_field_codes(exec: &str) -> String {
+    let mut result = String::with_capacity(exec.len());
+    let mut chars = exec.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            match chars.peek() {
+                // %% → literal %
+                Some('%') => {
+                    chars.next();
+                    result.push('%');
+                }
+                // Known field codes per freedesktop spec — drop them
+                Some('f' | 'F' | 'u' | 'U' | 'd' | 'D' | 'n' | 'N' | 'i' | 'c' | 'k' | 'v' | 'm') => {
+                    chars.next();
+                    // Trim a single leading space before the field code if present
+                    if result.ends_with(' ') && chars.peek().is_none_or(|&ch| ch == ' ') {
+                        result.pop();
+                    }
+                }
+                // Unknown %-sequence — keep as-is
+                _ => result.push('%'),
+            }
+        } else {
+            result.push(c);
+        }
     }
+    result.trim().to_string()
 }
 
 /// Prepends GTK_THEME= to a command if force-theme is enabled.
@@ -151,22 +178,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clean_exec_strips_field_codes() {
-        assert_eq!(clean_exec("firefox %u"), "firefox");
-        assert_eq!(clean_exec("code %F"), "code");
-        assert_eq!(clean_exec("gimp"), "gimp");
+    fn strip_field_codes_basic() {
+        assert_eq!(strip_field_codes("firefox %u"), "firefox");
+        assert_eq!(strip_field_codes("code %F"), "code");
+        assert_eq!(strip_field_codes("gimp"), "gimp");
     }
 
     #[test]
-    fn clean_exec_strips_quotes() {
-        assert_eq!(clean_exec(r#""firefox" %u"#), "firefox");
-        assert_eq!(clean_exec("'brave' --new-window"), "brave --new-window");
+    fn strip_field_codes_preserves_quotes() {
+        assert_eq!(strip_field_codes(r#""firefox" %u"#), r#""firefox""#);
+        assert_eq!(
+            strip_field_codes(r#"sh -c "echo hello" %u"#),
+            r#"sh -c "echo hello""#
+        );
     }
 
     #[test]
-    fn clean_exec_trims_whitespace() {
-        assert_eq!(clean_exec("  firefox  "), "firefox");
-        assert_eq!(clean_exec(""), "");
+    fn strip_field_codes_no_space_before_percent() {
+        assert_eq!(strip_field_codes("firefox%u"), "firefox");
+    }
+
+    #[test]
+    fn strip_field_codes_preserves_args_after_code() {
+        assert_eq!(
+            strip_field_codes("foo %U --new-window"),
+            "foo --new-window"
+        );
+        assert_eq!(strip_field_codes("bar %f --flag %F --other"), "bar --flag --other");
+    }
+
+    #[test]
+    fn strip_field_codes_literal_percent() {
+        assert_eq!(
+            strip_field_codes(r#"sh -c "printf '100%%'""#),
+            r#"sh -c "printf '100%'""#
+        );
+    }
+
+    #[test]
+    fn strip_field_codes_preserves_inner_whitespace() {
+        assert_eq!(
+            strip_field_codes(r#"sh -c "printf 'a  b'" %u"#),
+            r#"sh -c "printf 'a  b'""#
+        );
+    }
+
+    #[test]
+    fn strip_field_codes_trims_whitespace() {
+        assert_eq!(strip_field_codes("  firefox  "), "firefox");
+        assert_eq!(strip_field_codes(""), "");
     }
 
     #[test]
