@@ -41,7 +41,7 @@ fn main() {
     };
 
     let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_exit(&config.wm));
+        Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
 
     // Signal listener — BEFORE GTK, same pattern as the dock
     let sig_rx = listeners::start_signal_listener();

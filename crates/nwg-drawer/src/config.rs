@@ -206,8 +206,8 @@ pub struct DrawerConfig {
     pub force_theme: bool,
 
     /// Window manager override (auto-detected from environment if not specified)
-    #[arg(long, default_value = "")]
-    pub wm: String,
+    #[arg(long, value_enum)]
+    pub wm: Option<nwg_dock_common::compositor::WmOverride>,
 }
 
 /// Close button position in the drawer.

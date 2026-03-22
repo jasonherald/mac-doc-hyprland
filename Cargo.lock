@@ -851,6 +851,7 @@ dependencies = [
 name = "nwg-dock-common"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "dirs",
  "gtk4",
  "gtk4-layer-shell",

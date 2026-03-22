@@ -38,7 +38,7 @@ fn main() {
     handle_open_close(&config);
     let _lock = acquire_singleton_lock(&config);
     let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_exit(&config.wm));
+        Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
@@ -290,7 +290,7 @@ fn apply_force_theme(config: &DrawerConfig, state: &Rc<RefCell<state::DrawerStat
     if !config.force_theme {
         return;
     }
-    if config.wm.to_lowercase() == "uwsm" {
+    if config.wm == Some(nwg_dock_common::compositor::WmOverride::Uwsm) {
         log::warn!("--force-theme ignored when running through uwsm");
         return;
     }
