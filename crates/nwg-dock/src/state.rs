@@ -33,6 +33,10 @@ pub struct DockState {
     /// Used to show a "remove" indicator on the dragged item's slot.
     pub drag_outside_dock: bool,
 
+    /// True when a rebuild was needed during an active drag and deferred.
+    /// Checked after drag ends to ensure the rebuild still happens.
+    pub rebuild_pending: bool,
+
     /// Maps StartupWMClass → desktop_id for apps where the compositor class
     /// differs from the desktop file stem (e.g. "com.billz.app" → "billz").
     pub wm_class_to_desktop_id: HashMap<String, String>,
@@ -53,6 +57,7 @@ impl DockState {
             locked: false,
             drag_source_index: None,
             drag_outside_dock: false,
+            rebuild_pending: false,
             wm_class_to_desktop_id: HashMap::new(),
         }
     }

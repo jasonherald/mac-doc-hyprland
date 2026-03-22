@@ -27,23 +27,15 @@ window {
     transition: margin 150ms ease-in-out;
 }
 
-/* Remove ALL GTK4 default drag-over highlighting (green outlines) */
-*:drop(active) {
-    outline: none;
-    border-color: transparent;
+/* Suppress GTK4 default button highlight during drag */
+.dock-button:active {
+    background: none;
     box-shadow: none;
 }
 
-/* Source item while being dragged */
-.dragging-source {
-    opacity: 0.2;
-}
-
-/* Source item when cursor is outside dock (will be removed on drop) */
-.drag-will-remove {
-    opacity: 0.3;
-    background-color: rgba(255, 60, 60, 0.15);
-    border-radius: 8px;
+/* Removal icon shown when dragging outside dock */
+.drag-remove-icon {
+    color: #e06c75;
 }
 "#;
 

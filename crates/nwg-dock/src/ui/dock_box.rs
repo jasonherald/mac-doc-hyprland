@@ -193,17 +193,6 @@ pub fn build(
     });
     main_box.add_controller(bg_gesture);
 
-    // Dock-level drop target for drag-to-reorder (when unlocked)
-    if !config.autohide || !ctx.state.borrow().locked {
-        crate::ui::drag::setup_dock_drop_target(
-            &main_box,
-            ctx.state.borrow().img_size_scaled,
-            &ctx.state,
-            &ctx.pinned_file,
-            &ctx.rebuild,
-        );
-    }
-
     main_box
 }
 
@@ -228,12 +217,14 @@ fn build_pinned_items(
             if instances[0].class == active_class && !ctx.config.autohide {
                 btn.set_widget_name("active");
             }
+            btn.add_css_class("pinned-item");
             if !ctx.state.borrow().locked
                 && let Some(inner_btn) = find_child_button(&btn)
             {
-                crate::ui::drag::setup_drag_source(
+                crate::ui::drag::setup_drag_gesture(
                     &inner_btn,
                     pin_idx,
+                    ctx.config.is_vertical(),
                     &ctx.state,
                     &ctx.pinned_file,
                     &ctx.rebuild,

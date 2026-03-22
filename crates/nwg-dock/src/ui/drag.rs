@@ -1,329 +1,357 @@
+//! Manual drag-to-reorder for dock pinned items.
+//!
+//! Uses `GestureDrag` instead of GTK4's `DragSource`/`DropTarget` to avoid
+//! SIGSEGV crashes in GTK4's DnD signal emission on Wayland layer-shell
+//! surfaces (GNOME/gtk#3566, #3090). GestureDrag tracks press-move-release
+//! via raw pointer events without creating a GdkDrag object.
+//!
+//! The actual dock items are reordered live as you drag — no placeholder
+//! or preview copies needed. Dragging outside the dock shows a removal
+//! indicator and changes the cursor.
+
 use crate::state::DockState;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::icons;
 use nwg_dock_common::pinning;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Name for the placeholder widget inserted at the drop zone.
-const PLACEHOLDER_NAME: &str = "drag-placeholder";
+/// Pixels outside the dock box before we consider the cursor "outside"
+/// for the unpin-by-drag-off behavior.
+const OUTSIDE_MARGIN: f64 = 30.0;
 
-/// Attaches drag source behavior to a pinned button.
+/// Transient state for an active drag operation.
+struct DragSession {
+    source_index: usize,
+    /// Current position of the dragged item (changes as items are reordered live).
+    current_index: usize,
+    /// Cursor position in dock_box coordinates at drag start.
+    dock_start_x: f64,
+    dock_start_y: f64,
+    dock_box: gtk4::Box,
+    /// The source item widget (for CSS class toggling).
+    source_item: gtk4::Widget,
+    vertical: bool,
+    /// Scaled icon size (to match removal icon to app icon size).
+    icon_size: i32,
+}
+
+/// Attaches manual drag-to-reorder behavior to a pinned button.
 ///
-/// On drag begin: hides the original icon (looks like you picked it up).
-/// On drag end outside dock: unpins the item (drag-to-remove, like macOS).
-pub fn setup_drag_source(
+/// Uses `GestureDrag` (button 1) which participates in GTK4's gesture
+/// competition: click without movement → app launches normally;
+/// drag past threshold → reorder begins, click is suppressed.
+pub fn setup_drag_gesture(
     button: &gtk4::Button,
     index: usize,
+    vertical: bool,
     state: &Rc<RefCell<DockState>>,
     pinned_file: &Path,
     rebuild: &Rc<dyn Fn()>,
 ) {
-    let drag_source = gtk4::DragSource::new();
-    drag_source.set_actions(gtk4::gdk::DragAction::MOVE);
+    let session: Rc<RefCell<Option<DragSession>>> = Rc::new(RefCell::new(None));
 
-    // Prepare: provide drag data and snapshot the icon immediately
-    let state_prepare = Rc::clone(state);
-    drag_source.connect_prepare(move |source, _x, _y| {
-        // Snapshot the icon NOW (before any visual changes)
-        if let Some(widget) = source.widget() {
-            let paintable = gtk4::WidgetPaintable::new(Some(&widget));
-            source.set_icon(Some(&paintable), 0, 0);
+    let gesture = gtk4::GestureDrag::new();
+    gesture.set_button(1);
+
+    // --- drag-begin ---
+    let state_begin = Rc::clone(state);
+    let session_begin = Rc::clone(&session);
+    let vert = vertical;
+    gesture.connect_drag_begin(move |gesture, start_x, start_y| {
+        let Some(widget) = gesture.widget() else {
+            return;
+        };
+        let Some(item_box) = widget.parent() else {
+            return;
+        };
+        let Some(dock_box_widget) = item_box.parent() else {
+            return;
+        };
+        let Ok(dock_box) = dock_box_widget.downcast::<gtk4::Box>() else {
+            return;
+        };
+
+        let (dock_x, dock_y) = match widget.translate_coordinates(&dock_box, start_x, start_y) {
+            Some(coords) => coords,
+            None => return,
+        };
+
+        state_begin.borrow_mut().drag_source_index = Some(index);
+        let icon_size = state_begin.borrow().img_size_scaled;
+
+        // Claim the gesture sequence so GestureClick doesn't fire on release
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+
+        // Set grabbing cursor on the dock window
+        if let Some(root) = dock_box.root() {
+            let cursor = gtk4::gdk::Cursor::from_name("grabbing", None);
+            root.upcast_ref::<gtk4::Widget>()
+                .set_cursor(cursor.as_ref());
         }
-        state_prepare.borrow_mut().drag_source_index = Some(index);
-        let value = (index as u32).to_value();
-        Some(gtk4::gdk::ContentProvider::for_value(&value))
+
+        *session_begin.borrow_mut() = Some(DragSession {
+            source_index: index,
+            current_index: index,
+            dock_start_x: dock_x,
+            dock_start_y: dock_y,
+            dock_box,
+            source_item: item_box,
+            vertical: vert,
+            icon_size,
+        });
     });
 
-    // Drag begin: fade the original and mark it as being dragged
-    drag_source.connect_drag_begin(move |source, _drag| {
-        if let Some(widget) = source.widget()
-            && let Some(parent) = widget.parent()
-        {
-            parent.set_opacity(0.2);
-            parent.add_css_class("dragging-source");
+    // --- drag-update: reorder items live, track inside/outside ---
+    let state_update = Rc::clone(state);
+    let session_update = Rc::clone(&session);
+    gesture.connect_drag_update(move |_gesture, offset_x, offset_y| {
+        let mut sess = session_update.borrow_mut();
+        let Some(ref mut s) = *sess else { return };
+
+        let current_x = s.dock_start_x + offset_x;
+        let current_y = s.dock_start_y + offset_y;
+        let coord = if s.vertical { current_y } else { current_x };
+
+        // Calculate where the item should be and reorder live
+        let target_idx = calculate_drop_index(&s.dock_box, coord, s.vertical, &s.source_item);
+        if target_idx != s.current_index {
+            move_child_to_index(&s.dock_box, &s.source_item, target_idx);
+            s.current_index = target_idx;
         }
+
+        // Track inside/outside dock
+        let outside = is_cursor_outside_dock(&s.dock_box, current_x, current_y, s.vertical);
+        state_update.borrow_mut().drag_outside_dock = outside;
+
+        // Visual feedback: swap icon to X when outside, update cursor
+        update_removal_indicator(&s.source_item, outside, s.icon_size);
+        set_dock_cursor(
+            &s.dock_box,
+            if outside { "not-allowed" } else { "grabbing" },
+        );
     });
 
-    // Drag end: if dropped outside the dock (not accepted), unpin the item
+    // --- drag-end: save new order or unpin ---
     let state_end = Rc::clone(state);
+    let session_end = Rc::clone(&session);
     let pinned_path = pinned_file.to_path_buf();
     let rebuild = Rc::clone(rebuild);
-    drag_source.connect_drag_end(move |source, _drag, _delete_data| {
-        let drag_idx = state_end.borrow().drag_source_index;
-        state_end.borrow_mut().drag_source_index = None;
+    gesture.connect_drag_end(move |_gesture, _offset_x, _offset_y| {
+        let sess = session_end.borrow_mut().take();
+        let Some(s) = sess else { return };
 
-        // Restore the item's appearance
-        if let Some(widget) = source.widget()
-            && let Some(parent) = widget.parent()
-        {
-            parent.set_opacity(1.0);
-            parent.remove_css_class("dragging-source");
-            parent.remove_css_class("drag-will-remove");
-        }
-
-        // Only unpin if cursor was OUTSIDE the dock area at time of release.
-        // We use drag_outside_dock (set by cursor poller) instead of delete_data,
-        // because GTK4 may not properly re-establish drop targets after leave+re-enter.
         let outside = state_end.borrow().drag_outside_dock;
+
+        // Clear drag state
+        state_end.borrow_mut().drag_source_index = None;
         state_end.borrow_mut().drag_outside_dock = false;
 
-        if outside && let Some(idx) = drag_idx {
-            let mut s = state_end.borrow_mut();
-            if idx < s.pinned.len() {
-                let removed = s.pinned.remove(idx);
-                log::info!("Unpinned by drag-off: {}", removed);
-                if let Err(e) = pinning::save_pinned(&s.pinned, &pinned_path) {
-                    log::error!("Failed to save pins: {}", e);
-                }
-                drop(s);
-                // Defer rebuild to next idle cycle to avoid glycin reentrancy
-                let rebuild = Rc::clone(&rebuild);
-                gtk4::glib::idle_add_local_once(move || rebuild());
-            }
+        // Restore cursor and visuals
+        if let Some(root) = s.dock_box.root() {
+            root.upcast_ref::<gtk4::Widget>().set_cursor(None);
         }
+        update_removal_indicator(&s.source_item, false, 0);
+
+        finalize_drag(&state_end, &s, outside, &pinned_path, &rebuild);
     });
 
-    button.add_controller(drag_source);
+    button.add_controller(gesture);
 }
 
-/// Attaches a drop target to the main dock box.
-///
-/// Shows a semi-transparent copy of the dragged icon at the calculated
-/// drop position, so the user can see exactly where it will land.
-///
-/// Complexity is inherent: GTK4 signal closures each capture their own
-/// Rc-cloned state and cannot be meaningfully extracted into separate
-/// functions without fighting the borrow checker or inflating parameter counts.
-#[allow(clippy::cognitive_complexity)]
-pub fn setup_dock_drop_target(
-    dock_box: &gtk4::Box,
-    icon_size: i32,
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Sets the cursor on the dock's toplevel window.
+fn set_dock_cursor(dock_box: &gtk4::Box, cursor_name: &str) {
+    if let Some(root) = dock_box.root() {
+        let cursor = gtk4::gdk::Cursor::from_name(cursor_name, None);
+        root.upcast_ref::<gtk4::Widget>()
+            .set_cursor(cursor.as_ref());
+    }
+}
+
+/// Finalizes a drag operation: either unpins, reorders, or cancels.
+fn finalize_drag(
     state: &Rc<RefCell<DockState>>,
-    pinned_file: &Path,
+    session: &DragSession,
+    outside: bool,
+    pinned_path: &Path,
     rebuild: &Rc<dyn Fn()>,
 ) {
-    let drop_target = gtk4::DropTarget::new(u32::static_type(), gtk4::gdk::DragAction::MOVE);
+    if outside {
+        unpin_by_drag(state, session.source_index, pinned_path, rebuild);
+    } else if session.current_index != session.source_index {
+        reorder_pinned(state, session, pinned_path, rebuild);
+    }
+}
 
-    let current_placeholder_idx: Rc<RefCell<Option<usize>>> = Rc::new(RefCell::new(None));
-
-    // Create the preview icon ONCE (cached), not on every motion event.
-    // This avoids calling glycin image loader on every mouse move.
-    let cached_preview: Rc<RefCell<Option<gtk4::Box>>> = Rc::new(RefCell::new(None));
-
-    let dock_box_motion = dock_box.clone();
-    let placeholder_idx_motion = Rc::clone(&current_placeholder_idx);
-    let state_motion = Rc::clone(state);
-    let cached_preview_motion = Rc::clone(&cached_preview);
-    let size = icon_size;
-
-    drop_target.connect_motion(move |_target, x, _y| {
-        // Clear "will remove" indicator when cursor returns to dock
-        if let Some(idx) = state_motion.borrow().drag_source_index
-            && let Some(child) = find_dock_child_at(&dock_box_motion, idx)
-        {
-            child.remove_css_class("drag-will-remove");
-            child.set_opacity(0.2);
+/// Removes a pinned item by index and saves.
+fn unpin_by_drag(
+    state: &Rc<RefCell<DockState>>,
+    source_index: usize,
+    pinned_path: &Path,
+    rebuild: &Rc<dyn Fn()>,
+) {
+    let mut st = state.borrow_mut();
+    if source_index < st.pinned.len() {
+        let removed = st.pinned.remove(source_index);
+        log::info!("Unpinned by drag-off: {}", removed);
+        if let Err(e) = pinning::save_pinned(&st.pinned, pinned_path) {
+            log::error!("Failed to save pins: {}", e);
         }
+        drop(st);
+        let rebuild = Rc::clone(rebuild);
+        gtk4::glib::idle_add_local_once(move || rebuild());
+    }
+}
 
-        let new_idx = calculate_drop_index(&dock_box_motion, x);
-        let mut current = placeholder_idx_motion.borrow_mut();
-
-        if *current != Some(new_idx) {
-            remove_placeholder(&dock_box_motion);
-
-            // Create preview once, reuse on subsequent moves
-            let preview = {
-                let mut cache = cached_preview_motion.borrow_mut();
-                if cache.is_none() {
-                    let s = state_motion.borrow();
-                    *cache = Some(create_icon_preview(&s, size));
-                }
-                // Safe: we just ensured cache is Some above
-                cache.as_ref().unwrap().clone()
-            };
-
-            // Unparent if previously parented elsewhere
-            if let Some(parent) = preview.parent()
-                && let Ok(parent_box) = parent.downcast::<gtk4::Box>()
-            {
-                parent_box.remove(&preview);
-            }
-
-            insert_placeholder(&dock_box_motion, new_idx, preview);
-            *current = Some(new_idx);
-        }
-
-        gtk4::gdk::DragAction::MOVE
-    });
-
-    // Remove placeholder when drag leaves dock — show "will remove" on source
-    let dock_box_leave = dock_box.clone();
-    let placeholder_leave = Rc::clone(&current_placeholder_idx);
-    let state_leave = Rc::clone(state);
-    let cached_preview_leave = Rc::clone(&cached_preview);
-    drop_target.connect_leave(move |_target| {
-        remove_placeholder(&dock_box_leave);
-        *placeholder_leave.borrow_mut() = None;
-        *cached_preview_leave.borrow_mut() = None; // drop cached preview
-
-        // Mark the source item as "will be removed"
-        if let Some(idx) = state_leave.borrow().drag_source_index
-            && let Some(child) = find_dock_child_at(&dock_box_leave, idx)
-        {
-            child.add_css_class("drag-will-remove");
-            child.set_opacity(0.3);
-        }
-    });
-
-    // On drop: reorder pinned list
-    let dock_box_drop = dock_box.clone();
-    let placeholder_drop = Rc::clone(&current_placeholder_idx);
-    let state = Rc::clone(state);
-    let pinned_path = pinned_file.to_path_buf();
-    let rebuild = Rc::clone(rebuild);
-
-    drop_target.connect_drop(move |_target, value, _x, _y| {
-        remove_placeholder(&dock_box_drop);
-        let target_idx = placeholder_drop.borrow_mut().take();
-
-        let from_index = match value.get::<u32>() {
-            Ok(i) => i as usize,
-            Err(_) => return false,
-        };
-
-        let target_index = match target_idx {
-            Some(i) => i,
-            None => return false,
-        };
-
-        if from_index == target_index {
-            return false;
-        }
-
-        let mut s = state.borrow_mut();
-        let pinned_len = s.pinned.len();
-        if from_index >= pinned_len || target_index > pinned_len {
-            return false;
-        }
-
-        let adjusted_target = if target_index > from_index {
-            target_index - 1
+/// Reorders the pinned list to match the visual order after drag.
+fn reorder_pinned(
+    state: &Rc<RefCell<DockState>>,
+    session: &DragSession,
+    pinned_path: &Path,
+    rebuild: &Rc<dyn Fn()>,
+) {
+    let mut st = state.borrow_mut();
+    let pinned_len = st.pinned.len();
+    if session.source_index < pinned_len && session.current_index <= pinned_len {
+        let item = st.pinned.remove(session.source_index);
+        let adjusted = if session.current_index > session.source_index {
+            session.current_index - 1
         } else {
-            target_index
+            session.current_index
         };
-
-        let item = s.pinned.remove(from_index);
-        s.pinned.insert(adjusted_target, item);
-
-        if let Err(e) = pinning::save_pinned(&s.pinned, &pinned_path) {
+        st.pinned.insert(adjusted, item);
+        if let Err(e) = pinning::save_pinned(&st.pinned, pinned_path) {
             log::error!("Failed to save reordered pins: {}", e);
         }
-
-        drop(s);
-        // Defer rebuild to next idle cycle to avoid glycin reentrancy
-        let rebuild = Rc::clone(&rebuild);
+        drop(st);
+        let rebuild = Rc::clone(rebuild);
         gtk4::glib::idle_add_local_once(move || rebuild());
-        true
-    });
-
-    dock_box.add_controller(drop_target);
-}
-
-/// Creates a semi-transparent copy of the dragged icon for the drop zone.
-fn create_icon_preview(state: &DockState, icon_size: i32) -> gtk4::Box {
-    let preview = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
-    preview.set_widget_name(PLACEHOLDER_NAME);
-    preview.set_opacity(0.5);
-
-    // Look up the dragged app's icon
-    let app_id = state
-        .drag_source_index
-        .and_then(|idx| state.pinned.get(idx))
-        .cloned();
-
-    if let Some(app_id) = app_id
-        && let Some(image) = icons::create_image(&app_id, icon_size, &state.app_dirs)
-    {
-        image.set_pixel_size(icon_size);
-        preview.append(&image);
-        return preview;
     }
-
-    // Fallback: generic icon
-    let image = gtk4::Image::from_icon_name("application-x-executable");
-    image.set_pixel_size(icon_size);
-    preview.append(&image);
-    preview
 }
 
-/// Calculates which index a drop at position `x` should insert at.
-fn calculate_drop_index(dock_box: &gtk4::Box, x: f64) -> usize {
-    let mut child_positions = Vec::new();
+/// Shows/hides the removal indicator by swapping the button's image content.
+/// Saves the original image as widget data so it can be restored.
+fn update_removal_indicator(item: &gtk4::Widget, outside: bool, icon_size: i32) {
+    // The item_box contains: [Button [Image], Indicator]
+    // The button's child is the Image we need to swap
+    let Some(button_widget) = item.first_child() else {
+        return;
+    };
+    let Ok(button) = button_widget.clone().downcast::<gtk4::Button>() else {
+        return;
+    };
+
+    if outside && !item.has_css_class("drag-will-remove") {
+        item.add_css_class("drag-will-remove");
+
+        // Save the entire button child and replace with a clean trash icon
+        if let Some(original) = button.child() {
+            // SAFETY: We own `item` for the duration of the drag. The stored widget
+            // is retrieved in the else branch below with matching key and type.
+            unsafe {
+                item.set_data("drag-original-child", original);
+            }
+        }
+        // Match the original icon size so the dock doesn't resize
+        let remove_icon = gtk4::Image::from_icon_name("window-close-symbolic");
+        remove_icon.set_pixel_size(icon_size);
+        remove_icon.set_halign(gtk4::Align::Center);
+        remove_icon.set_valign(gtk4::Align::Center);
+        remove_icon.add_css_class("drag-remove-icon");
+        button.set_child(Some(&remove_icon));
+        // Hide the indicator dot below the button
+        if let Some(indicator) = button_widget.next_sibling() {
+            indicator.set_visible(false);
+        }
+    } else if !outside && item.has_css_class("drag-will-remove") {
+        item.remove_css_class("drag-will-remove");
+
+        // Restore original button content
+        // SAFETY: Data was set in the if-outside branch above with matching key and type.
+        let original: Option<gtk4::Widget> = unsafe { item.steal_data("drag-original-child") };
+        if let Some(orig) = original {
+            button.set_child(Some(&orig));
+        }
+        // Restore indicator dot
+        if let Some(indicator) = button_widget.next_sibling() {
+            indicator.set_visible(true);
+        }
+    }
+}
+
+/// Returns true if the cursor position is outside the dock box bounds.
+fn is_cursor_outside_dock(dock_box: &gtk4::Box, x: f64, y: f64, vertical: bool) -> bool {
+    let w = dock_box.width() as f64;
+    let h = dock_box.height() as f64;
+    if vertical {
+        x < -OUTSIDE_MARGIN || x > w + OUTSIDE_MARGIN
+    } else {
+        y < -OUTSIDE_MARGIN || y > h + OUTSIDE_MARGIN
+    }
+}
+
+/// Calculates which index the dragged item should be at based on cursor position.
+/// Only counts pinned-item children, skips the dragged item itself.
+fn calculate_drop_index(
+    dock_box: &gtk4::Box,
+    coord: f64,
+    vertical: bool,
+    dragged: &gtk4::Widget,
+) -> usize {
+    let mut positions = Vec::new();
     let mut child = dock_box.first_child();
 
     while let Some(widget) = child {
-        if widget.widget_name().as_str() != PLACEHOLDER_NAME {
+        // Skip the dragged item and non-pinned items
+        if widget != *dragged && widget.has_css_class("pinned-item") {
             let alloc = widget.allocation();
-            let center = alloc.x() as f64 + alloc.width() as f64 / 2.0;
-            child_positions.push(center);
+            let center = if vertical {
+                alloc.y() as f64 + alloc.height() as f64 / 2.0
+            } else {
+                alloc.x() as f64 + alloc.width() as f64 / 2.0
+            };
+            positions.push(center);
         }
         child = widget.next_sibling();
     }
 
-    for (i, &center) in child_positions.iter().enumerate() {
-        if x < center {
+    for (i, &center) in positions.iter().enumerate() {
+        if coord < center {
             return i;
         }
     }
-
-    child_positions.len()
+    positions.len()
 }
 
-/// Inserts a placeholder widget at the given index.
-fn insert_placeholder(dock_box: &gtk4::Box, index: usize, placeholder: gtk4::Box) {
-    let mut child = dock_box.first_child();
-    let mut real_idx = 0;
-    while let Some(widget) = &child {
-        if widget.widget_name().as_str() == PLACEHOLDER_NAME {
-            child = widget.next_sibling();
-            continue;
-        }
-        if real_idx == index {
-            dock_box.insert_child_after(&placeholder, widget.prev_sibling().as_ref());
-            return;
-        }
-        real_idx += 1;
-        child = widget.next_sibling();
-    }
-    dock_box.append(&placeholder);
-}
-
-/// Removes all placeholder widgets from the dock box.
-fn remove_placeholder(dock_box: &gtk4::Box) {
+/// Moves a child widget to a specific index position in the dock box.
+fn move_child_to_index(dock_box: &gtk4::Box, child_widget: &gtk4::Widget, target_index: usize) {
+    // Find the widget currently at target_index (among pinned items, excluding the moved one)
+    let mut pinned_children = Vec::new();
     let mut child = dock_box.first_child();
     while let Some(widget) = child {
-        let next = widget.next_sibling();
-        if widget.widget_name().as_str() == PLACEHOLDER_NAME {
-            dock_box.remove(&widget);
-        }
-        child = next;
-    }
-}
-
-/// Finds the Nth real (non-placeholder) child in the dock box.
-fn find_dock_child_at(dock_box: &gtk4::Box, index: usize) -> Option<gtk4::Widget> {
-    let mut child = dock_box.first_child();
-    let mut real_idx = 0;
-    while let Some(widget) = child {
-        if widget.widget_name().as_str() != PLACEHOLDER_NAME {
-            if real_idx == index {
-                return Some(widget);
-            }
-            real_idx += 1;
+        if widget.has_css_class("pinned-item") && widget != *child_widget {
+            pinned_children.push(widget.clone());
         }
         child = widget.next_sibling();
     }
-    None
+
+    if target_index == 0 {
+        // Move before the first pinned item (or to the start if none)
+        if let Some(first) = pinned_children.first() {
+            dock_box.reorder_child_after(child_widget, first.prev_sibling().as_ref());
+        }
+    } else if target_index <= pinned_children.len() {
+        // Move after the item at target_index - 1
+        let after = &pinned_children[target_index - 1];
+        dock_box.reorder_child_after(child_widget, Some(after));
+    } else {
+        // Move to end of pinned items
+        if let Some(last) = pinned_children.last() {
+            dock_box.reorder_child_after(child_widget, Some(last));
+        }
+    }
 }
