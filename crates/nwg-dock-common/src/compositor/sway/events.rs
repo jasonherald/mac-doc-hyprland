@@ -12,12 +12,12 @@ pub(super) struct SwayEventStream {
 }
 
 impl SwayEventStream {
-    /// Subscribes to window and output events on a new connection.
-    pub(super) fn connect(conn: &mut UnixStream) -> crate::error::Result<Self> {
+    /// Subscribes to window and output events, taking ownership of the connection.
+    pub(super) fn connect(mut conn: UnixStream) -> crate::error::Result<Self> {
         // Subscribe to window and output events (output for monitor hotplug)
         let payload = b"[\"window\",\"output\"]";
-        send_message(conn, MSG_SUBSCRIBE, payload)?;
-        let reply = super::ipc::read_response(conn)?;
+        send_message(&mut conn, MSG_SUBSCRIBE, payload)?;
+        let reply = super::ipc::read_response(&mut conn)?;
         // Check subscription success
         let result: serde_json::Value = serde_json::from_slice(&reply)?;
         if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
@@ -25,9 +25,7 @@ impl SwayEventStream {
                 "Sway event subscription failed",
             )));
         }
-        // Clone the connection for the event stream (caller keeps theirs)
-        let event_conn = conn.try_clone()?;
-        Ok(Self { conn: event_conn })
+        Ok(Self { conn })
     }
 }
 

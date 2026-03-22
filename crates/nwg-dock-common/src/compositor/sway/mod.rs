@@ -120,8 +120,8 @@ impl Compositor for SwayBackend {
     }
 
     fn event_stream(&self) -> Result<Box<dyn WmEventStream>> {
-        let mut conn = UnixStream::connect(&self.socket_path)?;
-        Ok(Box::new(events::SwayEventStream::connect(&mut conn)?))
+        let conn = UnixStream::connect(&self.socket_path)?;
+        Ok(Box::new(events::SwayEventStream::connect(conn)?))
     }
 
     fn supports_cursor_position(&self) -> bool {
