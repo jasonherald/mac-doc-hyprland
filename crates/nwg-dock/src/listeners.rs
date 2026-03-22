@@ -62,21 +62,28 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
 /// Sets up a signal handler poller that controls window visibility
 /// based on SIGRTMIN+1/2/3 signals.
 pub fn setup_signal_poller(
+    app: &gtk4::Application,
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     sig_rx: &Rc<mpsc::Receiver<WindowCommand>>,
 ) {
+    let app = app.clone();
     let docks = Rc::clone(per_monitor);
     let rx = Rc::clone(sig_rx);
 
     glib::timeout_add_local(Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
+            // Quit shuts down the entire application (including hotspot windows)
+            if matches!(cmd, WindowCommand::Quit) {
+                app.quit();
+                return glib::ControlFlow::Break;
+            }
             let toggle_to = !docks.borrow().iter().any(|d| d.win.is_visible());
             for dock in docks.borrow().iter() {
                 match cmd {
                     WindowCommand::Show => dock.win.set_visible(true),
                     WindowCommand::Hide => dock.win.set_visible(false),
                     WindowCommand::Toggle => dock.win.set_visible(toggle_to),
-                    WindowCommand::Quit => dock.win.close(),
+                    WindowCommand::Quit => unreachable!(),
                 }
             }
         }

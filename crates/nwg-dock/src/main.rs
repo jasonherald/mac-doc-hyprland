@@ -147,7 +147,7 @@ fn activate_dock(
         Rc::clone(compositor),
     );
     listeners::setup_pin_watcher(pinned_file, &rebuild);
-    listeners::setup_signal_poller(&per_monitor, sig_rx);
+    listeners::setup_signal_poller(app, &per_monitor, sig_rx);
     listeners::setup_monitor_watcher(app, &per_monitor, config, &rebuild, hotspot_ctx);
 }
 
