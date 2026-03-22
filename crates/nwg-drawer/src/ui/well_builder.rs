@@ -431,10 +431,10 @@ fn clear_box(container: &gtk4::Box) {
 
 fn divider() -> gtk4::Separator {
     let sep = gtk4::Separator::new(gtk4::Orientation::Horizontal);
-    sep.set_margin_top(8);
-    sep.set_margin_bottom(8);
-    sep.set_margin_start(16);
-    sep.set_margin_end(16);
+    sep.set_margin_top(super::constants::DIVIDER_VERTICAL_MARGIN);
+    sep.set_margin_bottom(super::constants::DIVIDER_VERTICAL_MARGIN);
+    sep.set_margin_start(super::constants::DIVIDER_SIDE_MARGIN);
+    sep.set_margin_end(super::constants::DIVIDER_SIDE_MARGIN);
     sep
 }
 

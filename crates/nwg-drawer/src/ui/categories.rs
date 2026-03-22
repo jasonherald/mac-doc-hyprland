@@ -20,8 +20,8 @@ pub fn build_category_bar(
     let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     hbox.add_css_class("category-bar");
     hbox.set_halign(gtk4::Align::Center);
-    hbox.set_margin_top(8);
-    hbox.set_margin_bottom(4);
+    hbox.set_margin_top(super::constants::CATEGORY_BAR_TOP_MARGIN);
+    hbox.set_margin_bottom(super::constants::CATEGORY_BAR_BOTTOM_MARGIN);
 
     let buttons: Rc<RefCell<Vec<gtk4::Button>>> = Rc::new(RefCell::new(Vec::new()));
 

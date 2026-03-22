@@ -46,7 +46,7 @@ pub fn build_power_bar(
 ) -> gtk4::Box {
     let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     hbox.set_halign(gtk4::Align::Center);
-    hbox.set_margin_top(12);
+    hbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);
 
     let commands = [
         &config.pb_lock,

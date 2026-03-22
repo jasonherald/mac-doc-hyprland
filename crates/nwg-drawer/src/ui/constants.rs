@@ -30,3 +30,21 @@ pub const PIN_BADGE_SIZE: i32 = 8;
 
 /// Horizontal spacing between pin badge and label.
 pub const PIN_BADGE_LABEL_GAP: i32 = 3;
+
+/// Top margin for the category bar.
+pub const CATEGORY_BAR_TOP_MARGIN: i32 = 8;
+
+/// Bottom margin for the category bar.
+pub const CATEGORY_BAR_BOTTOM_MARGIN: i32 = 4;
+
+/// Top/bottom margin for the power bar and status display area.
+pub const STATUS_AREA_VERTICAL_MARGIN: i32 = 12;
+
+/// Side margin for the status display area (left/right padding).
+pub const STATUS_AREA_SIDE_MARGIN: i32 = 24;
+
+/// Top/bottom margin for section dividers.
+pub const DIVIDER_VERTICAL_MARGIN: i32 = 8;
+
+/// Side margin for section dividers (left/right padding).
+pub const DIVIDER_SIDE_MARGIN: i32 = 16;
