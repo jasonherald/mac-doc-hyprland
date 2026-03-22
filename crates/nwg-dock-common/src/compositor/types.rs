@@ -42,6 +42,8 @@ pub struct WmWorkspace {
 pub enum WmEvent {
     /// Active window changed. Contains the window id.
     ActiveWindowChanged(String),
+    /// Monitor added or removed (hotplug).
+    MonitorChanged,
     /// Any other event.
     Other(String),
 }

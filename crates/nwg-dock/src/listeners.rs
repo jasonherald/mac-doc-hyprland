@@ -1,11 +1,13 @@
 use crate::config::DockConfig;
+use crate::dock_windows::{self, MonitorDock};
+use crate::monitor;
 use crate::state::DockState;
 use gtk4::glib;
 use gtk4::prelude::*;
 use notify::{RecursiveMode, Watcher};
 use nwg_dock_common::compositor::Compositor;
 use nwg_dock_common::signals::WindowCommand;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -56,20 +58,20 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
 /// Sets up a signal handler poller that controls window visibility
 /// based on SIGRTMIN+1/2/3 signals.
 pub fn setup_signal_poller(
-    all_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     sig_rx: &Rc<mpsc::Receiver<WindowCommand>>,
 ) {
-    let windows = Rc::clone(all_windows);
+    let docks = Rc::clone(per_monitor);
     let rx = Rc::clone(sig_rx);
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
-            for win in windows.borrow().iter() {
+            for dock in docks.borrow().iter() {
                 match cmd {
-                    WindowCommand::Show => win.set_visible(true),
-                    WindowCommand::Hide => win.set_visible(false),
-                    WindowCommand::Toggle => win.set_visible(!win.is_visible()),
-                    WindowCommand::Quit => win.close(),
+                    WindowCommand::Show => dock.win.set_visible(true),
+                    WindowCommand::Hide => dock.win.set_visible(false),
+                    WindowCommand::Toggle => dock.win.set_visible(!dock.win.is_visible()),
+                    WindowCommand::Quit => dock.win.close(),
                 }
             }
         }
@@ -80,19 +82,119 @@ pub fn setup_signal_poller(
 /// Sets up autohide: hides dock windows after initial show,
 /// then starts the appropriate autohide mechanism for the compositor.
 pub fn setup_autohide(
-    all_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     compositor: &Rc<dyn Compositor>,
     app: &gtk4::Application,
-    monitors: &[gtk4::gdk::Monitor],
 ) {
-    for win in all_windows.borrow().iter() {
-        let win_hide = win.clone();
+    for dock in per_monitor.borrow().iter() {
+        let win = dock.win.clone();
         glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
-            win_hide.set_visible(false);
+            win.set_visible(false);
         });
     }
 
-    crate::ui::hotspot::setup_autohide(all_windows, config, state, compositor, app, monitors);
+    crate::ui::hotspot::setup_autohide(per_monitor, config, state, compositor, app);
+}
+
+/// Watches for GDK display monitor changes and reconciles dock windows.
+///
+/// Uses the `items-changed` signal on `Display::monitors()` to detect
+/// monitor hotplug events. Debounced via idle callback to coalesce
+/// rapid events (e.g., unplug + replug).
+pub fn setup_monitor_watcher(
+    app: &gtk4::Application,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    config: &Rc<DockConfig>,
+    rebuild_fn: &Rc<dyn Fn()>,
+) {
+    let Some(display) = gtk4::gdk::Display::default() else {
+        log::error!("No default GDK display for monitor watcher");
+        return;
+    };
+
+    let model = display.monitors();
+    let pending = Rc::new(Cell::new(false));
+    let app = app.clone();
+    let per_monitor = Rc::clone(per_monitor);
+    let config = Rc::clone(config);
+    let rebuild_fn = Rc::clone(rebuild_fn);
+
+    model.connect_items_changed(move |_, _, _, _| {
+        if pending.get() {
+            return; // already scheduled
+        }
+        pending.set(true);
+
+        let pending = Rc::clone(&pending);
+        let app = app.clone();
+        let per_monitor = Rc::clone(&per_monitor);
+        let config = Rc::clone(&config);
+        let rebuild_fn = Rc::clone(&rebuild_fn);
+
+        glib::idle_add_local_once(move || {
+            pending.set(false);
+            log::info!("Monitor topology changed, reconciling dock windows");
+            reconcile_monitors(&app, &per_monitor, &config, &rebuild_fn);
+        });
+    });
+}
+
+/// Reconciles dock windows with current monitor topology.
+/// Creates windows for new monitors, destroys windows for removed monitors.
+fn reconcile_monitors(
+    app: &gtk4::Application,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    config: &DockConfig,
+    rebuild_fn: &Rc<dyn Fn()>,
+) {
+    let current_monitors = monitor::resolve_monitors(config);
+    let current_names: Vec<String> = current_monitors.iter().map(|(n, _)| n.clone()).collect();
+    let existing_names: Vec<String> = per_monitor
+        .borrow()
+        .iter()
+        .map(|d| d.output_name.clone())
+        .collect();
+
+    let (to_add, to_remove) = dock_windows::compute_monitor_diff(&existing_names, &current_names);
+
+    if to_add.is_empty() && to_remove.is_empty() {
+        log::debug!("Monitor topology unchanged after debounce");
+        return;
+    }
+
+    // Remove orphaned dock windows
+    for name in &to_remove {
+        per_monitor.borrow_mut().retain(|dock| {
+            if &dock.output_name == name {
+                log::info!("Removing dock window for disconnected monitor: {}", name);
+                dock.win.close();
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    // Create dock windows for new monitors
+    let monitor_map: std::collections::HashMap<String, gtk4::gdk::Monitor> =
+        current_monitors.into_iter().collect();
+    for name in &to_add {
+        if let Some(gdk_mon) = monitor_map.get(name) {
+            log::info!("Creating dock window for new monitor: {}", name);
+            let dock = dock_windows::create_single_dock_window(app, name, gdk_mon, config);
+            dock.win.present();
+            if config.autohide {
+                let win = dock.win.clone();
+                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                    win.set_visible(false);
+                });
+            }
+            per_monitor.borrow_mut().push(dock);
+        }
+    }
+
+    // Rebuild content in all windows (new windows need buttons)
+    rebuild_fn();
 }
