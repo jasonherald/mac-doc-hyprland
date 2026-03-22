@@ -185,12 +185,12 @@ pub fn apply_category_filter(
     let pinned_flow = pinned_box
         .first_child()
         .and_then(|w| w.downcast::<gtk4::FlowBox>().ok());
-    ui::well_builder::install_grid_nav(&flow, config.columns, pinned_flow.as_ref(), None);
+    ui::navigation::install_grid_nav(&flow, config.columns, pinned_flow.as_ref(), None);
     // Re-link pinned's Down target to this new flow
     if let Some(ref pf) = pinned_flow {
         let pinned = state.borrow().pinned.clone();
         let pinned_cols = config.columns.min(pinned.len() as u32).max(1);
-        ui::well_builder::install_grid_nav(pf, pinned_cols, None, Some(&flow));
+        ui::navigation::install_grid_nav(pf, pinned_cols, None, Some(&flow));
     }
 }
 
