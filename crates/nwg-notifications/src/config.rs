@@ -64,4 +64,28 @@ mod tests {
         let config = NotificationConfig::parse_from(["test", "--dnd"]);
         assert!(config.dnd);
     }
+
+    #[test]
+    fn wm_flag_hyprland() {
+        let config = NotificationConfig::parse_from(["test", "--wm", "hyprland"]);
+        assert_eq!(
+            config.wm,
+            Some(nwg_dock_common::compositor::WmOverride::Hyprland)
+        );
+    }
+
+    #[test]
+    fn wm_flag_uwsm() {
+        let config = NotificationConfig::parse_from(["test", "--wm", "uwsm"]);
+        assert_eq!(
+            config.wm,
+            Some(nwg_dock_common::compositor::WmOverride::Uwsm)
+        );
+    }
+
+    #[test]
+    fn wm_flag_default_none() {
+        let config = NotificationConfig::parse_from(["test"]);
+        assert_eq!(config.wm, None);
+    }
 }

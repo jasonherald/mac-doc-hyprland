@@ -345,4 +345,38 @@ mod tests {
         assert_eq!(config.fs_columns, TEST_FS_COLS);
         assert!(config.force_theme);
     }
+
+    #[test]
+    fn wm_flag_long_form() {
+        let config = DrawerConfig::parse_from(normalize_legacy_flags(
+            vec!["nwg-drawer", "--wm", "uwsm"]
+                .into_iter()
+                .map(String::from),
+        ));
+        assert_eq!(
+            config.wm,
+            Some(nwg_dock_common::compositor::WmOverride::Uwsm)
+        );
+    }
+
+    #[test]
+    fn wm_flag_legacy_single_dash() {
+        let config = DrawerConfig::parse_from(normalize_legacy_flags(
+            vec!["nwg-drawer", "-wm", "uwsm"]
+                .into_iter()
+                .map(String::from),
+        ));
+        assert_eq!(
+            config.wm,
+            Some(nwg_dock_common::compositor::WmOverride::Uwsm)
+        );
+    }
+
+    #[test]
+    fn wm_flag_default_none() {
+        let config = DrawerConfig::parse_from(normalize_legacy_flags(
+            vec!["nwg-drawer"].into_iter().map(String::from),
+        ));
+        assert_eq!(config.wm, None);
+    }
 }

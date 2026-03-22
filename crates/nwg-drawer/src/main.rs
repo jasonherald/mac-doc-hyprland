@@ -417,8 +417,14 @@ fn acquire_singleton_lock(_config: &DrawerConfig) -> singleton::LockFile {
                 // If it's resident, this shows/hides it. If it's non-resident,
                 // the signal handler closes the existing window so the new one
                 // can take over.
-                signals::send_signal_to_pid(pid, signals::sig_toggle());
-                log::info!("Sent toggle signal to existing instance (pid {})", pid);
+                if signals::send_signal_to_pid(pid, signals::sig_toggle()) {
+                    log::info!("Sent toggle signal to existing instance (pid {})", pid);
+                } else {
+                    log::warn!(
+                        "Failed to signal existing instance (pid {}), it may have exited",
+                        pid
+                    );
+                }
             }
             std::process::exit(0);
         }
