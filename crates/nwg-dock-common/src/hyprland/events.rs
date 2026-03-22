@@ -8,6 +8,8 @@ use std::os::unix::net::UnixStream;
 pub enum HyprEvent {
     /// Active window changed. Contains the window address.
     ActiveWindowV2(String),
+    /// Monitor added or removed.
+    MonitorChanged,
     /// Any other event we don't specifically handle.
     Other(String),
 }
@@ -76,7 +78,46 @@ impl EventStream {
 fn parse_event(line: &str) -> HyprEvent {
     if let Some(addr) = line.strip_prefix("activewindowv2>>") {
         HyprEvent::ActiveWindowV2(addr.trim().to_string())
+    } else if line.starts_with("monitoraddedv2>>") || line.starts_with("monitorremoved>>") {
+        HyprEvent::MonitorChanged
     } else {
         HyprEvent::Other(line.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_active_window() {
+        match parse_event("activewindowv2>>0x5678abcd") {
+            HyprEvent::ActiveWindowV2(addr) => assert_eq!(addr, "0x5678abcd"),
+            other => panic!("expected ActiveWindowV2, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_monitor_added() {
+        assert!(matches!(
+            parse_event("monitoraddedv2>>DP-1,1920x1080@60"),
+            HyprEvent::MonitorChanged
+        ));
+    }
+
+    #[test]
+    fn parse_monitor_removed() {
+        assert!(matches!(
+            parse_event("monitorremoved>>HDMI-A-1"),
+            HyprEvent::MonitorChanged
+        ));
+    }
+
+    #[test]
+    fn parse_other_event() {
+        assert!(matches!(
+            parse_event("workspace>>2"),
+            HyprEvent::Other(_)
+        ));
     }
 }

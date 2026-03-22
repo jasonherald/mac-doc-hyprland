@@ -117,10 +117,10 @@ fn activate_dock(
         log::error!("Couldn't list clients: {}", e);
     }
 
-    let monitors = monitor::resolve_monitors(&state, config);
+    let monitors = monitor::resolve_monitors(config);
 
-    let (per_monitor, all_windows) = dock_windows::create_dock_windows(app, &monitors, config);
-    let per_monitor = Rc::new(RefCell::new(per_monitor));
+    let docks = dock_windows::create_dock_windows(app, &monitors, config);
+    let per_monitor = Rc::new(RefCell::new(docks));
 
     let rebuild = rebuild::create_rebuild_fn(
         &per_monitor,
@@ -132,20 +132,23 @@ fn activate_dock(
     );
     rebuild();
 
-    for win in all_windows.borrow().iter() {
-        win.present();
+    for dock in per_monitor.borrow().iter() {
+        dock.win.present();
     }
 
-    if config.autohide {
-        listeners::setup_autohide(&all_windows, config, &state, compositor, app, &monitors);
-    }
+    let hotspot_ctx = if config.autohide {
+        listeners::setup_autohide(&per_monitor, config, &state, compositor, app)
+    } else {
+        None
+    };
     events::start_event_listener(
         Rc::clone(&state),
         Rc::clone(&rebuild),
         Rc::clone(compositor),
     );
     listeners::setup_pin_watcher(pinned_file, &rebuild);
-    listeners::setup_signal_poller(&all_windows, sig_rx);
+    listeners::setup_signal_poller(app, &per_monitor, sig_rx);
+    listeners::setup_monitor_watcher(app, &per_monitor, config, &rebuild, hotspot_ctx);
 }
 
 /// Auto-detect launcher: hide button if command not found on PATH.

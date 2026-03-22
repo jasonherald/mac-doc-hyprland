@@ -110,6 +110,7 @@ impl WmEventStream for HyprlandEventStream {
     fn next_event(&mut self) -> std::result::Result<WmEvent, std::io::Error> {
         match self.0.next_event()? {
             HyprEvent::ActiveWindowV2(addr) => Ok(WmEvent::ActiveWindowChanged(addr)),
+            HyprEvent::MonitorChanged => Ok(WmEvent::MonitorChanged),
             HyprEvent::Other(s) => Ok(WmEvent::Other(s)),
         }
     }

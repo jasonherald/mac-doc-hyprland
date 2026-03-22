@@ -1,4 +1,4 @@
-use nwg_dock_common::compositor::{Compositor, WmClient, WmMonitor};
+use nwg_dock_common::compositor::{Compositor, WmClient};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -7,7 +7,6 @@ use std::rc::Rc;
 pub struct DockState {
     pub clients: Vec<WmClient>,
     pub active_client: Option<WmClient>,
-    pub monitors: Vec<WmMonitor>,
     pub pinned: Vec<String>,
     pub app_dirs: Vec<PathBuf>,
 
@@ -47,7 +46,6 @@ impl DockState {
         Self {
             clients: Vec::new(),
             active_client: None,
-            monitors: Vec::new(),
             pinned: Vec::new(),
             app_dirs,
             compositor,
@@ -98,9 +96,4 @@ impl DockState {
         Ok(())
     }
 
-    /// Refreshes monitor list from the compositor.
-    pub fn refresh_monitors(&mut self) -> anyhow::Result<()> {
-        self.monitors = self.compositor.list_monitors()?;
-        Ok(())
-    }
 }

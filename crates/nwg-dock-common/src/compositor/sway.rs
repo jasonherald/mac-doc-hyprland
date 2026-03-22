@@ -155,8 +155,8 @@ impl Compositor for SwayBackend {
 
     fn event_stream(&self) -> Result<Box<dyn WmEventStream>> {
         let mut conn = UnixStream::connect(&self.socket_path)?;
-        // Subscribe to window events
-        let payload = b"[\"window\"]";
+        // Subscribe to window and output events (output for monitor hotplug)
+        let payload = b"[\"window\",\"output\"]";
         send_message(&mut conn, MSG_SUBSCRIBE, payload)?;
         let reply = read_response(&mut conn)?;
         // Check subscription success
@@ -178,13 +178,23 @@ struct SwayEventStream {
     conn: UnixStream,
 }
 
+/// i3-ipc event type for output events (bit 31 set + type 7).
+const EVENT_OUTPUT: u32 = 0x80000007;
+
 impl WmEventStream for SwayEventStream {
     fn next_event(&mut self) -> std::result::Result<WmEvent, std::io::Error> {
         loop {
-            let body = read_response(&mut self.conn).map_err(|e| match e {
-                DockError::Ipc(io) => io,
-                other => std::io::Error::other(other.to_string()),
-            })?;
+            let (body, msg_type) =
+                read_response_with_type(&mut self.conn).map_err(|e| match e {
+                    DockError::Ipc(io) => io,
+                    other => std::io::Error::other(other.to_string()),
+                })?;
+
+            // Output events → MonitorChanged
+            if msg_type == EVENT_OUTPUT {
+                return Ok(WmEvent::MonitorChanged);
+            }
+
             let event: serde_json::Value = serde_json::from_slice(&body)
                 .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
@@ -236,6 +246,14 @@ fn send_message(conn: &mut UnixStream, msg_type: u32, payload: &[u8]) -> Result<
 const MAX_PAYLOAD_SIZE: usize = 100_000_000;
 
 fn read_response(conn: &mut UnixStream) -> Result<Vec<u8>> {
+    let (body, _msg_type) = read_response_with_type(conn)?;
+    Ok(body)
+}
+
+/// Reads an i3-ipc response, returning both payload and message type.
+/// For event subscriptions, message type has bit 31 set (e.g., 0x80000000 = window,
+/// 0x80000007 = output).
+fn read_response_with_type(conn: &mut UnixStream) -> Result<(Vec<u8>, u32)> {
     let mut header = [0u8; HEADER_SIZE];
     conn.read_exact(&mut header)?;
 
@@ -249,6 +267,8 @@ fn read_response(conn: &mut UnixStream) -> Result<Vec<u8>> {
 
     let payload_len =
         u32::from_le_bytes(header[6..10].try_into().expect("slice is exactly 4 bytes")) as usize;
+    let msg_type =
+        u32::from_le_bytes(header[10..14].try_into().expect("slice is exactly 4 bytes"));
     if payload_len > MAX_PAYLOAD_SIZE {
         return Err(DockError::Ipc(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -257,7 +277,7 @@ fn read_response(conn: &mut UnixStream) -> Result<Vec<u8>> {
     }
     let mut body = vec![0u8; payload_len];
     conn.read_exact(&mut body)?;
-    Ok(body)
+    Ok((body, msg_type))
 }
 
 // --- Tree traversal ---

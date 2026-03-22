@@ -1,4 +1,5 @@
 use crate::config::DockConfig;
+use crate::dock_windows::MonitorDock;
 use crate::state::DockState;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -13,22 +14,59 @@ const EDGE_THRESHOLD: i32 = 2;
 /// Thickness of the hotspot trigger window in pixels.
 const HOTSPOT_THICKNESS: i32 = 4;
 
+/// Shared state for creating/destroying hotspot windows on Sway during monitor hotplug.
+/// Returned by `setup_autohide` when the compositor uses the hotspot approach.
+pub struct HotspotContext {
+    app: gtk4::Application,
+    position: crate::config::Position,
+    per_monitor: Rc<RefCell<Vec<MonitorDock>>>,
+    left_at: Rc<RefCell<Option<std::time::Instant>>>,
+    /// Tracks hotspot windows by output name so they can be torn down on unplug.
+    hotspots: RefCell<std::collections::HashMap<String, gtk4::ApplicationWindow>>,
+}
+
+impl HotspotContext {
+    /// Creates a hotspot window for a newly added dock (called during reconciliation).
+    pub fn add_hotspot_for_dock(&self, dock: &MonitorDock) {
+        let hotspot = create_hotspot_window(
+            &self.app,
+            self.position,
+            dock,
+            &self.per_monitor,
+            &self.left_at,
+        );
+        self.hotspots
+            .borrow_mut()
+            .insert(dock.output_name.clone(), hotspot);
+    }
+
+    /// Destroys the hotspot window for a removed monitor.
+    pub fn remove_hotspot_for_output(&self, output_name: &str) {
+        if let Some(hotspot) = self.hotspots.borrow_mut().remove(output_name) {
+            hotspot.close();
+        }
+    }
+}
+
 /// Sets up autohide using the appropriate method for the compositor.
 ///
 /// - Compositors with cursor position IPC (Hyprland): poll cursor position
 /// - Compositors without (Sway): use thin GTK layer-shell hotspot windows
+///
+/// Returns a `HotspotContext` for the Sway path, which reconciliation uses
+/// to create hotspot windows for hotplugged monitors.
 pub fn setup_autohide(
-    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     compositor: &Rc<dyn Compositor>,
     app: &gtk4::Application,
-    monitors: &[gtk4::gdk::Monitor],
-) {
+) -> Option<Rc<HotspotContext>> {
     if compositor.supports_cursor_position() {
-        start_cursor_poller(dock_windows, config, state, compositor);
+        start_cursor_poller(per_monitor, config, state, compositor);
+        None
     } else {
-        start_hotspot_windows(dock_windows, config, state, app, monitors);
+        Some(start_hotspot_windows(per_monitor, config, state, app))
     }
 }
 
@@ -39,24 +77,35 @@ pub fn setup_autohide(
 /// Creates thin layer-shell windows at the dock edge to trigger show on hover.
 /// Uses GTK4 EventControllerMotion for enter/leave detection.
 fn start_hotspot_windows(
-    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     app: &gtk4::Application,
-    monitors: &[gtk4::gdk::Monitor],
-) {
+) -> Rc<HotspotContext> {
     let hide_timeout = config.hide_timeout;
     let position = config.position;
 
     // Shared hide timer state
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
-    for (i, mon) in monitors.iter().enumerate() {
-        create_hotspot_window(app, position, mon, i, dock_windows, &left_at);
+    let hotspots = RefCell::new(std::collections::HashMap::new());
+
+    // Create hotspot windows for each current dock window
+    for dock in per_monitor.borrow().iter() {
+        let hotspot = create_hotspot_window(app, position, dock, per_monitor, &left_at);
+        hotspots.borrow_mut().insert(dock.output_name.clone(), hotspot);
     }
 
+    let ctx = Rc::new(HotspotContext {
+        app: app.clone(),
+        position,
+        per_monitor: Rc::clone(per_monitor),
+        left_at: Rc::clone(&left_at),
+        hotspots,
+    });
+
     // Poll the hide timer to actually hide dock windows
-    let dock_windows = Rc::clone(dock_windows);
+    let docks = Rc::clone(per_monitor);
     let state = Rc::clone(state);
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         let mut left = left_at.borrow_mut();
@@ -70,33 +119,40 @@ fn start_hotspot_windows(
                 *left = None;
             } else if when.elapsed().as_millis() >= hide_timeout as u128 {
                 log::debug!("Cursor left dock area, hiding (hotspot mode)");
-                for win in dock_windows.borrow().iter() {
-                    win.set_visible(false);
+                for dock in docks.borrow().iter() {
+                    dock.win.set_visible(false);
                 }
                 *left = None;
             }
         }
         glib::ControlFlow::Continue
     });
+
+    ctx
 }
 
 /// Creates a single hotspot trigger window for one monitor and attaches enter/leave handlers.
+/// Returns the hotspot window so the caller can track and destroy it on unplug.
 fn create_hotspot_window(
     app: &gtk4::Application,
     position: crate::config::Position,
-    mon: &gtk4::gdk::Monitor,
-    monitor_index: usize,
-    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    dock: &MonitorDock,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
-) {
-    let dock_windows = Rc::clone(dock_windows);
+) -> gtk4::ApplicationWindow {
+    let output_name = dock.output_name.clone();
+    let docks = Rc::clone(per_monitor);
 
     // --- Create the hotspot trigger window ---
     let hotspot = gtk4::ApplicationWindow::new(app);
     hotspot.init_layer_shell();
     hotspot.set_namespace(Some("nwg-dock-hotspot"));
     setup_hotspot_layer(&hotspot, position);
-    hotspot.set_monitor(Some(mon));
+
+    // Set hotspot on the same monitor as the dock window
+    if let Some(mon) = dock.win.monitor() {
+        hotspot.set_monitor(Some(&mon));
+    }
 
     // Minimal content with near-zero opacity so compositor delivers input
     let hotspot_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
@@ -121,41 +177,35 @@ fn create_hotspot_window(
 
     hotspot.present();
 
-    // Hotspot enter → show dock on this monitor
-    let dock_wins_enter = Rc::clone(&dock_windows);
+    // Hotspot enter → show dock on this monitor (by name)
+    let docks_enter = Rc::clone(&docks);
+    let name_enter = output_name.clone();
     let left_at_enter = Rc::clone(left_at);
     let motion = gtk4::EventControllerMotion::new();
     motion.connect_enter(move |_, _, _| {
-        let wins = dock_wins_enter.borrow();
-        if monitor_index < wins.len() {
-            log::debug!("Hotspot entered, showing dock on monitor {}", monitor_index);
-            wins[monitor_index].set_visible(true);
-        }
+        show_on_monitor_only_by_name(&docks_enter, &name_enter);
         *left_at_enter.borrow_mut() = None;
     });
     hotspot.add_controller(motion);
 
     // --- Attach enter/leave to the dock window ---
-    let wins = dock_windows.borrow();
-    if monitor_index < wins.len() {
-        let dock_win = &wins[monitor_index];
+    // Dock enter → cancel hide timer
+    let left_at_dock_enter = Rc::clone(left_at);
+    let dock_motion = gtk4::EventControllerMotion::new();
+    dock_motion.connect_enter(move |_, _, _| {
+        *left_at_dock_enter.borrow_mut() = None;
+    });
+    dock.win.add_controller(dock_motion);
 
-        // Dock enter → cancel hide timer
-        let left_at_dock_enter = Rc::clone(left_at);
-        let dock_motion = gtk4::EventControllerMotion::new();
-        dock_motion.connect_enter(move |_, _, _| {
-            *left_at_dock_enter.borrow_mut() = None;
-        });
-        dock_win.add_controller(dock_motion);
+    // Dock leave → start hide timer
+    let left_at_dock_leave = Rc::clone(left_at);
+    let leave_motion = gtk4::EventControllerMotion::new();
+    leave_motion.connect_leave(move |_| {
+        *left_at_dock_leave.borrow_mut() = Some(std::time::Instant::now());
+    });
+    dock.win.add_controller(leave_motion);
 
-        // Dock leave → start hide timer
-        let left_at_dock_leave = Rc::clone(left_at);
-        let leave_motion = gtk4::EventControllerMotion::new();
-        leave_motion.connect_leave(move |_| {
-            *left_at_dock_leave.borrow_mut() = Some(std::time::Instant::now());
-        });
-        dock_win.add_controller(leave_motion);
-    }
+    hotspot
 }
 
 /// Configures a hotspot window as a thin strip at the dock edge.
@@ -202,13 +252,14 @@ fn setup_hotspot_layer(win: &gtk4::ApplicationWindow, position: crate::config::P
 /// based on whether the cursor is near the screen edge or inside the dock.
 ///
 /// Uses compositor IPC cursor tracking (Hyprland `j/cursorpos`).
+/// Monitor↔window mapping uses output connector names, not array indices.
 fn start_cursor_poller(
-    dock_windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     compositor: &Rc<dyn Compositor>,
 ) {
-    let windows = Rc::clone(dock_windows);
+    let docks = Rc::clone(per_monitor);
     let position = config.position;
     let hide_timeout = config.hide_timeout;
     let state = Rc::clone(state);
@@ -216,10 +267,17 @@ fn start_cursor_poller(
     // Track when cursor last left the dock area (for hide delay)
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
-    // Cache monitors — they rarely change during a session
+    // Cache monitors — refreshed periodically and immediately on topology changes
     let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> =
         Rc::new(RefCell::new(compositor.list_monitors().unwrap_or_default()));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
+    let last_outputs: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(
+        docks
+            .borrow()
+            .iter()
+            .map(|d| d.output_name.clone())
+            .collect(),
+    ));
 
     glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
         let cursor = match compositor.get_cursor_position() {
@@ -227,11 +285,27 @@ fn start_cursor_poller(
             None => return glib::ControlFlow::Continue,
         };
 
-        // Refresh monitor cache every ~10 seconds (50 polls at 200ms)
+        // Detect topology change: output names changed means reconciliation happened
+        let current_outputs: Vec<String> = docks
+            .borrow()
+            .iter()
+            .map(|d| d.output_name.clone())
+            .collect();
+        let topology_changed = {
+            let mut last = last_outputs.borrow_mut();
+            if *last != current_outputs {
+                *last = current_outputs;
+                true
+            } else {
+                false
+            }
+        };
+
+        // Refresh monitor cache every ~10 seconds or immediately on topology change
         {
             let mut count = monitor_refresh_counter.borrow_mut();
             *count += 1;
-            if *count >= 50 {
+            if *count >= 50 || topology_changed {
                 *count = 0;
                 if let Ok(m) = compositor.list_monitors() {
                     *cached_monitors.borrow_mut() = m;
@@ -240,16 +314,16 @@ fn start_cursor_poller(
         }
         let monitors = cached_monitors.borrow();
 
-        let any_visible = windows.borrow().iter().any(|w| w.is_visible());
+        let any_visible = docks.borrow().iter().any(|d| d.win.is_visible());
 
         if !any_visible {
-            handle_hidden_dock(&cursor, &monitors, position, &windows, &left_at);
+            handle_hidden_dock(&cursor, &monitors, position, &docks, &left_at);
         } else {
             handle_visible_dock(
                 &cursor,
                 &monitors,
                 position,
-                &windows,
+                &docks,
                 &state,
                 &left_at,
                 hide_timeout,
@@ -265,13 +339,13 @@ fn handle_hidden_dock(
     cursor: &CursorPos,
     monitors: &[WmMonitor],
     position: crate::config::Position,
-    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    docks: &Rc<RefCell<Vec<MonitorDock>>>,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
 ) {
     if is_cursor_at_edge(cursor, monitors, position)
-        && let Some(mon_idx) = find_cursor_monitor(cursor, monitors)
+        && let Some(mon_name) = find_cursor_monitor_name(cursor, monitors)
     {
-        show_on_monitor_only(windows, mon_idx);
+        show_on_monitor_only_by_name(docks, &mon_name);
         *left_at.borrow_mut() = None;
     }
 }
@@ -281,12 +355,12 @@ fn handle_visible_dock(
     cursor: &CursorPos,
     monitors: &[WmMonitor],
     position: crate::config::Position,
-    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    docks: &Rc<RefCell<Vec<MonitorDock>>>,
     state: &Rc<RefCell<DockState>>,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
     hide_timeout: u64,
 ) {
-    let in_dock_area = is_cursor_in_visible_dock(cursor, windows, monitors, position);
+    let in_dock_area = is_cursor_in_visible_dock(cursor, docks, monitors, position);
     let at_edge = is_cursor_at_edge(cursor, monitors, position);
 
     // Don't hide while a popover menu is open or a drag is in progress
@@ -301,9 +375,9 @@ fn handle_visible_dock(
     if at_edge
         && !in_dock_area
         && !keep_visible
-        && let Some(mon_idx) = find_cursor_monitor(cursor, monitors)
+        && let Some(mon_name) = find_cursor_monitor_name(cursor, monitors)
     {
-        show_on_monitor_only(windows, mon_idx);
+        show_on_monitor_only_by_name(docks, &mon_name);
         *left_at.borrow_mut() = None;
         return;
     }
@@ -311,25 +385,23 @@ fn handle_visible_dock(
     if in_dock_area || at_edge || keep_visible {
         *left_at.borrow_mut() = None;
     } else {
-        check_hide_timer(windows, left_at, hide_timeout);
+        check_hide_timer(docks, left_at, hide_timeout);
     }
 }
 
-/// Shows the dock on the given monitor and hides it on all others.
-fn show_on_monitor_only(windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>, mon_idx: usize) {
-    let wins = windows.borrow();
-    if mon_idx >= wins.len() {
-        log::debug!(
-            "Monitor index {} out of range (have {} windows)",
-            mon_idx,
-            wins.len()
-        );
+/// Shows the dock on the named monitor and hides it on all others.
+fn show_on_monitor_only_by_name(docks: &Rc<RefCell<Vec<MonitorDock>>>, target_name: &str) {
+    let dock_list = docks.borrow();
+    // Bail out if target isn't a dock-managed output (e.g., -o flag filters to one monitor)
+    if !dock_list.iter().any(|d| d.output_name == target_name) {
+        log::debug!("No dock window for monitor {}", target_name);
         return;
     }
-    for (i, win) in wins.iter().enumerate() {
-        win.set_visible(i == mon_idx);
+
+    for dock in dock_list.iter() {
+        dock.win.set_visible(dock.output_name == target_name);
     }
-    log::debug!("Dock shown on monitor {}", mon_idx);
+    log::debug!("Dock shown on monitor {}", target_name);
 }
 
 /// Tracks whether cursor is outside dock during a drag operation.
@@ -350,7 +422,7 @@ fn update_drag_state(
 
 /// Starts or checks the hide timer, hiding all dock windows when expired.
 fn check_hide_timer(
-    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    docks: &Rc<RefCell<Vec<MonitorDock>>>,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
     hide_timeout: u64,
 ) {
@@ -359,8 +431,8 @@ fn check_hide_timer(
         None => *left = Some(std::time::Instant::now()),
         Some(when) if when.elapsed().as_millis() >= hide_timeout as u128 => {
             log::debug!("Cursor left dock area, hiding");
-            for win in windows.borrow().iter() {
-                win.set_visible(false);
+            for dock in docks.borrow().iter() {
+                dock.win.set_visible(false);
             }
             *left = None;
         }
@@ -400,12 +472,13 @@ fn is_cursor_at_edge(
     false
 }
 
-fn find_cursor_monitor(cursor: &CursorPos, monitors: &[WmMonitor]) -> Option<usize> {
-    for (i, mon) in monitors.iter().enumerate() {
+/// Returns the output name of the monitor containing the cursor, or None.
+fn find_cursor_monitor_name(cursor: &CursorPos, monitors: &[WmMonitor]) -> Option<String> {
+    for mon in monitors {
         let in_x = cursor.x >= mon.x && cursor.x < mon.x + mon.width;
         let in_y = cursor.y >= mon.y && cursor.y < mon.y + mon.height;
         if in_x && in_y {
-            return Some(i);
+            return Some(mon.name.clone());
         }
     }
     None
@@ -427,37 +500,32 @@ fn dock_bounds_for_position(
 }
 
 /// Checks if the cursor is within the bounds of the visible dock window.
-/// Only checks the monitor where the dock is actually shown, not all monitors.
-///
-/// NOTE: Relies on windows[i] corresponding to monitors[i] (set at startup).
-/// If monitors are hotplugged, this mapping could drift until the dock restarts.
-/// A future improvement could track monitors by connector name instead of index.
+/// Matches dock windows to monitors by output name (hotplug-safe).
 fn is_cursor_in_visible_dock(
     cursor: &CursorPos,
-    windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,
+    docks: &Rc<RefCell<Vec<MonitorDock>>>,
     monitors: &[WmMonitor],
     position: crate::config::Position,
 ) -> bool {
-    let wins = windows.borrow();
-    for (i, win) in wins.iter().enumerate() {
-        if !win.is_visible() || win.surface().is_none() {
+    let dock_list = docks.borrow();
+    for dock in dock_list.iter() {
+        if !dock.win.is_visible() || dock.win.surface().is_none() {
             continue;
         }
-        let w = win.width();
-        let h = win.height();
+        let w = dock.win.width();
+        let h = dock.win.height();
         if w == 0 || h == 0 {
             continue;
         }
-        if i >= monitors.len() {
+        // Find the WmMonitor matching this dock's output name
+        let Some(mon) = monitors.iter().find(|m| m.name == dock.output_name) else {
             log::debug!(
-                "Skipping dock window {} — no matching monitor (have {})",
-                i,
-                monitors.len()
+                "No monitor data for dock output '{}', skipping bounds check",
+                dock.output_name
             );
             continue;
-        }
-        // Only check the dock bounds on the monitor where this window is shown
-        let (dock_x, dock_y) = dock_bounds_for_position(&monitors[i], w, h, position);
+        };
+        let (dock_x, dock_y) = dock_bounds_for_position(mon, w, h, position);
         if cursor.x >= dock_x
             && cursor.x < dock_x + w
             && cursor.y >= dock_y
