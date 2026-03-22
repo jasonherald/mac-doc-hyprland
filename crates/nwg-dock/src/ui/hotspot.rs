@@ -213,10 +213,11 @@ fn start_cursor_poller(
     // Track when cursor last left the dock area (for hide delay)
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
-    // Cache monitors — refreshed periodically or on MonitorChanged events
+    // Cache monitors — refreshed periodically and immediately on topology changes
     let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> =
         Rc::new(RefCell::new(compositor.list_monitors().unwrap_or_default()));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
+    let last_dock_count = Rc::new(RefCell::new(docks.borrow().len()));
 
     glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
         let cursor = match compositor.get_cursor_position() {
@@ -224,11 +225,23 @@ fn start_cursor_poller(
             None => return glib::ControlFlow::Continue,
         };
 
-        // Refresh monitor cache every ~10 seconds (50 polls at 200ms)
+        // Detect topology change: dock count changed means reconciliation happened
+        let current_dock_count = docks.borrow().len();
+        let topology_changed = {
+            let mut last = last_dock_count.borrow_mut();
+            if *last != current_dock_count {
+                *last = current_dock_count;
+                true
+            } else {
+                false
+            }
+        };
+
+        // Refresh monitor cache every ~10 seconds or immediately on topology change
         {
             let mut count = monitor_refresh_counter.borrow_mut();
             *count += 1;
-            if *count >= 50 {
+            if *count >= 50 || topology_changed {
                 *count = 0;
                 if let Ok(m) = compositor.list_monitors() {
                     *cached_monitors.borrow_mut() = m;

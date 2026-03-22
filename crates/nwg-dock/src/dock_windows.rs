@@ -38,16 +38,11 @@ pub fn create_single_dock_window(
     ui::window::setup_dock_window(&win, config);
     win.set_monitor(Some(mon));
 
-    let (outer_orient, _) = ui::window::orientations(config);
+    let (outer_orient, inner_orient) = ui::window::orientations(config);
     let outer_box = gtk4::Box::new(outer_orient, 0);
     outer_box.set_widget_name("box");
     win.set_child(Some(&outer_box));
 
-    let inner_orient = if config.is_vertical() {
-        gtk4::Orientation::Vertical
-    } else {
-        gtk4::Orientation::Horizontal
-    };
     let alignment_box = gtk4::Box::new(inner_orient, 0);
     if config.full {
         alignment_box.set_hexpand(true);
