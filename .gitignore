@@ -21,6 +21,6 @@ target
 #.idea/
 
 original*
-Videos/
+/Videos/
 .env
 .scannerwork/

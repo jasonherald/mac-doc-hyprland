@@ -160,7 +160,6 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
         crate::ui::drag::setup_drag_gesture(
             &button,
             index,
-            app_id,
             ctx.config.is_vertical(),
             &ctx.state,
             &ctx.pinned_file,

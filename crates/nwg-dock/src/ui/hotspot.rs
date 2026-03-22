@@ -347,14 +347,16 @@ fn check_hide_timer(
     hide_timeout: u64,
 ) {
     let mut left = left_at.borrow_mut();
-    if left.is_none() {
-        *left = Some(std::time::Instant::now());
-    } else if left.unwrap().elapsed().as_millis() >= hide_timeout as u128 {
-        log::debug!("Cursor left dock area, hiding");
-        for win in windows.borrow().iter() {
-            win.set_visible(false);
+    match *left {
+        None => *left = Some(std::time::Instant::now()),
+        Some(when) if when.elapsed().as_millis() >= hide_timeout as u128 => {
+            log::debug!("Cursor left dock area, hiding");
+            for win in windows.borrow().iter() {
+                win.set_visible(false);
+            }
+            *left = None;
         }
-        *left = None;
+        _ => {} // timer running but not expired
     }
 }
 

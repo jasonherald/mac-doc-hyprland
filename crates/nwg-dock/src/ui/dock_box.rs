@@ -224,7 +224,6 @@ fn build_pinned_items(
                 crate::ui::drag::setup_drag_gesture(
                     &inner_btn,
                     pin_idx,
-                    pin,
                     ctx.config.is_vertical(),
                     &ctx.state,
                     &ctx.pinned_file,

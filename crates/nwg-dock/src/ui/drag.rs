@@ -44,7 +44,6 @@ struct DragSession {
 pub fn setup_drag_gesture(
     button: &gtk4::Button,
     index: usize,
-    _app_id: &str,
     vertical: bool,
     state: &Rc<RefCell<DockState>>,
     pinned_file: &Path,
@@ -251,6 +250,8 @@ fn update_removal_indicator(item: &gtk4::Widget, outside: bool, icon_size: i32) 
 
         // Save the entire button child and replace with a clean trash icon
         if let Some(original) = button.child() {
+            // SAFETY: We own `item` for the duration of the drag. The stored widget
+            // is retrieved in the else branch below with matching key and type.
             unsafe {
                 item.set_data("drag-original-child", original);
             }
@@ -270,6 +271,7 @@ fn update_removal_indicator(item: &gtk4::Widget, outside: bool, icon_size: i32) 
         item.remove_css_class("drag-will-remove");
 
         // Restore original button content
+        // SAFETY: Data was set in the if-outside branch above with matching key and type.
         let original: Option<gtk4::Widget> = unsafe { item.steal_data("drag-original-child") };
         if let Some(orig) = original {
             button.set_child(Some(&orig));

@@ -7,6 +7,8 @@ use std::sync::mpsc;
 
 /// Checks for new events and triggers a rebuild if the client list changed.
 /// Skips rebuild while a drag is in progress to avoid destroying widgets mid-drag.
+/// Events during drag are still drained (so they don't queue up), and the
+/// drag-end handler triggers its own deferred rebuild which picks up any changes.
 fn poll_and_rebuild(
     receiver: &mpsc::Receiver<String>,
     state: &Rc<RefCell<DockState>>,
