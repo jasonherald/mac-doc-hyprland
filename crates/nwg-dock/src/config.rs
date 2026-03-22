@@ -1,42 +1,25 @@
 use clap::{Parser, ValueEnum};
 
-/// Go's `flag` package uses single-dash for all flags (e.g. `-hd 20`, `-ico path`).
-/// Clap only supports single-dash for single-character flags.
-/// This preprocessor converts known Go-style single-dash flags to double-dash
-/// so existing user configs continue to work after migration.
-pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
-    const LEGACY_FLAGS: &[&str] = &[
-        "debug",
-        "hd",
-        "hl",
-        "ico",
-        "iw",
-        "lp",
-        "mb",
-        "ml",
-        "mr",
-        "mt",
-        "nolauncher",
-        "opacity",
-        "wm",
-    ];
+/// Known Go-style single-dash flags for the dock binary.
+const LEGACY_FLAGS: &[&str] = &[
+    "debug",
+    "hd",
+    "hl",
+    "ico",
+    "iw",
+    "lp",
+    "mb",
+    "ml",
+    "mr",
+    "mt",
+    "nolauncher",
+    "opacity",
+    "wm",
+];
 
-    args.map(|arg| {
-        // Convert -flag or -flag=value to --flag or --flag=value
-        if let Some(name) = arg.strip_prefix('-')
-            && !name.starts_with('-')
-        {
-            if let Some((flag, value)) = name.split_once('=') {
-                if LEGACY_FLAGS.contains(&flag) {
-                    return format!("--{}={}", flag, value);
-                }
-            } else if LEGACY_FLAGS.contains(&name) {
-                return format!("--{}", name);
-            }
-        }
-        arg
-    })
-    .collect()
+/// Converts Go-style single-dash flags to clap-compatible double-dash flags.
+pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
+    nwg_dock_common::config::flags::normalize_legacy_flags(args, LEGACY_FLAGS)
 }
 
 /// Dock position on screen edge.
