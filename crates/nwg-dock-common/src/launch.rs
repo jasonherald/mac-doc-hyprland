@@ -45,7 +45,6 @@ pub fn set_uwsm_mode(enabled: bool) {
 }
 
 /// Launches a command via `uwsm app --` for proper session management.
-/// Launches a command via `uwsm app --` for proper session management.
 fn launch_via_uwsm(command: &str) {
     let command = command.trim();
     if command.is_empty() {

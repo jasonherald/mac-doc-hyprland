@@ -114,6 +114,8 @@ mod tests {
         let result = detect(Some("uwsm"));
         // Should NOT be UnsupportedCompositor — uwsm is accepted
         assert!(!matches!(result, Err(DockError::UnsupportedCompositor(_))));
+        // Reset global side effect from set_uwsm_mode(true) called inside detect()
+        crate::launch::set_uwsm_mode(false);
     }
 
     #[test]
