@@ -25,6 +25,9 @@ struct DragSession {
     source_index: usize,
     /// Current position of the dragged item (changes as items are reordered live).
     current_index: usize,
+    /// Press position inside the button (for accurate cursor tracking after reorder).
+    press_x: f64,
+    press_y: f64,
     /// Cursor position in dock_box coordinates at drag start.
     dock_start_x: f64,
     dock_start_y: f64,
@@ -95,6 +98,8 @@ pub fn setup_drag_gesture(
         *session_begin.borrow_mut() = Some(DragSession {
             source_index: index,
             current_index: index,
+            press_x: start_x,
+            press_y: start_y,
             dock_start_x: dock_x,
             dock_start_y: dock_y,
             dock_box,
@@ -108,15 +113,22 @@ pub fn setup_drag_gesture(
     let state_update = Rc::clone(state);
     let session_update = Rc::clone(&session);
     gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
+        // Claim the sequence on first update to suppress Button::clicked on release.
+        // This is safe here (not in drag_begin) because drag_update only fires
+        // after the pointer has moved past the drag threshold.
+        gesture.set_state(gtk4::EventSequenceState::Claimed);
+
         let mut sess = session_update.borrow_mut();
         let Some(ref mut s) = *sess else { return };
 
         // Get cursor position in dock_box coords by translating from the button's
         // CURRENT position (which changes as items are reordered).
+        // press_x/press_y account for where within the button the press started.
         let (current_x, current_y) = gesture
             .widget()
-            .and_then(|w| w.translate_coordinates(&s.dock_box, 0.0, 0.0))
-            .map(|(bx, by)| (bx + offset_x, by + offset_y))
+            .and_then(|w| {
+                w.translate_coordinates(&s.dock_box, s.press_x + offset_x, s.press_y + offset_y)
+            })
             .unwrap_or((s.dock_start_x + offset_x, s.dock_start_y + offset_y));
 
         let coord = if s.vertical { current_y } else { current_x };
@@ -216,6 +228,8 @@ fn unpin_by_drag(
 }
 
 /// Reorders the pinned list to match the visual order after drag.
+/// The visual order already matches what the user sees (live reorder moved
+/// the widgets). We just need to update the data to match.
 fn reorder_pinned(
     state: &Rc<RefCell<DockState>>,
     session: &DragSession,
@@ -224,21 +238,25 @@ fn reorder_pinned(
 ) {
     let mut st = state.borrow_mut();
     let pinned_len = st.pinned.len();
-    if session.source_index < pinned_len && session.current_index <= pinned_len {
-        let item = st.pinned.remove(session.source_index);
-        let adjusted = if session.current_index > session.source_index {
-            session.current_index - 1
-        } else {
-            session.current_index
-        };
-        st.pinned.insert(adjusted, item);
-        if let Err(e) = pinning::save_pinned(&st.pinned, pinned_path) {
-            log::error!("Failed to save reordered pins: {}", e);
-        }
-        drop(st);
-        let rebuild = Rc::clone(rebuild);
-        gtk4::glib::idle_add_local_once(move || rebuild());
+    if session.source_index >= pinned_len {
+        return;
     }
+
+    // Remove from original position
+    let item = st.pinned.remove(session.source_index);
+
+    // current_index is where the item sits visually among the OTHER items
+    // (excluding itself). After remove, the array has pinned_len - 1 elements.
+    // current_index is already correct as an insertion point.
+    let insert_at = session.current_index.min(st.pinned.len());
+    st.pinned.insert(insert_at, item);
+
+    if let Err(e) = pinning::save_pinned(&st.pinned, pinned_path) {
+        log::error!("Failed to save reordered pins: {}", e);
+    }
+    drop(st);
+    let rebuild = Rc::clone(rebuild);
+    gtk4::glib::idle_add_local_once(move || rebuild());
 }
 
 /// Shows/hides the removal indicator by swapping the button's image content.
