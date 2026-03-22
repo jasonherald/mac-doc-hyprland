@@ -420,6 +420,10 @@ fn dock_bounds_for_position(
 
 /// Checks if the cursor is within the bounds of the visible dock window.
 /// Only checks the monitor where the dock is actually shown, not all monitors.
+///
+/// NOTE: Relies on windows[i] corresponding to monitors[i] (set at startup).
+/// If monitors are hotplugged, this mapping could drift until the dock restarts.
+/// A future improvement could track monitors by connector name instead of index.
 fn is_cursor_in_visible_dock(
     cursor: &CursorPos,
     windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>,

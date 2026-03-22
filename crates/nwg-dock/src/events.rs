@@ -6,18 +6,22 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 /// Checks for new events and triggers a rebuild if the client list changed.
-/// Skips rebuild while a drag is in progress to avoid destroying widgets mid-drag.
-/// Events during drag are still drained (so they don't queue up), and the
-/// drag-end handler triggers its own deferred rebuild which picks up any changes.
+/// During drag, sets `rebuild_pending` instead of rebuilding immediately.
+/// After drag ends, the pending flag is checked and the rebuild fires.
 fn poll_and_rebuild(
     receiver: &mpsc::Receiver<String>,
     state: &Rc<RefCell<DockState>>,
     rebuild_fn: &Rc<dyn Fn()>,
 ) {
-    if drain_new_events(receiver, state)
-        && needs_rebuild(state)
-        && state.borrow().drag_source_index.is_none()
-    {
+    let dragging = state.borrow().drag_source_index.is_some();
+    if drain_new_events(receiver, state) && needs_rebuild(state) {
+        if dragging {
+            state.borrow_mut().rebuild_pending = true;
+        } else {
+            rebuild_fn();
+        }
+    } else if !dragging && state.borrow().rebuild_pending {
+        state.borrow_mut().rebuild_pending = false;
         rebuild_fn();
     }
 }
