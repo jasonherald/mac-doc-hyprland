@@ -270,7 +270,19 @@ fn handle_window_command(win: &gtk4::ApplicationWindow, cmd: WindowCommand, resi
     match resolve_window_op(&cmd, win.is_visible(), resident) {
         WindowOp::Show => win.set_visible(true),
         WindowOp::Hide => win.set_visible(false),
-        WindowOp::Close => win.close(),
+        WindowOp::Close => quit_or_hide(win, false),
+    }
+}
+
+/// Quits the application (non-resident) or hides the window (resident).
+/// Public so main.rs close paths can use the same logic.
+pub fn quit_or_hide(win: &gtk4::ApplicationWindow, resident: bool) {
+    if resident {
+        win.set_visible(false);
+    } else if let Some(app) = win.application() {
+        app.quit();
+    } else {
+        win.close();
     }
 }
 
@@ -279,11 +291,8 @@ fn handle_escape(search_entry: &gtk4::SearchEntry, win: &gtk4::ApplicationWindow
     let text = search_entry.text();
     if !text.is_empty() {
         search_entry.set_text("");
-    } else if !resident {
-        win.close();
     } else {
-        search_entry.set_text("");
-        win.set_visible(false);
+        quit_or_hide(win, resident);
     }
 }
 

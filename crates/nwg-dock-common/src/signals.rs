@@ -113,12 +113,12 @@ fn map_signal_to_command(sig: i32, is_resident: bool) -> Option<WindowCommand> {
         log::warn!("SIGUSR1 for toggling is deprecated, use SIGRTMIN+1");
     }
 
-    if !is_resident {
-        return None;
-    }
-
     if sig == libc::SIGUSR1 || sig == sig_toggle() {
+        // Non-resident: toggle means quit. Resident: toggle means show/hide.
         Some(WindowCommand::Toggle)
+    } else if !is_resident {
+        // Non-resident only responds to toggle — ignore show/hide signals
+        None
     } else if sig == sig_show() {
         Some(WindowCommand::Show)
     } else if sig == sig_hide() {

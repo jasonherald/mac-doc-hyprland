@@ -18,9 +18,8 @@ pub fn acquire_lock(app_name: &str) -> Result<LockFile, Option<u32>> {
         if let Ok(content) = fs::read_to_string(&lock_path)
             && let Ok(pid) = content.trim().parse::<u32>()
         {
-            // Check if the process is still running
-            let proc_path = format!("/proc/{}", pid);
-            if Path::new(&proc_path).exists() {
+            // Check if the process is still running AND is our binary
+            if pid_is_our_instance(pid) {
                 return Err(Some(pid));
             }
             // Process is dead, remove stale lock
@@ -68,6 +67,7 @@ impl Drop for LockFile {
 }
 
 /// Finds the PID of a running instance (if any) without acquiring the lock.
+/// Validates the PID via `pid_is_our_instance` to prevent stale lock PID reuse.
 pub fn find_running_pid(app_name: &str) -> Option<u32> {
     let user = std::env::var("USER").unwrap_or_default();
     let user_hash = stable_hash(&user);
@@ -75,11 +75,39 @@ pub fn find_running_pid(app_name: &str) -> Option<u32> {
 
     let content = fs::read_to_string(&lock_path).ok()?;
     let pid: u32 = content.trim().parse().ok()?;
-    let proc_path = format!("/proc/{}", pid);
-    if Path::new(&proc_path).exists() {
-        Some(pid)
-    } else {
-        None
+    pid_is_our_instance(pid).then_some(pid)
+}
+
+/// Returns true if the given PID is a running process whose executable matches ours.
+/// Prevents acting on recycled PIDs from unrelated processes.
+fn pid_is_our_instance(pid: u32) -> bool {
+    let exe_path = format!("/proc/{}/exe", pid);
+    match fs::read_link(&exe_path) {
+        Ok(exe) => {
+            let exe_name = exe
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            let our_exe = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()));
+            if our_exe.as_deref() == Some(&exe_name) {
+                true
+            } else {
+                log::debug!(
+                    "PID {} exe '{}' doesn't match ours ({:?}), stale lock",
+                    pid,
+                    exe_name,
+                    our_exe
+                );
+                false
+            }
+        }
+        Err(e) => {
+            log::debug!("Failed to read {}: {}", exe_path, e);
+            false
+        }
     }
 }
 
