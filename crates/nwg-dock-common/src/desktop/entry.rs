@@ -141,6 +141,43 @@ fn parse_keypair(s: &str) -> Option<(&str, &str)> {
     Some((s[..idx].trim(), s[idx + 1..].trim()))
 }
 
+/// Strips desktop field codes (%u, %F, %%, etc.) from an Exec command.
+/// Per the freedesktop Desktop Entry spec, recognised single-letter codes are
+/// removed and `%%` is collapsed to a literal `%`. Arguments after field codes
+/// are preserved. Quotes are preserved — shell splitting happens at launch time
+/// via shell_words::split() (issue #11).
+pub fn strip_field_codes(exec: &str) -> String {
+    let mut result = String::with_capacity(exec.len());
+    let mut chars = exec.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            match chars.peek() {
+                // %% → literal %
+                Some('%') => {
+                    chars.next();
+                    result.push('%');
+                }
+                // Known field codes per freedesktop spec — drop them
+                Some(
+                    'f' | 'F' | 'u' | 'U' | 'd' | 'D' | 'n' | 'N' | 'i' | 'c' | 'k' | 'v'
+                    | 'm',
+                ) => {
+                    chars.next();
+                    // Trim a single leading space before the field code if present
+                    if result.ends_with(' ') && chars.peek().is_none_or(|&ch| ch == ' ') {
+                        result.pop();
+                    }
+                }
+                // Unknown %-sequence — keep as-is
+                _ => result.push('%'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result.trim().to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,5 +366,60 @@ mod tests {
         let reader = Cursor::new(desktop);
         let entry = parse_desktop_entry("simple", reader);
         assert!(entry.startup_wm_class.is_empty());
+    }
+
+    #[test]
+    fn strip_field_codes_basic() {
+        assert_eq!(strip_field_codes("firefox %u"), "firefox");
+        assert_eq!(strip_field_codes("code %F"), "code");
+        assert_eq!(strip_field_codes("gimp"), "gimp");
+    }
+
+    #[test]
+    fn strip_field_codes_preserves_quotes() {
+        assert_eq!(strip_field_codes(r#""firefox" %u"#), r#""firefox""#);
+        assert_eq!(
+            strip_field_codes(r#"sh -c "echo hello" %u"#),
+            r#"sh -c "echo hello""#
+        );
+    }
+
+    #[test]
+    fn strip_field_codes_no_space_before_percent() {
+        assert_eq!(strip_field_codes("firefox%u"), "firefox");
+    }
+
+    #[test]
+    fn strip_field_codes_preserves_args_after_code() {
+        assert_eq!(
+            strip_field_codes("foo %U --new-window"),
+            "foo --new-window"
+        );
+        assert_eq!(
+            strip_field_codes("bar %f --flag %F --other"),
+            "bar --flag --other"
+        );
+    }
+
+    #[test]
+    fn strip_field_codes_literal_percent() {
+        assert_eq!(
+            strip_field_codes(r#"sh -c "printf '100%%'""#),
+            r#"sh -c "printf '100%'""#
+        );
+    }
+
+    #[test]
+    fn strip_field_codes_preserves_inner_whitespace() {
+        assert_eq!(
+            strip_field_codes(r#"sh -c "printf 'a  b'" %u"#),
+            r#"sh -c "printf 'a  b'""#
+        );
+    }
+
+    #[test]
+    fn strip_field_codes_trims_whitespace() {
+        assert_eq!(strip_field_codes("  firefox  "), "firefox");
+        assert_eq!(strip_field_codes(""), "");
     }
 }

@@ -38,14 +38,7 @@ pub fn get_exec(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
         return Some(cmd.to_string());
     }
 
-    // Strip field codes like %u, %f, etc.
-    let exec = if let Some(pos) = entry.exec.find('%') {
-        entry.exec[..pos.saturating_sub(1)].trim().to_string()
-    } else {
-        entry.exec
-    };
-
-    Some(exec)
+    Some(super::entry::strip_field_codes(&entry.exec))
 }
 
 /// Resolves the display name for an application.
