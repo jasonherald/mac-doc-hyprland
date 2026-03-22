@@ -133,19 +133,7 @@ fn activate_drawer(
     load_preferred_apps(&mut state.borrow_mut());
     state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
 
-    // Force GTK theme for libadwaita apps
-    if config.force_theme
-        && let Some(settings) = gtk4::Settings::default()
-    {
-        let theme = settings
-            .gtk_theme_name()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        if !theme.is_empty() {
-            state.borrow_mut().gtk_theme_prefix = format!("GTK_THEME={}", theme);
-            log::info!("Force theme enabled: GTK_THEME={}", theme);
-        }
-    }
+    apply_force_theme(&config, &state);
 
     // Window
     let win = gtk4::ApplicationWindow::new(app);
@@ -294,6 +282,27 @@ fn activate_drawer(
         win.set_visible(false);
     } else {
         win.present();
+    }
+}
+
+/// Applies force-theme for libadwaita apps (ignored under uwsm).
+fn apply_force_theme(config: &DrawerConfig, state: &Rc<RefCell<state::DrawerState>>) {
+    if !config.force_theme {
+        return;
+    }
+    if config.wm.to_lowercase() == "uwsm" {
+        log::warn!("--force-theme ignored when running through uwsm");
+        return;
+    }
+    if let Some(settings) = gtk4::Settings::default() {
+        let theme = settings
+            .gtk_theme_name()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        if !theme.is_empty() {
+            state.borrow_mut().gtk_theme_prefix = format!("GTK_THEME={}", theme);
+            log::info!("Force theme enabled: GTK_THEME={}", theme);
+        }
     }
 }
 

@@ -21,8 +21,12 @@ pub fn detect(wm_override: Option<&str>) -> Result<CompositorKind> {
         match wm.to_lowercase().as_str() {
             "hyprland" => return Ok(CompositorKind::Hyprland),
             "sway" => return Ok(CompositorKind::Sway),
-            // "uwsm" is a launch wrapper, not a compositor — fall through to auto-detect
-            "uwsm" => log::info!("uwsm detected, auto-detecting compositor from environment"),
+            // "uwsm" is a launch wrapper, not a compositor — enable uwsm launch mode
+            // and fall through to auto-detect the actual compositor
+            "uwsm" => {
+                crate::launch::set_uwsm_mode(true);
+                log::info!("uwsm mode enabled, auto-detecting compositor from environment");
+            }
             other => return Err(DockError::UnsupportedCompositor(other.to_string())),
         }
     }
@@ -101,6 +105,15 @@ mod tests {
     #[test]
     fn detect_hyprland_override() {
         assert_eq!(detect(Some("hyprland")).unwrap(), CompositorKind::Hyprland);
+    }
+
+    #[test]
+    fn detect_uwsm_falls_through_to_env() {
+        // uwsm is a launch wrapper — detect() should fall through to env auto-detect.
+        // In test environment (no Hyprland/Sway), this returns NoCompositorDetected.
+        let result = detect(Some("uwsm"));
+        // Should NOT be UnsupportedCompositor — uwsm is accepted
+        assert!(!matches!(result, Err(DockError::UnsupportedCompositor(_))));
     }
 
     #[test]

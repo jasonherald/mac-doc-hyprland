@@ -230,29 +230,47 @@ fn close_if_baseline_set(baseline: &Rc<RefCell<Option<String>>>, on_launch: &Rc<
     }
 }
 
-/// Processes a single window command from the signal handler.
-/// In resident mode, Hide/Toggle-off hides the window. In non-resident mode, they close it.
-fn handle_window_command(win: &gtk4::ApplicationWindow, cmd: WindowCommand, resident: bool) {
+/// What to do with the window for a given command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowOp {
+    Show,
+    Hide,
+    Close,
+}
+
+/// Pure decision function: determines the window operation for a command.
+/// Testable without GTK objects.
+fn resolve_window_op(cmd: &WindowCommand, visible: bool, resident: bool) -> WindowOp {
     match cmd {
-        WindowCommand::Show => win.set_visible(true),
-        WindowCommand::Hide => dismiss(win, resident),
-        WindowCommand::Toggle => {
-            if win.is_visible() {
-                dismiss(win, resident);
+        WindowCommand::Show => WindowOp::Show,
+        WindowCommand::Hide => {
+            if resident {
+                WindowOp::Hide
             } else {
-                win.set_visible(true);
+                WindowOp::Close
             }
         }
-        WindowCommand::Quit => win.close(),
+        WindowCommand::Toggle => {
+            if visible {
+                if resident {
+                    WindowOp::Hide
+                } else {
+                    WindowOp::Close
+                }
+            } else {
+                WindowOp::Show
+            }
+        }
+        WindowCommand::Quit => WindowOp::Close,
     }
 }
 
-/// Hides the window in resident mode, closes it in non-resident mode.
-fn dismiss(win: &gtk4::ApplicationWindow, resident: bool) {
-    if resident {
-        win.set_visible(false);
-    } else {
-        win.close();
+/// Processes a single window command from the signal handler.
+fn handle_window_command(win: &gtk4::ApplicationWindow, cmd: WindowCommand, resident: bool) {
+    match resolve_window_op(&cmd, win.is_visible(), resident) {
+        WindowOp::Show => win.set_visible(true),
+        WindowOp::Hide => win.set_visible(false),
+        WindowOp::Close => win.close(),
     }
 }
 
@@ -286,5 +304,74 @@ fn handle_return(
         on_launch();
     } else if let Some(result) = crate::ui::math::eval_expression(&text) {
         crate::ui::math::show_result_window(&text, result, app);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resident_toggle_hides() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Toggle, true, true),
+            WindowOp::Hide
+        );
+    }
+
+    #[test]
+    fn resident_toggle_shows() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Toggle, false, true),
+            WindowOp::Show
+        );
+    }
+
+    #[test]
+    fn non_resident_toggle_closes() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Toggle, true, false),
+            WindowOp::Close
+        );
+    }
+
+    #[test]
+    fn non_resident_hide_closes() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Hide, true, false),
+            WindowOp::Close
+        );
+    }
+
+    #[test]
+    fn resident_hide_hides() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Hide, true, true),
+            WindowOp::Hide
+        );
+    }
+
+    #[test]
+    fn show_always_shows() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Show, false, false),
+            WindowOp::Show
+        );
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Show, false, true),
+            WindowOp::Show
+        );
+    }
+
+    #[test]
+    fn quit_always_closes() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Quit, true, true),
+            WindowOp::Close
+        );
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Quit, true, false),
+            WindowOp::Close
+        );
     }
 }

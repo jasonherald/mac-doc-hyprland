@@ -50,8 +50,9 @@ pub fn connect_search(
 
         *in_search_mode.borrow_mut() = true;
 
-        // Command mode (: prefix)
+        // Command mode (: prefix) — clear search state so rebuilds don't restore stale results
         if phrase.starts_with(':') {
+            state.borrow_mut().active_search.clear();
             while let Some(child) = well.first_child() {
                 well.remove(&child);
             }
