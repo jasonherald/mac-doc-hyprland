@@ -36,7 +36,8 @@ fn main() {
     }
 
     handle_open_close(&config);
-    let _lock = acquire_singleton_lock(&config);
+    handle_existing_instance(&config);
+    let _lock = acquire_singleton_lock();
     let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
         Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
 
@@ -407,24 +408,38 @@ fn handle_open_close(config: &DrawerConfig) {
     std::process::exit(0);
 }
 
-/// Acquires the singleton lock, sending toggle to existing instance if needed.
-fn acquire_singleton_lock(_config: &DrawerConfig) -> singleton::LockFile {
+/// Checks for an existing running instance and handles it BEFORE acquiring the lock.
+/// This avoids the race where the lock is released by the dying instance before
+/// we check it, causing us to start a full new instance unintentionally.
+fn handle_existing_instance(config: &DrawerConfig) {
+    let Some(pid) = singleton::find_running_pid("mac-drawer") else {
+        return; // No existing instance — proceed to start
+    };
+
+    if config.resident {
+        // Resident invocation finding existing instance → warn and exit
+        // Use eprintln so it's always visible (not gated by RUST_LOG)
+        eprintln!("Resident instance already running (pid {})", pid);
+        std::process::exit(0);
+    }
+
+    // Non-resident invocation finding existing instance → toggle and exit
+    if signals::send_signal_to_pid(pid, signals::sig_toggle()) {
+        log::info!("Sent toggle signal to existing instance (pid {})", pid);
+    } else {
+        log::warn!("Failed to signal existing instance (pid {})", pid);
+    }
+    std::process::exit(0);
+}
+
+/// Acquires the singleton lock. If another instance holds it, exit.
+/// Instance signaling is handled by handle_existing_instance() before this.
+fn acquire_singleton_lock() -> singleton::LockFile {
     match singleton::acquire_lock("mac-drawer") {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
-                // Always toggle the existing instance (whether resident or not).
-                // If it's resident, this shows/hides it. If it's non-resident,
-                // the signal handler closes the existing window so the new one
-                // can take over.
-                if signals::send_signal_to_pid(pid, signals::sig_toggle()) {
-                    log::info!("Sent toggle signal to existing instance (pid {})", pid);
-                } else {
-                    log::warn!(
-                        "Failed to signal existing instance (pid {}), it may have exited",
-                        pid
-                    );
-                }
+                log::warn!("Another instance is running (pid {})", pid);
             }
             std::process::exit(0);
         }
