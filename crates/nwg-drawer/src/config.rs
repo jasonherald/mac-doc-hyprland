@@ -36,6 +36,7 @@ pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String>
         "pbauto",
         "closebtn",
         "opacity",
+        "pi",
     ];
 
     args.map(|arg| {
@@ -204,6 +205,10 @@ pub struct DrawerConfig {
     /// Force GTK theme for libadwaita apps (prepends GTK_THEME= to launch commands)
     #[arg(long, alias = "ft")]
     pub force_theme: bool,
+
+    /// Show pin indicator dot on pinned apps in the grid
+    #[arg(long, alias = "pi")]
+    pub pin_indicator: bool,
 
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
@@ -378,5 +383,25 @@ mod tests {
             vec!["nwg-drawer"].into_iter().map(String::from),
         ));
         assert_eq!(config.wm, None);
+    }
+
+    #[test]
+    fn pin_indicator_flag() {
+        let config = DrawerConfig::parse_from(["nwg-drawer", "--pin-indicator"]);
+        assert!(config.pin_indicator);
+    }
+
+    #[test]
+    fn pin_indicator_legacy_alias() {
+        let config = DrawerConfig::parse_from(normalize_legacy_flags(
+            vec!["nwg-drawer", "-pi"].into_iter().map(String::from),
+        ));
+        assert!(config.pin_indicator);
+    }
+
+    #[test]
+    fn pin_indicator_default_off() {
+        let config = DrawerConfig::parse_from(["nwg-drawer"]);
+        assert!(!config.pin_indicator);
     }
 }

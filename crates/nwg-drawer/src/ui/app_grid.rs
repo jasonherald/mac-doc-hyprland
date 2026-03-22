@@ -116,6 +116,11 @@ fn build_button(
         connect_pin(&button, entry, state, pinned_file, rebuild);
     }
 
+    // Pin indicator dot (only in grid, not in pinned section)
+    if config.pin_indicator && pinning::is_pinned(&state.borrow().pinned, &entry.desktop_id) {
+        widgets::apply_pin_badge(&button);
+    }
+
     let tooltip = widgets::truncate(desc, 120);
     if !tooltip.is_empty() {
         button.set_tooltip_text(Some(&tooltip));
@@ -156,7 +161,7 @@ fn connect_launch(
     });
 }
 
-/// Connects right-click to pin the app and trigger a rebuild.
+/// Connects right-click to toggle pin state and trigger a rebuild.
 fn connect_pin(
     button: &gtk4::Button,
     entry: &DesktopEntry,
@@ -173,17 +178,25 @@ fn connect_pin(
     gesture.connect_released(move |gesture, _, _, _| {
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         let mut s = state_ref.borrow_mut();
-        if !s.pinned.contains(&id) {
+        let was_pinned = pinning::is_pinned(&s.pinned, &id);
+        if was_pinned {
+            pinning::unpin_item(&mut s.pinned, &id);
+        } else {
             pinning::pin_item(&mut s.pinned, &id);
-            if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
-                log::error!("Failed to save pinned state: {}", e);
-                s.pinned.retain(|p| p != &id);
-                return;
-            }
-            log::info!("Pinned {}", id);
-            drop(s);
-            rebuild();
         }
+        if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
+            log::error!("Failed to save pinned state: {}", e);
+            // Rollback in-memory state to stay in sync with disk
+            if was_pinned {
+                pinning::pin_item(&mut s.pinned, &id);
+            } else {
+                pinning::unpin_item(&mut s.pinned, &id);
+            }
+            return;
+        }
+        log::info!("{} {}", if was_pinned { "Unpinned" } else { "Pinned" }, id);
+        drop(s);
+        rebuild();
     });
     button.add_controller(gesture);
 }
