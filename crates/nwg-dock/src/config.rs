@@ -265,7 +265,10 @@ mod tests {
     #[test]
     fn wm_flag_parsing() {
         let config = DockConfig::parse_from(["test", "--wm", "hyprland"]);
-        assert_eq!(config.wm, Some(nwg_dock_common::compositor::WmOverride::Hyprland));
+        assert_eq!(
+            config.wm,
+            Some(nwg_dock_common::compositor::WmOverride::Hyprland)
+        );
     }
 
     #[test]

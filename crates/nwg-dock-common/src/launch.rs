@@ -114,3 +114,23 @@ pub fn launch_command(command: &str) {
         Err(e) => log::error!("Unable to launch command: {}", e),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uwsm_empty_command_returns_early() {
+        // Should not panic or spawn anything
+        launch_via_uwsm("");
+        launch_via_uwsm("   ");
+    }
+
+    #[test]
+    fn uwsm_mode_toggle() {
+        set_uwsm_mode(true);
+        assert!(USE_UWSM.load(std::sync::atomic::Ordering::Relaxed));
+        set_uwsm_mode(false);
+        assert!(!USE_UWSM.load(std::sync::atomic::Ordering::Relaxed));
+    }
+}
