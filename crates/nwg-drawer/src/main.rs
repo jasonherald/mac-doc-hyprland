@@ -38,7 +38,7 @@ fn main() {
     handle_open_close(&config);
     let _lock = acquire_singleton_lock(&config);
     let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_exit(&config.wm));
+        Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
@@ -133,19 +133,7 @@ fn activate_drawer(
     load_preferred_apps(&mut state.borrow_mut());
     state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
 
-    // Force GTK theme for libadwaita apps
-    if config.force_theme
-        && let Some(settings) = gtk4::Settings::default()
-    {
-        let theme = settings
-            .gtk_theme_name()
-            .map(|s| s.to_string())
-            .unwrap_or_default();
-        if !theme.is_empty() {
-            state.borrow_mut().gtk_theme_prefix = format!("GTK_THEME={}", theme);
-            log::info!("Force theme enabled: GTK_THEME={}", theme);
-        }
-    }
+    apply_force_theme(&config, &state);
 
     // Window
     let win = gtk4::ApplicationWindow::new(app);
@@ -285,9 +273,37 @@ fn activate_drawer(
         &on_launch,
         &status_label,
     );
-    listeners::setup_signal_poller(&win, sig_rx);
+    listeners::setup_signal_poller(&win, sig_rx, config.resident);
 
-    win.present();
+    // In resident mode, start hidden — the signal poller will show the window
+    // when a SIGRTMIN+1 (toggle) or SIGRTMIN+2 (show) signal is received.
+    if config.resident {
+        win.present();
+        win.set_visible(false);
+    } else {
+        win.present();
+    }
+}
+
+/// Applies force-theme for libadwaita apps (ignored under uwsm).
+fn apply_force_theme(config: &DrawerConfig, state: &Rc<RefCell<state::DrawerState>>) {
+    if !config.force_theme {
+        return;
+    }
+    if config.wm == Some(nwg_dock_common::compositor::WmOverride::Uwsm) {
+        log::warn!("--force-theme ignored when running through uwsm");
+        return;
+    }
+    if let Some(settings) = gtk4::Settings::default() {
+        let theme = settings
+            .gtk_theme_name()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        if !theme.is_empty() {
+            state.borrow_mut().gtk_theme_prefix = format!("GTK_THEME={}", theme);
+            log::info!("Force theme enabled: GTK_THEME={}", theme);
+        }
+    }
 }
 
 /// Applies GTK theme and icon theme settings from the config.
@@ -392,16 +408,22 @@ fn handle_open_close(config: &DrawerConfig) {
 }
 
 /// Acquires the singleton lock, sending toggle to existing instance if needed.
-fn acquire_singleton_lock(config: &DrawerConfig) -> singleton::LockFile {
+fn acquire_singleton_lock(_config: &DrawerConfig) -> singleton::LockFile {
     match singleton::acquire_lock("mac-drawer") {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
-                if config.resident {
-                    log::warn!("Resident instance already running (pid {})", pid);
+                // Always toggle the existing instance (whether resident or not).
+                // If it's resident, this shows/hides it. If it's non-resident,
+                // the signal handler closes the existing window so the new one
+                // can take over.
+                if signals::send_signal_to_pid(pid, signals::sig_toggle()) {
+                    log::info!("Sent toggle signal to existing instance (pid {})", pid);
                 } else {
-                    signals::send_signal_to_pid(pid, signals::sig_toggle());
-                    log::info!("Sent toggle signal to running instance (pid {}), bye!", pid);
+                    log::warn!(
+                        "Failed to signal existing instance (pid {}), it may have exited",
+                        pid
+                    );
                 }
             }
             std::process::exit(0);

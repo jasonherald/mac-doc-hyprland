@@ -12,16 +12,57 @@ pub fn launch(app_id: &str, app_dirs: &[PathBuf]) {
     launch_command(&command);
 }
 
-/// Launches a command via the compositor's exec mechanism.
+/// Launches a command via the compositor's exec mechanism,
+/// or via uwsm if the `wm` flag was set to "uwsm".
 pub fn launch_via_compositor(command: &str, compositor: &dyn Compositor) {
     let command = command.replace('"', "");
     if command.trim().is_empty() {
         log::error!("Empty command to launch");
         return;
     }
+
+    // Check if uwsm launch mode is active (set via set_uwsm_mode)
+    if USE_UWSM.load(std::sync::atomic::Ordering::Relaxed) {
+        launch_via_uwsm(&command);
+        return;
+    }
+
     log::info!("Launching via compositor: {}", command);
     if let Err(e) = compositor.exec(&command) {
         log::error!("Failed to launch: {}", e);
+    }
+}
+
+/// Global flag for uwsm launch mode (set once at startup from --wm flag).
+static USE_UWSM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Enables uwsm launch mode. Called at startup when `--wm uwsm` is detected.
+pub fn set_uwsm_mode(enabled: bool) {
+    USE_UWSM.store(enabled, std::sync::atomic::Ordering::Relaxed);
+    if enabled {
+        log::info!("Launch mode: uwsm app --");
+    }
+}
+
+/// Launches a command via `uwsm app --` for proper session management.
+fn launch_via_uwsm(command: &str) {
+    let command = command.trim();
+    if command.is_empty() {
+        return;
+    }
+    log::info!("Launching via uwsm: {}", command);
+    let parts: Vec<&str> = command.split_whitespace().collect();
+    match Command::new("uwsm")
+        .arg("app")
+        .arg("--")
+        .args(&parts)
+        .spawn()
+    {
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!("uwsm not found, falling back to direct launch: {}", e);
+            launch_command(command);
+        }
     }
 }
 
@@ -71,5 +112,25 @@ pub fn launch_command(command: &str) {
     match cmd.spawn() {
         Ok(_) => {}
         Err(e) => log::error!("Unable to launch command: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uwsm_empty_command_returns_early() {
+        // Should not panic or spawn anything
+        launch_via_uwsm("");
+        launch_via_uwsm("   ");
+    }
+
+    #[test]
+    fn uwsm_mode_toggle() {
+        set_uwsm_mode(true);
+        assert!(USE_UWSM.load(std::sync::atomic::Ordering::Relaxed));
+        set_uwsm_mode(false);
+        assert!(!USE_UWSM.load(std::sync::atomic::Ordering::Relaxed));
     }
 }

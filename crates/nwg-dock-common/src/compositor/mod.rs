@@ -14,15 +14,28 @@ pub enum CompositorKind {
     Sway,
 }
 
+/// CLI `--wm` flag values. Uwsm is a launch wrapper that falls through
+/// to auto-detection of the actual compositor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum WmOverride {
+    Hyprland,
+    Sway,
+    /// Universal Wayland Session Manager — launch wrapper, not a compositor.
+    Uwsm,
+}
+
 /// Auto-detect the running compositor from environment variables.
 /// Pass `wm_override` to force a specific backend (from `--wm` flag).
-pub fn detect(wm_override: Option<&str>) -> Result<CompositorKind> {
+pub fn detect(wm_override: Option<WmOverride>) -> Result<CompositorKind> {
     if let Some(wm) = wm_override {
-        return match wm.to_lowercase().as_str() {
-            "hyprland" => Ok(CompositorKind::Hyprland),
-            "sway" => Ok(CompositorKind::Sway),
-            other => Err(DockError::UnsupportedCompositor(other.to_string())),
-        };
+        match wm {
+            WmOverride::Hyprland => return Ok(CompositorKind::Hyprland),
+            WmOverride::Sway => return Ok(CompositorKind::Sway),
+            WmOverride::Uwsm => {
+                crate::launch::set_uwsm_mode(true);
+                log::debug!("uwsm mode enabled, auto-detecting compositor from environment");
+            }
+        }
     }
 
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {
@@ -45,13 +58,7 @@ pub fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
 /// Detects and creates the compositor backend, exiting the process on failure.
 ///
 /// Shared by all three binaries (dock, drawer, notifications) to avoid duplication.
-/// Pass the `--wm` flag value (empty string = auto-detect from environment).
-pub fn init_or_exit(wm_flag: &str) -> Box<dyn Compositor> {
-    let wm_override = if wm_flag.is_empty() {
-        None
-    } else {
-        Some(wm_flag)
-    };
+pub fn init_or_exit(wm_override: Option<WmOverride>) -> Box<dyn Compositor> {
     let kind = match detect(wm_override) {
         Ok(k) => k,
         Err(e) => {
@@ -84,27 +91,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detect_unsupported_compositor() {
-        assert!(matches!(
-            detect(Some("awesome")),
-            Err(DockError::UnsupportedCompositor(_))
-        ));
-    }
-
-    #[test]
     fn detect_sway_override() {
-        assert_eq!(detect(Some("sway")).unwrap(), CompositorKind::Sway);
+        assert_eq!(
+            detect(Some(WmOverride::Sway)).unwrap(),
+            CompositorKind::Sway
+        );
     }
 
     #[test]
     fn detect_hyprland_override() {
-        assert_eq!(detect(Some("hyprland")).unwrap(), CompositorKind::Hyprland);
+        assert_eq!(
+            detect(Some(WmOverride::Hyprland)).unwrap(),
+            CompositorKind::Hyprland
+        );
     }
 
     #[test]
-    fn detect_case_insensitive() {
-        assert_eq!(detect(Some("Hyprland")).unwrap(), CompositorKind::Hyprland);
-        assert_eq!(detect(Some("SWAY")).unwrap(), CompositorKind::Sway);
+    fn detect_uwsm_falls_through_to_env() {
+        // uwsm is a launch wrapper — detect() falls through to env auto-detect.
+        // On a dev machine with Hyprland/Sway running, this finds the compositor.
+        // In CI (no WM env vars), this returns NoCompositorDetected.
+        // Either way, it must NOT return UnsupportedCompositor.
+        let result = detect(Some(WmOverride::Uwsm));
+        assert!(
+            !matches!(result, Err(DockError::UnsupportedCompositor(_))),
+            "uwsm should not be rejected as unsupported, got {:?}",
+            result
+        );
+        // Reset global side effect
+        crate::launch::set_uwsm_mode(false);
     }
 
     #[test]

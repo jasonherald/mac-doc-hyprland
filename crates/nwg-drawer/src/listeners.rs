@@ -171,18 +171,14 @@ pub fn setup_file_watcher(
 pub fn setup_signal_poller(
     win: &gtk4::ApplicationWindow,
     sig_rx: &Rc<mpsc::Receiver<WindowCommand>>,
+    resident: bool,
 ) {
     let win = win.clone();
     let rx = Rc::clone(sig_rx);
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
-            match cmd {
-                WindowCommand::Show => win.set_visible(true),
-                WindowCommand::Hide => win.set_visible(false),
-                WindowCommand::Toggle => win.set_visible(!win.is_visible()),
-                WindowCommand::Quit => win.close(),
-            }
+            handle_window_command(&win, cmd, resident);
         }
         glib::ControlFlow::Continue
     });
@@ -234,6 +230,50 @@ fn close_if_baseline_set(baseline: &Rc<RefCell<Option<String>>>, on_launch: &Rc<
     }
 }
 
+/// What to do with the window for a given command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WindowOp {
+    Show,
+    Hide,
+    Close,
+}
+
+/// Pure decision function: determines the window operation for a command.
+/// Testable without GTK objects.
+fn resolve_window_op(cmd: &WindowCommand, visible: bool, resident: bool) -> WindowOp {
+    match cmd {
+        WindowCommand::Show => WindowOp::Show,
+        WindowCommand::Hide => {
+            if resident {
+                WindowOp::Hide
+            } else {
+                WindowOp::Close
+            }
+        }
+        WindowCommand::Toggle => {
+            if visible {
+                if resident {
+                    WindowOp::Hide
+                } else {
+                    WindowOp::Close
+                }
+            } else {
+                WindowOp::Show
+            }
+        }
+        WindowCommand::Quit => WindowOp::Close,
+    }
+}
+
+/// Processes a single window command from the signal handler.
+fn handle_window_command(win: &gtk4::ApplicationWindow, cmd: WindowCommand, resident: bool) {
+    match resolve_window_op(&cmd, win.is_visible(), resident) {
+        WindowOp::Show => win.set_visible(true),
+        WindowOp::Hide => win.set_visible(false),
+        WindowOp::Close => win.close(),
+    }
+}
+
 /// Handles Escape key: clear search, or close/hide drawer.
 fn handle_escape(search_entry: &gtk4::SearchEntry, win: &gtk4::ApplicationWindow, resident: bool) {
     let text = search_entry.text();
@@ -264,5 +304,74 @@ fn handle_return(
         on_launch();
     } else if let Some(result) = crate::ui::math::eval_expression(&text) {
         crate::ui::math::show_result_window(&text, result, app);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resident_toggle_hides() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Toggle, true, true),
+            WindowOp::Hide
+        );
+    }
+
+    #[test]
+    fn resident_toggle_shows() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Toggle, false, true),
+            WindowOp::Show
+        );
+    }
+
+    #[test]
+    fn non_resident_toggle_closes() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Toggle, true, false),
+            WindowOp::Close
+        );
+    }
+
+    #[test]
+    fn non_resident_hide_closes() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Hide, true, false),
+            WindowOp::Close
+        );
+    }
+
+    #[test]
+    fn resident_hide_hides() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Hide, true, true),
+            WindowOp::Hide
+        );
+    }
+
+    #[test]
+    fn show_always_shows() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Show, false, false),
+            WindowOp::Show
+        );
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Show, false, true),
+            WindowOp::Show
+        );
+    }
+
+    #[test]
+    fn quit_always_closes() {
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Quit, true, true),
+            WindowOp::Close
+        );
+        assert_eq!(
+            resolve_window_op(&WindowCommand::Quit, true, false),
+            WindowOp::Close
+        );
     }
 }

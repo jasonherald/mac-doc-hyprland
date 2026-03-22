@@ -177,8 +177,8 @@ pub struct DockConfig {
     pub opacity: u8,
 
     /// Window manager override (auto-detected from environment if not specified)
-    #[arg(long, default_value = "")]
-    pub wm: String,
+    #[arg(long, value_enum)]
+    pub wm: Option<nwg_dock_common::compositor::WmOverride>,
 }
 
 impl DockConfig {
@@ -265,7 +265,10 @@ mod tests {
     #[test]
     fn wm_flag_parsing() {
         let config = DockConfig::parse_from(["test", "--wm", "hyprland"]);
-        assert_eq!(config.wm, "hyprland");
+        assert_eq!(
+            config.wm,
+            Some(nwg_dock_common::compositor::WmOverride::Hyprland)
+        );
     }
 
     #[test]

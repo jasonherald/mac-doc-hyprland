@@ -109,6 +109,17 @@ pub fn build_search_results(
     // Hide pinned during search
     pinned_box.set_visible(false);
 
+    // Rebuild callback — rebuild_preserving_category checks active_search
+    // and will re-run the search instead of restoring normal view.
+    let on_rebuild = build_rebuild_callback(
+        well,
+        pinned_box,
+        config,
+        state,
+        pinned_file,
+        on_launch,
+        status_label,
+    );
     let app_flow = ui::app_grid::build_app_flow_box(
         config,
         state,
@@ -117,7 +128,7 @@ pub fn build_search_results(
         pinned_file,
         Rc::clone(on_launch),
         status_label,
-        None,
+        Some(&on_rebuild),
     );
     app_flow.set_halign(gtk4::Align::Center);
     well.append(&app_flow);
@@ -147,7 +158,7 @@ pub fn build_search_results(
     }
 }
 
-/// Rebuilds the well, then re-applies the active category filter if one is set.
+/// Rebuilds the well, preserving the current view mode (search, category, or normal).
 #[allow(clippy::too_many_arguments)]
 pub fn rebuild_preserving_category(
     well: &gtk4::Box,
@@ -158,27 +169,54 @@ pub fn rebuild_preserving_category(
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
 ) {
+    let active_search = state.borrow().active_search.clone();
     let active_cat = state.borrow().active_category.clone();
-    build_normal_well(
-        well,
-        pinned_box,
-        config,
-        state,
-        pinned_file,
-        on_launch,
-        status_label,
-    );
-    if !active_cat.is_empty() {
-        crate::ui::categories::apply_category_filter(
-            well,
-            pinned_box,
-            config,
-            state,
-            &active_cat,
-            pinned_file,
-            on_launch,
-            status_label,
-        );
+
+    match determine_rebuild_mode(&active_search, &active_cat) {
+        RebuildMode::Search => {
+            build_search_results(
+                well,
+                pinned_box,
+                &active_search,
+                config,
+                state,
+                pinned_file,
+                on_launch,
+                status_label,
+            );
+        }
+        RebuildMode::Category => {
+            build_normal_well(
+                well,
+                pinned_box,
+                config,
+                state,
+                pinned_file,
+                on_launch,
+                status_label,
+            );
+            crate::ui::categories::apply_category_filter(
+                well,
+                pinned_box,
+                config,
+                state,
+                &active_cat,
+                pinned_file,
+                on_launch,
+                status_label,
+            );
+        }
+        RebuildMode::Normal => {
+            build_normal_well(
+                well,
+                pinned_box,
+                config,
+                state,
+                pinned_file,
+                on_launch,
+                status_label,
+            );
+        }
     }
 }
 
@@ -668,4 +706,53 @@ fn count_children(widget: &impl IsA<gtk4::Widget>) -> i32 {
         child = c.next_sibling();
     }
     count
+}
+
+/// Which rebuild path to take when refreshing the well.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RebuildMode {
+    /// Re-run the active search query.
+    Search,
+    /// Rebuild normal well then re-apply category filter.
+    Category,
+    /// Rebuild normal well (show all apps).
+    Normal,
+}
+
+/// Pure decision function: determines the rebuild mode from current state.
+/// Search takes precedence over category (you can search within a category view).
+fn determine_rebuild_mode(active_search: &str, active_category: &[String]) -> RebuildMode {
+    if !active_search.is_empty() {
+        RebuildMode::Search
+    } else if !active_category.is_empty() {
+        RebuildMode::Category
+    } else {
+        RebuildMode::Normal
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rebuild_mode_search_takes_precedence() {
+        assert_eq!(
+            determine_rebuild_mode("firefox", &["Network".to_string()]),
+            RebuildMode::Search
+        );
+    }
+
+    #[test]
+    fn rebuild_mode_category_when_no_search() {
+        assert_eq!(
+            determine_rebuild_mode("", &["Network".to_string()]),
+            RebuildMode::Category
+        );
+    }
+
+    #[test]
+    fn rebuild_mode_normal_when_both_empty() {
+        assert_eq!(determine_rebuild_mode("", &[]), RebuildMode::Normal);
+    }
 }
