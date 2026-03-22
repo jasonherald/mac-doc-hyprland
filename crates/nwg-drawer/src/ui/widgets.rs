@@ -79,6 +79,44 @@ pub fn app_icon_button(
     button
 }
 
+/// Adds a pin indicator dot to the left of the app label.
+///
+/// Finds the Label inside the button's VBox, removes it, wraps it in a
+/// horizontal Box with a small dot + label, and re-appends it to the VBox.
+pub fn apply_pin_badge(button: &gtk4::Button) {
+    let Some(vbox_widget) = button.child() else {
+        return;
+    };
+    let Ok(vbox) = vbox_widget.downcast::<gtk4::Box>() else {
+        return;
+    };
+
+    // Find the label (second child after Image)
+    let Some(image) = vbox.first_child() else {
+        return;
+    };
+    let Some(label_widget) = image.next_sibling() else {
+        return;
+    };
+
+    // Remove label from vbox
+    vbox.remove(&label_widget);
+
+    // Create horizontal box: [dot] [label]
+    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 3); // 3px gap
+    hbox.set_halign(gtk4::Align::Center);
+
+    let badge = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    badge.add_css_class("pin-badge");
+    badge.set_size_request(constants::PIN_BADGE_SIZE, constants::PIN_BADGE_SIZE);
+    badge.set_valign(gtk4::Align::Center);
+
+    hbox.append(&badge);
+    hbox.append(&label_widget);
+
+    vbox.append(&hbox);
+}
+
 /// Strips field codes (%u, %f, etc.) and quotes from an Exec command.
 pub fn clean_exec(exec: &str) -> String {
     let exec = exec.replace(['"', '\''], "");

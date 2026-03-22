@@ -135,6 +135,15 @@ window {
     padding: 6px;
 }
 
+/* Pin indicator dot — top-right corner of pinned app icons */
+.pin-badge {
+    background-color: rgba(100, 149, 237, 0.7);
+    border-radius: 50%;
+    min-width: 8px;
+    min-height: 8px;
+    margin-top: 1px;
+}
+
 /* FlowBox children spacing */
 flowboxchild {
     padding: 4px;

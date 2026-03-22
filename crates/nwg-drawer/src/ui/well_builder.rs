@@ -280,6 +280,9 @@ fn build_pinned_flow(
             on_rebuild,
             desktop_id,
         );
+        if config.pin_indicator {
+            crate::ui::widgets::apply_pin_badge(&button);
+        }
         flow_box.insert(&button, -1);
         // Keep FlowBoxChild non-focusable — we handle navigation ourselves
         if let Some(child) = flow_box.last_child() {

@@ -184,6 +184,8 @@ fn activate_drawer(
     // Right-click on scrolled area → close drawer
     let right_click = gtk4::GestureClick::new();
     right_click.set_button(3);
+    // Bubble phase so child button gestures (pin toggle) fire first
+    right_click.set_propagation_phase(gtk4::PropagationPhase::Bubble);
     let win_rc = win.clone();
     let config_rc = Rc::clone(&config);
     right_click.connect_released(move |gesture, _, _, _| {
@@ -419,7 +421,10 @@ fn handle_existing_instance(config: &DrawerConfig) {
         std::process::exit(0);
     }
     // Signal failed (stale PID) — fall through to start a fresh instance
-    log::warn!("Failed to signal existing instance (pid {}), starting fresh", pid);
+    log::warn!(
+        "Failed to signal existing instance (pid {}), starting fresh",
+        pid
+    );
 }
 
 /// Acquires the singleton lock. If another instance holds it, exit.

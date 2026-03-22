@@ -24,3 +24,6 @@ pub const FILE_ICON_SIZE: i32 = 20;
 
 /// Top margin for the content area below the search bar.
 pub const CONTENT_TOP_MARGIN: i32 = 8;
+
+/// Diameter of the pin indicator badge in pixels.
+pub const PIN_BADGE_SIZE: i32 = 8;
