@@ -14,19 +14,37 @@ const EDGE_THRESHOLD: i32 = 2;
 /// Thickness of the hotspot trigger window in pixels.
 const HOTSPOT_THICKNESS: i32 = 4;
 
-/// Shared state for creating hotspot windows on Sway during monitor hotplug.
+/// Shared state for creating/destroying hotspot windows on Sway during monitor hotplug.
 /// Returned by `setup_autohide` when the compositor uses the hotspot approach.
 pub struct HotspotContext {
     app: gtk4::Application,
     position: crate::config::Position,
     per_monitor: Rc<RefCell<Vec<MonitorDock>>>,
     left_at: Rc<RefCell<Option<std::time::Instant>>>,
+    /// Tracks hotspot windows by output name so they can be torn down on unplug.
+    hotspots: RefCell<std::collections::HashMap<String, gtk4::ApplicationWindow>>,
 }
 
 impl HotspotContext {
     /// Creates a hotspot window for a newly added dock (called during reconciliation).
     pub fn add_hotspot_for_dock(&self, dock: &MonitorDock) {
-        create_hotspot_window(&self.app, self.position, dock, &self.per_monitor, &self.left_at);
+        let hotspot = create_hotspot_window(
+            &self.app,
+            self.position,
+            dock,
+            &self.per_monitor,
+            &self.left_at,
+        );
+        self.hotspots
+            .borrow_mut()
+            .insert(dock.output_name.clone(), hotspot);
+    }
+
+    /// Destroys the hotspot window for a removed monitor.
+    pub fn remove_hotspot_for_output(&self, output_name: &str) {
+        if let Some(hotspot) = self.hotspots.borrow_mut().remove(output_name) {
+            hotspot.close();
+        }
     }
 }
 
@@ -70,17 +88,21 @@ fn start_hotspot_windows(
     // Shared hide timer state
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
+    let hotspots = RefCell::new(std::collections::HashMap::new());
+
+    // Create hotspot windows for each current dock window
+    for dock in per_monitor.borrow().iter() {
+        let hotspot = create_hotspot_window(app, position, dock, per_monitor, &left_at);
+        hotspots.borrow_mut().insert(dock.output_name.clone(), hotspot);
+    }
+
     let ctx = Rc::new(HotspotContext {
         app: app.clone(),
         position,
         per_monitor: Rc::clone(per_monitor),
         left_at: Rc::clone(&left_at),
+        hotspots,
     });
-
-    // Create hotspot windows for each current dock window
-    for dock in per_monitor.borrow().iter() {
-        create_hotspot_window(app, position, dock, per_monitor, &left_at);
-    }
 
     // Poll the hide timer to actually hide dock windows
     let docks = Rc::clone(per_monitor);
@@ -110,13 +132,14 @@ fn start_hotspot_windows(
 }
 
 /// Creates a single hotspot trigger window for one monitor and attaches enter/leave handlers.
+/// Returns the hotspot window so the caller can track and destroy it on unplug.
 fn create_hotspot_window(
     app: &gtk4::Application,
     position: crate::config::Position,
     dock: &MonitorDock,
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
-) {
+) -> gtk4::ApplicationWindow {
     let output_name = dock.output_name.clone();
     let docks = Rc::clone(per_monitor);
 
@@ -181,6 +204,8 @@ fn create_hotspot_window(
         *left_at_dock_leave.borrow_mut() = Some(std::time::Instant::now());
     });
     dock.win.add_controller(leave_motion);
+
+    hotspot
 }
 
 /// Configures a hotspot window as a thin strip at the dock edge.
@@ -246,7 +271,13 @@ fn start_cursor_poller(
     let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> =
         Rc::new(RefCell::new(compositor.list_monitors().unwrap_or_default()));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
-    let last_dock_count = Rc::new(RefCell::new(docks.borrow().len()));
+    let last_outputs: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(
+        docks
+            .borrow()
+            .iter()
+            .map(|d| d.output_name.clone())
+            .collect(),
+    ));
 
     glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
         let cursor = match compositor.get_cursor_position() {
@@ -254,12 +285,16 @@ fn start_cursor_poller(
             None => return glib::ControlFlow::Continue,
         };
 
-        // Detect topology change: dock count changed means reconciliation happened
-        let current_dock_count = docks.borrow().len();
+        // Detect topology change: output names changed means reconciliation happened
+        let current_outputs: Vec<String> = docks
+            .borrow()
+            .iter()
+            .map(|d| d.output_name.clone())
+            .collect();
         let topology_changed = {
-            let mut last = last_dock_count.borrow_mut();
-            if *last != current_dock_count {
-                *last = current_dock_count;
+            let mut last = last_outputs.borrow_mut();
+            if *last != current_outputs {
+                *last = current_outputs;
                 true
             } else {
                 false

@@ -174,8 +174,11 @@ fn reconcile_monitors(
         return;
     }
 
-    // Remove orphaned dock windows
+    // Remove orphaned dock windows and their hotspot windows
     for name in &to_remove {
+        if let Some(ctx) = hotspot_ctx {
+            ctx.remove_hotspot_for_output(name);
+        }
         per_monitor.borrow_mut().retain(|dock| {
             if &dock.output_name == name {
                 log::info!("Removing dock window for disconnected monitor: {}", name);
