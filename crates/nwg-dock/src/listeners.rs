@@ -33,7 +33,7 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
                     notify::EventKind::Modify(_) | notify::EventKind::Create(_)
                 )
             {
-                let _ = tx.send(());
+                let _ = tx.send(()); // Non-critical: receiver may have dropped
             }
         }) {
             Ok(w) => w,
@@ -44,7 +44,7 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
         };
 
         if let Some(parent) = pin_path.parent() {
-            let _ = watcher.watch(parent, RecursiveMode::NonRecursive);
+            let _ = watcher.watch(parent, RecursiveMode::NonRecursive); // Best-effort: logged by notify
         }
         // Block forever — watcher stops if thread exits
         std::thread::park();

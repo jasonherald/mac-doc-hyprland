@@ -325,7 +325,7 @@ pub fn focus_app(
                     || class_lower.contains(&candidate_lower)
                     || candidate_lower.contains(&class_lower)
                 {
-                    let _ = compositor.focus_window(&client.id);
+                    let _ = compositor.focus_window(&client.id); // Best-effort: window may have closed
                     return;
                 }
             }
