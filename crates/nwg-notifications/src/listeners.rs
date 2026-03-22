@@ -2,7 +2,6 @@ use crate::state::NotificationState;
 use crate::ui::dnd_menu;
 use crate::ui::panel::NotificationPanel;
 use gtk4::glib;
-use nix::sys::signal::{self, Signal};
 use nwg_dock_common::signals;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -26,19 +25,7 @@ pub fn start_signal_listener() -> Rc<mpsc::Receiver<NotificationCommand>> {
     let sig_dnd = signals::sig_notification_dnd();
     let sig_menu = signals::sig_notification_dnd_menu();
 
-    // SAFETY: sigaction requires unsafe. The handler calls process::exit.
-    if let Err(e) = unsafe {
-        signal::sigaction(
-            Signal::SIGTERM,
-            &signal::SigAction::new(
-                signal::SigHandler::Handler(sigterm_handler),
-                signal::SaFlags::SA_RESTART,
-                signal::SigSet::empty(),
-            ),
-        )
-    } {
-        log::warn!("Failed to set SIGTERM handler: {}", e);
-    }
+    signals::setup_sigterm_handler();
 
     // Block notification signals in the main thread BEFORE spawning.
     // Uses raw libc because nix's Signal enum doesn't support RT signals.
@@ -123,7 +110,3 @@ pub fn poll_signals(
     });
 }
 
-extern "C" fn sigterm_handler(_: i32) {
-    log::info!("SIGTERM received, bye bye!");
-    std::process::exit(0);
-}

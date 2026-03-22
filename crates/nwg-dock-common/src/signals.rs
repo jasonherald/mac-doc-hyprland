@@ -39,14 +39,9 @@ pub enum WindowCommand {
     Quit,
 }
 
-/// Sets up signal handlers and returns a receiver for window commands.
-///
-/// Handles SIGTERM via sigaction, and SIGUSR1 + SIGRTMIN+1/2/3 via
-/// raw libc sigwait (nix's Signal enum doesn't support real-time signals).
-pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand> {
-    let (tx, rx) = mpsc::channel();
-
-    // SIGTERM → quit
+/// Installs the SIGTERM handler (process::exit on SIGTERM).
+/// Shared by all three binaries to avoid duplicating unsafe sigaction setup.
+pub fn setup_sigterm_handler() {
     // SAFETY: sigaction requires unsafe. The handler calls process::exit.
     if let Err(e) = unsafe {
         signal::sigaction(
@@ -60,6 +55,16 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
     } {
         log::warn!("Failed to set SIGTERM handler: {}", e);
     }
+}
+
+/// Sets up signal handlers and returns a receiver for window commands.
+///
+/// Handles SIGTERM via sigaction, and SIGUSR1 + SIGRTMIN+1/2/3 via
+/// raw libc sigwait (nix's Signal enum doesn't support real-time signals).
+pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand> {
+    let (tx, rx) = mpsc::channel();
+
+    setup_sigterm_handler();
 
     // Block SIGUSR1 and SIGRTMIN+1/2/3 in the main thread BEFORE spawning.
     // Uses raw libc because nix's Signal enum doesn't support RT signals.
