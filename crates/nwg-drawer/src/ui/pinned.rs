@@ -105,7 +105,7 @@ fn create_pinned_button(
     let compositor = Rc::clone(&state.borrow().compositor);
     let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
-        let clean = widgets::clean_exec(&exec);
+        let clean = widgets::strip_field_codes(&exec);
         if !clean.is_empty() {
             let clean = widgets::prepend_theme(&clean, &theme_prefix);
             if terminal {
@@ -131,7 +131,11 @@ fn create_pinned_button(
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         let mut s = state_ref.borrow_mut();
         if pinning::unpin_item(&mut s.pinned, &id) {
-            let _ = pinning::save_pinned(&s.pinned, &pinned_path);
+            if let Err(e) = pinning::save_pinned(&s.pinned, &pinned_path) {
+                log::error!("Failed to save pinned state: {}", e);
+                pinning::pin_item(&mut s.pinned, &id);
+                return;
+            }
             log::info!("Unpinned {}", id);
         }
     });

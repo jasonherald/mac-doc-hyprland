@@ -113,7 +113,9 @@ fn apply_key_value(
             entry.no_display = desktop_list_contains(value, current_desktop);
         }
         "Exec" => {
-            entry.exec = value.replace(['"', '\''], "");
+            // Preserve quotes — proper shell splitting happens at launch time
+            // via shell_words::split() (issue #11)
+            entry.exec = value.to_string();
         }
         "StartupWMClass" => entry.startup_wm_class = value.to_string(),
         k if k == localized_name => entry.name_loc = value.to_string(),
@@ -245,13 +247,23 @@ mod tests {
     }
 
     #[test]
-    fn exec_quotes_stripped() {
+    fn exec_quotes_preserved() {
         let desktop = "[Desktop Entry]\n\
             Name=Browser\n\
             Exec=\"firefox\" %u\n";
         let reader = Cursor::new(desktop);
         let entry = parse_desktop_entry("firefox", reader);
-        assert_eq!(entry.exec, "firefox %u");
+        assert_eq!(entry.exec, "\"firefox\" %u");
+    }
+
+    #[test]
+    fn exec_complex_quotes_preserved() {
+        let desktop = "[Desktop Entry]\n\
+            Name=ShellCmd\n\
+            Exec=sh -c \"printf 'Hello World'\"\n";
+        let reader = Cursor::new(desktop);
+        let entry = parse_desktop_entry("shellcmd", reader);
+        assert_eq!(entry.exec, "sh -c \"printf 'Hello World'\"");
     }
 
     #[test]

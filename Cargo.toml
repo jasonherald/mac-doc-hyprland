@@ -37,6 +37,9 @@ notify = "8"
 # Unix signals and process management
 nix = { version = "0.31", features = ["signal", "process", "fs"] }
 
+# Shell-aware command splitting (POSIX quoting rules)
+shell-words = "1"
+
 # XDG directory resolution
 dirs = "6"
 
