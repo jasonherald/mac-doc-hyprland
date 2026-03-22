@@ -11,6 +11,10 @@ use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::mpsc;
+use std::time::Duration;
+
+/// Delay before hiding dock windows after initial present (allows GTK to render).
+const AUTOHIDE_INITIAL_DELAY: Duration = Duration::from_millis(500);
 
 /// Sets up an inotify-based pin file watcher that triggers a rebuild
 /// when the pin file is modified (e.g. by the drawer).
@@ -64,13 +68,14 @@ pub fn setup_signal_poller(
     let docks = Rc::clone(per_monitor);
     let rx = Rc::clone(sig_rx);
 
-    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+    glib::timeout_add_local(Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
+            let toggle_to = !docks.borrow().iter().any(|d| d.win.is_visible());
             for dock in docks.borrow().iter() {
                 match cmd {
                     WindowCommand::Show => dock.win.set_visible(true),
                     WindowCommand::Hide => dock.win.set_visible(false),
-                    WindowCommand::Toggle => dock.win.set_visible(!dock.win.is_visible()),
+                    WindowCommand::Toggle => dock.win.set_visible(toggle_to),
                     WindowCommand::Quit => dock.win.close(),
                 }
             }
@@ -90,7 +95,7 @@ pub fn setup_autohide(
 ) {
     for dock in per_monitor.borrow().iter() {
         let win = dock.win.clone();
-        glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+        glib::timeout_add_local_once(AUTOHIDE_INITIAL_DELAY, move || {
             win.set_visible(false);
         });
     }
@@ -187,7 +192,7 @@ fn reconcile_monitors(
             dock.win.present();
             if config.autohide {
                 let win = dock.win.clone();
-                glib::timeout_add_local_once(std::time::Duration::from_millis(500), move || {
+                glib::timeout_add_local_once(AUTOHIDE_INITIAL_DELAY, move || {
                     win.set_visible(false);
                 });
             }
