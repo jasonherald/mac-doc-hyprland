@@ -5,6 +5,21 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
+/// Checks for new events and triggers a rebuild if the client list changed.
+/// Skips rebuild while a drag is in progress to avoid destroying widgets mid-drag.
+fn poll_and_rebuild(
+    receiver: &mpsc::Receiver<String>,
+    state: &Rc<RefCell<DockState>>,
+    rebuild_fn: &Rc<dyn Fn()>,
+) {
+    if drain_new_events(receiver, state)
+        && needs_rebuild(state)
+        && state.borrow().drag_source_index.is_none()
+    {
+        rebuild_fn();
+    }
+}
+
 /// Drains pending window-change events and returns true if a new relevant event was seen.
 fn drain_new_events(receiver: &mpsc::Receiver<String>, state: &Rc<RefCell<DockState>>) -> bool {
     let mut changed = false;
@@ -92,9 +107,7 @@ pub fn start_event_listener(
     });
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-        if drain_new_events(&receiver, &state) && needs_rebuild(&state) {
-            rebuild_fn();
-        }
+        poll_and_rebuild(&receiver, &state, &rebuild_fn);
         glib::ControlFlow::Continue
     });
 }

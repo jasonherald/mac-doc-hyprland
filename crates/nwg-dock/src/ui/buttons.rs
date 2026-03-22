@@ -153,12 +153,15 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
         ctx.config.is_vertical(),
     );
     item_box.add_css_class("dock-item");
+    item_box.add_css_class("pinned-item");
 
-    // Drag source (when dock is unlocked) — drop target is on the dock box itself
+    // Manual drag-to-reorder (when dock is unlocked)
     if !ctx.state.borrow().locked {
-        crate::ui::drag::setup_drag_source(
+        crate::ui::drag::setup_drag_gesture(
             &button,
             index,
+            app_id,
+            ctx.config.is_vertical(),
             &ctx.state,
             &ctx.pinned_file,
             &ctx.rebuild,
