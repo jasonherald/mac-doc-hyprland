@@ -103,7 +103,7 @@ pub fn apply_pin_badge(button: &gtk4::Button) {
     vbox.remove(&label_widget);
 
     // Create horizontal box: [dot] [label]
-    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 3); // 3px gap
+    let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, constants::PIN_BADGE_LABEL_GAP);
     hbox.set_halign(gtk4::Align::Center);
 
     let badge = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);

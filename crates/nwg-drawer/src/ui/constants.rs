@@ -27,3 +27,6 @@ pub const CONTENT_TOP_MARGIN: i32 = 8;
 
 /// Diameter of the pin indicator badge in pixels.
 pub const PIN_BADGE_SIZE: i32 = 8;
+
+/// Horizontal spacing between pin badge and label.
+pub const PIN_BADGE_LABEL_GAP: i32 = 3;

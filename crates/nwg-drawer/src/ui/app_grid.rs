@@ -178,17 +178,23 @@ fn connect_pin(
     gesture.connect_released(move |gesture, _, _, _| {
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         let mut s = state_ref.borrow_mut();
-        if pinning::is_pinned(&s.pinned, &id) {
+        let was_pinned = pinning::is_pinned(&s.pinned, &id);
+        if was_pinned {
             pinning::unpin_item(&mut s.pinned, &id);
-            log::info!("Unpinned {}", id);
         } else {
             pinning::pin_item(&mut s.pinned, &id);
-            log::info!("Pinned {}", id);
         }
         if let Err(e) = pinning::save_pinned(&s.pinned, &path) {
             log::error!("Failed to save pinned state: {}", e);
+            // Rollback in-memory state to stay in sync with disk
+            if was_pinned {
+                pinning::pin_item(&mut s.pinned, &id);
+            } else {
+                pinning::unpin_item(&mut s.pinned, &id);
+            }
             return;
         }
+        log::info!("{} {}", if was_pinned { "Unpinned" } else { "Pinned" }, id);
         drop(s);
         rebuild();
     });
