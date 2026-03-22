@@ -318,6 +318,14 @@ fn handle_visible_dock(
 /// Shows the dock on the given monitor and hides it on all others.
 fn show_on_monitor_only(windows: &Rc<RefCell<Vec<gtk4::ApplicationWindow>>>, mon_idx: usize) {
     let wins = windows.borrow();
+    if mon_idx >= wins.len() {
+        log::debug!(
+            "Monitor index {} out of range (have {} windows)",
+            mon_idx,
+            wins.len()
+        );
+        return;
+    }
     for (i, win) in wins.iter().enumerate() {
         win.set_visible(i == mon_idx);
     }
