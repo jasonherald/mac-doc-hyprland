@@ -39,10 +39,10 @@ pub enum WindowCommand {
     Quit,
 }
 
-/// Installs the SIGTERM handler (process::exit on SIGTERM).
+/// Installs the SIGTERM handler (immediate termination via `_exit`).
 /// Shared by all three binaries to avoid duplicating unsafe sigaction setup.
 pub fn setup_sigterm_handler() {
-    // SAFETY: sigaction requires unsafe. The handler calls process::exit.
+    // SAFETY: sigaction requires unsafe. The handler performs only async-signal-safe termination.
     if let Err(e) = unsafe {
         signal::sigaction(
             Signal::SIGTERM,
@@ -140,6 +140,6 @@ pub fn send_signal_to_pid(pid: u32, sig_num: i32) -> bool {
 }
 
 extern "C" fn sigterm_handler(_: i32) {
-    log::info!("SIGTERM received, bye bye!");
-    std::process::exit(0);
+    // SAFETY: libc::_exit is async-signal-safe and terminates immediately.
+    unsafe { libc::_exit(0) }
 }
