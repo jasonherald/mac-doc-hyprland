@@ -7,8 +7,7 @@ use nwg_dock_common::compositor::{Compositor, WmMonitor};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Edge detection threshold in pixels from the screen edge.
-const EDGE_THRESHOLD: i32 = 2;
+use crate::ui::constants::EDGE_THRESHOLD;
 
 /// Starts a cursor position poller that shows/hides dock windows
 /// based on whether the cursor is near the screen edge or inside the dock.

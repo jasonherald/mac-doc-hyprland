@@ -7,8 +7,7 @@ use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Thickness of the hotspot trigger window in pixels.
-const HOTSPOT_THICKNESS: i32 = 4;
+use crate::ui::constants::HOTSPOT_THICKNESS;
 
 /// Shared state for creating/destroying hotspot windows on Sway during monitor hotplug.
 /// Returned by `setup_autohide` when the compositor uses the hotspot approach.
