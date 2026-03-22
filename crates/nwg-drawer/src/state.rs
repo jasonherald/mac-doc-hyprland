@@ -44,6 +44,9 @@ pub struct DrawerState {
     pub compositor: Rc<dyn Compositor>,
     /// Active category filter (empty = show all apps).
     pub active_category: Vec<String>,
+    /// Active search phrase (empty = not searching).
+    /// Used by rebuild paths to preserve search mode across pin/unpin.
+    pub active_search: String,
 }
 
 impl DrawerState {
@@ -58,6 +61,7 @@ impl DrawerState {
             gtk_theme_prefix: String::new(),
             compositor,
             active_category: Vec::new(),
+            active_search: String::new(),
         }
     }
 }

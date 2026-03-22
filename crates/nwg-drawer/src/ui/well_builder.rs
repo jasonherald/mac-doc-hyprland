@@ -109,6 +109,17 @@ pub fn build_search_results(
     // Hide pinned during search
     pinned_box.set_visible(false);
 
+    // Rebuild callback — rebuild_preserving_category checks active_search
+    // and will re-run the search instead of restoring normal view.
+    let on_rebuild = build_rebuild_callback(
+        well,
+        pinned_box,
+        config,
+        state,
+        pinned_file,
+        on_launch,
+        status_label,
+    );
     let app_flow = ui::app_grid::build_app_flow_box(
         config,
         state,
@@ -117,7 +128,7 @@ pub fn build_search_results(
         pinned_file,
         Rc::clone(on_launch),
         status_label,
-        None,
+        Some(&on_rebuild),
     );
     app_flow.set_halign(gtk4::Align::Center);
     well.append(&app_flow);
@@ -147,7 +158,7 @@ pub fn build_search_results(
     }
 }
 
-/// Rebuilds the well, then re-applies the active category filter if one is set.
+/// Rebuilds the well, preserving the current view mode (search, category, or normal).
 #[allow(clippy::too_many_arguments)]
 pub fn rebuild_preserving_category(
     well: &gtk4::Box,
@@ -158,27 +169,43 @@ pub fn rebuild_preserving_category(
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
 ) {
+    let active_search = state.borrow().active_search.clone();
     let active_cat = state.borrow().active_category.clone();
-    build_normal_well(
-        well,
-        pinned_box,
-        config,
-        state,
-        pinned_file,
-        on_launch,
-        status_label,
-    );
-    if !active_cat.is_empty() {
-        crate::ui::categories::apply_category_filter(
+
+    if !active_search.is_empty() {
+        // Re-run the search with updated pin state
+        build_search_results(
             well,
             pinned_box,
+            &active_search,
             config,
             state,
-            &active_cat,
             pinned_file,
             on_launch,
             status_label,
         );
+    } else {
+        build_normal_well(
+            well,
+            pinned_box,
+            config,
+            state,
+            pinned_file,
+            on_launch,
+            status_label,
+        );
+        if !active_cat.is_empty() {
+            crate::ui::categories::apply_category_filter(
+                well,
+                pinned_box,
+                config,
+                state,
+                &active_cat,
+                pinned_file,
+                on_launch,
+                status_label,
+            );
+        }
     }
 }
 

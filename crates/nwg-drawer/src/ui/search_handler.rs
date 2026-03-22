@@ -33,6 +33,7 @@ pub fn connect_search(
         if phrase.is_empty() {
             if *in_search_mode.borrow() {
                 *in_search_mode.borrow_mut() = false;
+                state.borrow_mut().active_search.clear();
                 well_builder::restore_normal_well(
                     &well,
                     &pinned_box,
@@ -64,7 +65,8 @@ pub fn connect_search(
             return;
         }
 
-        // Search mode — show matching apps + files
+        // Search mode — track in state and show matching apps + files
+        state.borrow_mut().active_search = phrase.clone();
         well_builder::build_search_results(
             &well,
             &pinned_box,

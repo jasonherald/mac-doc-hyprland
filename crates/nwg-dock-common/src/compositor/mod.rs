@@ -18,11 +18,13 @@ pub enum CompositorKind {
 /// Pass `wm_override` to force a specific backend (from `--wm` flag).
 pub fn detect(wm_override: Option<&str>) -> Result<CompositorKind> {
     if let Some(wm) = wm_override {
-        return match wm.to_lowercase().as_str() {
-            "hyprland" => Ok(CompositorKind::Hyprland),
-            "sway" => Ok(CompositorKind::Sway),
-            other => Err(DockError::UnsupportedCompositor(other.to_string())),
-        };
+        match wm.to_lowercase().as_str() {
+            "hyprland" => return Ok(CompositorKind::Hyprland),
+            "sway" => return Ok(CompositorKind::Sway),
+            // "uwsm" is a launch wrapper, not a compositor — fall through to auto-detect
+            "uwsm" => log::info!("uwsm detected, auto-detecting compositor from environment"),
+            other => return Err(DockError::UnsupportedCompositor(other.to_string())),
+        }
     }
 
     if std::env::var("HYPRLAND_INSTANCE_SIGNATURE").is_ok() {

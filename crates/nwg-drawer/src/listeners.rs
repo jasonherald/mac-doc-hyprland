@@ -171,18 +171,14 @@ pub fn setup_file_watcher(
 pub fn setup_signal_poller(
     win: &gtk4::ApplicationWindow,
     sig_rx: &Rc<mpsc::Receiver<WindowCommand>>,
+    resident: bool,
 ) {
     let win = win.clone();
     let rx = Rc::clone(sig_rx);
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
-            match cmd {
-                WindowCommand::Show => win.set_visible(true),
-                WindowCommand::Hide => win.set_visible(false),
-                WindowCommand::Toggle => win.set_visible(!win.is_visible()),
-                WindowCommand::Quit => win.close(),
-            }
+            handle_window_command(&win, cmd, resident);
         }
         glib::ControlFlow::Continue
     });
@@ -231,6 +227,32 @@ fn close_if_baseline_set(baseline: &Rc<RefCell<Option<String>>>, on_launch: &Rc<
         *b = None;
         drop(b);
         on_launch();
+    }
+}
+
+/// Processes a single window command from the signal handler.
+/// In resident mode, Hide/Toggle-off hides the window. In non-resident mode, they close it.
+fn handle_window_command(win: &gtk4::ApplicationWindow, cmd: WindowCommand, resident: bool) {
+    match cmd {
+        WindowCommand::Show => win.set_visible(true),
+        WindowCommand::Hide => dismiss(win, resident),
+        WindowCommand::Toggle => {
+            if win.is_visible() {
+                dismiss(win, resident);
+            } else {
+                win.set_visible(true);
+            }
+        }
+        WindowCommand::Quit => win.close(),
+    }
+}
+
+/// Hides the window in resident mode, closes it in non-resident mode.
+fn dismiss(win: &gtk4::ApplicationWindow, resident: bool) {
+    if resident {
+        win.set_visible(false);
+    } else {
+        win.close();
     }
 }
 

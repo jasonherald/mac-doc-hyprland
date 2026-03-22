@@ -285,9 +285,16 @@ fn activate_drawer(
         &on_launch,
         &status_label,
     );
-    listeners::setup_signal_poller(&win, sig_rx);
+    listeners::setup_signal_poller(&win, sig_rx, config.resident);
 
-    win.present();
+    // In resident mode, start hidden — the signal poller will show the window
+    // when a SIGRTMIN+1 (toggle) or SIGRTMIN+2 (show) signal is received.
+    if config.resident {
+        win.present();
+        win.set_visible(false);
+    } else {
+        win.present();
+    }
 }
 
 /// Applies GTK theme and icon theme settings from the config.
@@ -392,17 +399,17 @@ fn handle_open_close(config: &DrawerConfig) {
 }
 
 /// Acquires the singleton lock, sending toggle to existing instance if needed.
-fn acquire_singleton_lock(config: &DrawerConfig) -> singleton::LockFile {
+fn acquire_singleton_lock(_config: &DrawerConfig) -> singleton::LockFile {
     match singleton::acquire_lock("mac-drawer") {
         Ok(lock) => lock,
         Err(existing_pid) => {
             if let Some(pid) = existing_pid {
-                if config.resident {
-                    log::warn!("Resident instance already running (pid {})", pid);
-                } else {
-                    signals::send_signal_to_pid(pid, signals::sig_toggle());
-                    log::info!("Sent toggle signal to running instance (pid {}), bye!", pid);
-                }
+                // Always toggle the existing instance (whether resident or not).
+                // If it's resident, this shows/hides it. If it's non-resident,
+                // the signal handler closes the existing window so the new one
+                // can take over.
+                signals::send_signal_to_pid(pid, signals::sig_toggle());
+                log::info!("Sent toggle signal to existing instance (pid {})", pid);
             }
             std::process::exit(0);
         }
