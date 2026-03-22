@@ -136,9 +136,11 @@ fn activate_dock(
         dock.win.present();
     }
 
-    if config.autohide {
-        listeners::setup_autohide(&per_monitor, config, &state, compositor, app);
-    }
+    let hotspot_ctx = if config.autohide {
+        listeners::setup_autohide(&per_monitor, config, &state, compositor, app)
+    } else {
+        None
+    };
     events::start_event_listener(
         Rc::clone(&state),
         Rc::clone(&rebuild),
@@ -146,7 +148,7 @@ fn activate_dock(
     );
     listeners::setup_pin_watcher(pinned_file, &rebuild);
     listeners::setup_signal_poller(&per_monitor, sig_rx);
-    listeners::setup_monitor_watcher(app, &per_monitor, config, &rebuild);
+    listeners::setup_monitor_watcher(app, &per_monitor, config, &rebuild, hotspot_ctx);
 }
 
 /// Auto-detect launcher: hide button if command not found on PATH.

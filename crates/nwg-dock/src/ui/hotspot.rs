@@ -14,21 +14,41 @@ const EDGE_THRESHOLD: i32 = 2;
 /// Thickness of the hotspot trigger window in pixels.
 const HOTSPOT_THICKNESS: i32 = 4;
 
+/// Shared state for creating hotspot windows on Sway during monitor hotplug.
+/// Returned by `setup_autohide` when the compositor uses the hotspot approach.
+pub struct HotspotContext {
+    app: gtk4::Application,
+    position: crate::config::Position,
+    per_monitor: Rc<RefCell<Vec<MonitorDock>>>,
+    left_at: Rc<RefCell<Option<std::time::Instant>>>,
+}
+
+impl HotspotContext {
+    /// Creates a hotspot window for a newly added dock (called during reconciliation).
+    pub fn add_hotspot_for_dock(&self, dock: &MonitorDock) {
+        create_hotspot_window(&self.app, self.position, dock, &self.per_monitor, &self.left_at);
+    }
+}
+
 /// Sets up autohide using the appropriate method for the compositor.
 ///
 /// - Compositors with cursor position IPC (Hyprland): poll cursor position
 /// - Compositors without (Sway): use thin GTK layer-shell hotspot windows
+///
+/// Returns a `HotspotContext` for the Sway path, which reconciliation uses
+/// to create hotspot windows for hotplugged monitors.
 pub fn setup_autohide(
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     compositor: &Rc<dyn Compositor>,
     app: &gtk4::Application,
-) {
+) -> Option<Rc<HotspotContext>> {
     if compositor.supports_cursor_position() {
         start_cursor_poller(per_monitor, config, state, compositor);
+        None
     } else {
-        start_hotspot_windows(per_monitor, config, state, app);
+        Some(start_hotspot_windows(per_monitor, config, state, app))
     }
 }
 
@@ -43,12 +63,19 @@ fn start_hotspot_windows(
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     app: &gtk4::Application,
-) {
+) -> Rc<HotspotContext> {
     let hide_timeout = config.hide_timeout;
     let position = config.position;
 
     // Shared hide timer state
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
+
+    let ctx = Rc::new(HotspotContext {
+        app: app.clone(),
+        position,
+        per_monitor: Rc::clone(per_monitor),
+        left_at: Rc::clone(&left_at),
+    });
 
     // Create hotspot windows for each current dock window
     for dock in per_monitor.borrow().iter() {
@@ -78,6 +105,8 @@ fn start_hotspot_windows(
         }
         glib::ControlFlow::Continue
     });
+
+    ctx
 }
 
 /// Creates a single hotspot trigger window for one monitor and attaches enter/leave handlers.

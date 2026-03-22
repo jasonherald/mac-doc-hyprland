@@ -86,13 +86,15 @@ pub fn setup_signal_poller(
 
 /// Sets up autohide: hides dock windows after initial show,
 /// then starts the appropriate autohide mechanism for the compositor.
+/// Returns a `HotspotContext` for Sway (used by reconciliation to create
+/// hotspot windows for hotplugged monitors).
 pub fn setup_autohide(
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     state: &Rc<RefCell<DockState>>,
     compositor: &Rc<dyn Compositor>,
     app: &gtk4::Application,
-) {
+) -> Option<Rc<crate::ui::hotspot::HotspotContext>> {
     for dock in per_monitor.borrow().iter() {
         let win = dock.win.clone();
         glib::timeout_add_local_once(AUTOHIDE_INITIAL_DELAY, move || {
@@ -100,7 +102,7 @@ pub fn setup_autohide(
         });
     }
 
-    crate::ui::hotspot::setup_autohide(per_monitor, config, state, compositor, app);
+    crate::ui::hotspot::setup_autohide(per_monitor, config, state, compositor, app)
 }
 
 /// Watches for GDK display monitor changes and reconciles dock windows.
@@ -113,6 +115,7 @@ pub fn setup_monitor_watcher(
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &Rc<DockConfig>,
     rebuild_fn: &Rc<dyn Fn()>,
+    hotspot_ctx: Option<Rc<crate::ui::hotspot::HotspotContext>>,
 ) {
     let Some(display) = gtk4::gdk::Display::default() else {
         log::error!("No default GDK display for monitor watcher");
@@ -137,11 +140,12 @@ pub fn setup_monitor_watcher(
         let per_monitor = Rc::clone(&per_monitor);
         let config = Rc::clone(&config);
         let rebuild_fn = Rc::clone(&rebuild_fn);
+        let hotspot_ctx = hotspot_ctx.clone();
 
         glib::idle_add_local_once(move || {
             pending.set(false);
             log::info!("Monitor topology changed, reconciling dock windows");
-            reconcile_monitors(&app, &per_monitor, &config, &rebuild_fn);
+            reconcile_monitors(&app, &per_monitor, &config, &rebuild_fn, hotspot_ctx.as_deref());
         });
     });
 }
@@ -153,6 +157,7 @@ fn reconcile_monitors(
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     config: &DockConfig,
     rebuild_fn: &Rc<dyn Fn()>,
+    hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
 ) {
     let current_monitors = monitor::resolve_monitors(config);
     let current_names: Vec<String> = current_monitors.iter().map(|(n, _)| n.clone()).collect();
@@ -195,6 +200,10 @@ fn reconcile_monitors(
                 glib::timeout_add_local_once(AUTOHIDE_INITIAL_DELAY, move || {
                     win.set_visible(false);
                 });
+            }
+            // Create Sway hotspot window for the new dock if needed
+            if let Some(ctx) = hotspot_ctx {
+                ctx.add_hotspot_for_dock(&dock);
             }
             per_monitor.borrow_mut().push(dock);
         }
