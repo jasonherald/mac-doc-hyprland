@@ -5,8 +5,6 @@ use nwg_dock_common::desktop::icons;
 /// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
 ///
 /// Shared between app_grid and pinned modules to eliminate duplication.
-/// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
-///
 /// If `status_label` and `description` are provided, the button updates the
 /// status bar on hover/focus with the app description (matching Go behavior).
 pub fn app_icon_button(
