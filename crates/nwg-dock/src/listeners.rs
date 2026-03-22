@@ -4,6 +4,7 @@ use crate::monitor;
 use crate::state::DockState;
 use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4_layer_shell::LayerShell;
 use notify::{RecursiveMode, Watcher};
 use nwg_dock_common::compositor::Compositor;
 use nwg_dock_common::signals::WindowCommand;
@@ -167,7 +168,9 @@ fn reconcile_monitors(
     hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
 ) {
     let current_monitors = monitor::resolve_monitors(config);
-    let current_names: Vec<String> = current_monitors.iter().map(|(n, _)| n.clone()).collect();
+    let monitor_map: std::collections::HashMap<String, gtk4::gdk::Monitor> =
+        current_monitors.into_iter().collect();
+    let current_names: Vec<String> = monitor_map.keys().cloned().collect();
     let existing_names: Vec<String> = per_monitor
         .borrow()
         .iter()
@@ -175,6 +178,14 @@ fn reconcile_monitors(
         .collect();
 
     let (to_add, to_remove) = dock_windows::compute_monitor_diff(&existing_names, &current_names);
+
+    // Always refresh GDK monitor references — a reconnected monitor with the same
+    // connector name produces a new gdk::Monitor object, and the old one is stale.
+    for dock in per_monitor.borrow().iter() {
+        if let Some(mon) = monitor_map.get(&dock.output_name) {
+            dock.win.set_monitor(Some(mon));
+        }
+    }
 
     if to_add.is_empty() && to_remove.is_empty() {
         log::debug!("Monitor topology unchanged after debounce");
@@ -198,8 +209,6 @@ fn reconcile_monitors(
     }
 
     // Create dock windows for new monitors
-    let monitor_map: std::collections::HashMap<String, gtk4::gdk::Monitor> =
-        current_monitors.into_iter().collect();
     for name in &to_add {
         if let Some(gdk_mon) = monitor_map.get(name) {
             log::info!("Creating dock window for new monitor: {}", name);
