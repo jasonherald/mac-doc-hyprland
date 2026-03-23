@@ -32,8 +32,8 @@ pub fn install_grid_nav(
         let (idx, col) = focused_position(&flow_ref, cols);
 
         match keyval {
-            gtk4::gdk::Key::Right => nav_horizontal(&flow_ref, idx, 1, total),
-            gtk4::gdk::Key::Left => nav_horizontal(&flow_ref, idx, -1, total),
+            gtk4::gdk::Key::Right => nav_horizontal(&flow_ref, idx, col, 1, cols, total),
+            gtk4::gdk::Key::Left => nav_horizontal(&flow_ref, idx, col, -1, cols, total),
             gtk4::gdk::Key::Down => nav_down(&flow_ref, idx, col, cols, total, &down_ref),
             gtk4::gdk::Key::Up => nav_up(&flow_ref, idx, col, cols, &up_ref),
             _ => gtk4::glib::Propagation::Proceed,
@@ -73,12 +73,19 @@ pub(super) fn install_file_results_nav(container: &gtk4::Box) {
 }
 
 /// Handles Left/Right navigation within a grid row.
+/// Clamps to row boundaries so Right on the last column doesn't wrap to the next row.
 fn nav_horizontal(
     flow: &gtk4::FlowBox,
     idx: i32,
+    col: i32,
     delta: i32,
+    cols: u32,
     total: i32,
 ) -> gtk4::glib::Propagation {
+    let new_col = col + delta;
+    if new_col < 0 || new_col >= cols as i32 {
+        return gtk4::glib::Propagation::Stop; // At row edge — don't wrap
+    }
     let next = idx + delta;
     if next >= 0 && next < total {
         focus_child_button(flow, next);
@@ -194,10 +201,13 @@ fn focus_next_visible(start: &impl IsA<gtk4::Widget>) -> bool {
 
 /// Finds the nearest item at `col` starting from the bottom row and walking up.
 /// Handles partial last rows where the target column may not have an item.
+/// Clamps `col` to the target grid width when transitioning from a wider grid.
 fn find_column_from_bottom(col: i32, cols: u32, total: i32) -> i32 {
-    let last_row = (total - 1) / cols as i32;
+    let cols_i = cols as i32;
+    let clamped_col = col.min(cols_i - 1).max(0);
+    let last_row = (total - 1) / cols_i;
     for row in (0..=last_row).rev() {
-        let idx = row * cols as i32 + col;
+        let idx = row * cols_i + clamped_col;
         if idx < total {
             return idx;
         }
@@ -307,5 +317,13 @@ mod tests {
     fn find_column_from_bottom_single_column() {
         // 1 column, 5 items. Column 0, bottom → index 4.
         assert_eq!(find_column_from_bottom(0, 1, 5), 4);
+    }
+
+    #[test]
+    fn find_column_from_bottom_clamps_oversized_column() {
+        // Transitioning from a 4-column grid to a 2-column grid.
+        // col=3 exceeds target width → clamp to col 1 (last column in target).
+        // 2 columns, 3 items. Row 1: [0,1], Row 2: [2]. Col 1, bottom → index 1.
+        assert_eq!(find_column_from_bottom(3, 2, 3), 1);
     }
 }

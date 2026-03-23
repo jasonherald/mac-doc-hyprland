@@ -9,6 +9,12 @@ use std::rc::Rc;
 
 use crate::ui::constants::EDGE_THRESHOLD;
 
+/// Cursor polling interval in milliseconds.
+const CURSOR_POLL_INTERVAL_MS: u64 = 200;
+
+/// Number of poll cycles between monitor cache refreshes (~10 seconds).
+const MONITOR_REFRESH_POLLS: u32 = 50;
+
 /// Starts a cursor position poller that shows/hides dock windows
 /// based on whether the cursor is near the screen edge or inside the dock.
 ///
@@ -47,7 +53,7 @@ pub(super) fn start_cursor_poller(
             .collect(),
     ));
 
-    glib::timeout_add_local(std::time::Duration::from_millis(200), move || {
+    glib::timeout_add_local(std::time::Duration::from_millis(CURSOR_POLL_INTERVAL_MS), move || {
         let cursor = match compositor.get_cursor_position() {
             Some((x, y)) => CursorPos { x, y },
             None => return glib::ControlFlow::Continue,
@@ -73,7 +79,7 @@ pub(super) fn start_cursor_poller(
         {
             let mut count = monitor_refresh_counter.borrow_mut();
             *count += 1;
-            if *count >= 50 || topology_changed {
+            if *count >= MONITOR_REFRESH_POLLS || topology_changed {
                 *count = 0;
                 match compositor.list_monitors() {
                     Ok(m) => *cached_monitors.borrow_mut() = m,
@@ -291,4 +297,75 @@ fn is_cursor_in_visible_dock(
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nwg_dock_common::compositor::WmWorkspace;
+
+    fn test_monitor(name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
+        WmMonitor {
+            id: 0,
+            name: name.to_string(),
+            x,
+            y,
+            width: w,
+            height: h,
+            scale: 1.0,
+            focused: false,
+            active_workspace: WmWorkspace::default(),
+        }
+    }
+
+    #[test]
+    fn edge_detection_bottom() {
+        let monitors = vec![test_monitor("DP-1", 0, 0, 1920, 1080)];
+        let at_edge = CursorPos { x: 960, y: 1079 };
+        let not_edge = CursorPos { x: 960, y: 500 };
+        assert!(is_cursor_at_edge(&at_edge, &monitors, crate::config::Position::Bottom));
+        assert!(!is_cursor_at_edge(&not_edge, &monitors, crate::config::Position::Bottom));
+    }
+
+    #[test]
+    fn edge_detection_top() {
+        let monitors = vec![test_monitor("DP-1", 0, 0, 1920, 1080)];
+        let at_edge = CursorPos { x: 960, y: 1 };
+        let not_edge = CursorPos { x: 960, y: 500 };
+        assert!(is_cursor_at_edge(&at_edge, &monitors, crate::config::Position::Top));
+        assert!(!is_cursor_at_edge(&not_edge, &monitors, crate::config::Position::Top));
+    }
+
+    #[test]
+    fn find_monitor_by_cursor_position() {
+        let monitors = vec![
+            test_monitor("DP-1", 0, 0, 1920, 1080),
+            test_monitor("HDMI-A-1", 1920, 0, 2560, 1440),
+        ];
+        assert_eq!(
+            find_cursor_monitor_name(&CursorPos { x: 500, y: 500 }, &monitors).as_deref(),
+            Some("DP-1")
+        );
+        assert_eq!(
+            find_cursor_monitor_name(&CursorPos { x: 2000, y: 500 }, &monitors).as_deref(),
+            Some("HDMI-A-1")
+        );
+        assert!(find_cursor_monitor_name(&CursorPos { x: 5000, y: 5000 }, &monitors).is_none());
+    }
+
+    #[test]
+    fn dock_bounds_bottom_center() {
+        let mon = test_monitor("DP-1", 0, 0, 1920, 1080);
+        let (x, y) = dock_bounds_for_position(&mon, 800, 50, crate::config::Position::Bottom);
+        assert_eq!(x, (1920 - 800) / 2);
+        assert_eq!(y, 1080 - 50);
+    }
+
+    #[test]
+    fn dock_bounds_with_offset_monitor() {
+        let mon = test_monitor("HDMI-A-1", 1920, 0, 2560, 1440);
+        let (x, y) = dock_bounds_for_position(&mon, 800, 50, crate::config::Position::Bottom);
+        assert_eq!(x, 1920 + (2560 - 800) / 2);
+        assert_eq!(y, 1440 - 50);
+    }
 }

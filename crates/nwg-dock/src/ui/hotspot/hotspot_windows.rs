@@ -1,13 +1,13 @@
+use super::show_on_monitor_only_by_name;
 use crate::config::DockConfig;
 use crate::dock_windows::MonitorDock;
 use crate::state::DockState;
+use crate::ui::constants::HOTSPOT_THICKNESS;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use crate::ui::constants::HOTSPOT_THICKNESS;
 
 /// Shared state for creating/destroying hotspot windows on Sway during monitor hotplug.
 /// Returned by `setup_autohide` when the compositor uses the hotspot approach.
@@ -226,5 +226,3 @@ fn setup_hotspot_layer(win: &gtk4::ApplicationWindow, position: crate::config::P
         }
     }
 }
-
-use super::show_on_monitor_only_by_name;
