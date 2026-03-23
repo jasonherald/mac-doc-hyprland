@@ -164,10 +164,15 @@ fn create_hotspot_window(
     let docks_enter = Rc::clone(&docks);
     let name_enter = output_name.clone();
     let left_at_enter = Rc::clone(left_at);
+    let left_at_hotspot_leave = Rc::clone(left_at);
     let motion = gtk4::EventControllerMotion::new();
     motion.connect_enter(move |_, _, _| {
         show_on_monitor_only_by_name(&docks_enter, &name_enter);
         *left_at_enter.borrow_mut() = None;
+    });
+    // Hotspot leave → start hide timer (cursor may leave without entering dock)
+    motion.connect_leave(move |_| {
+        *left_at_hotspot_leave.borrow_mut() = Some(std::time::Instant::now());
     });
     hotspot.add_controller(motion);
 
