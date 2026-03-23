@@ -1,7 +1,39 @@
 use crate::compositor::Compositor;
 use crate::desktop::icons::get_exec;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command};
+use std::sync::mpsc;
+
+/// Sends a child process to the shared reaper thread for exit status monitoring.
+fn reap_child(child: Child, label: String) {
+    static SENDER: std::sync::OnceLock<std::sync::Mutex<mpsc::Sender<(Child, String)>>> =
+        std::sync::OnceLock::new();
+
+    let sender = SENDER.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<(Child, String)>();
+        std::thread::Builder::new()
+            .name("child-reaper".into())
+            .spawn(move || {
+                for (mut child, cmd) in rx {
+                    match child.wait() {
+                        Ok(status) if !status.success() => {
+                            log::warn!("Shell command '{}' exited with {}", cmd, status);
+                        }
+                        Err(e) => {
+                            log::warn!("Failed to wait on shell command '{}': {}", cmd, e);
+                        }
+                        _ => {}
+                    }
+                }
+            })
+            .expect("failed to spawn child-reaper thread");
+        std::sync::Mutex::new(tx)
+    });
+
+    if let Ok(tx) = sender.lock() {
+        let _ = tx.send((child, label)); // Non-critical: reaper may have exited
+    }
+}
 
 /// Launches an application by its class/app ID.
 ///
@@ -89,25 +121,8 @@ pub fn launch_shell_command(command: &str) {
     }
     log::info!("Running shell command: {}", command);
     match Command::new("sh").args(["-c", command]).spawn() {
-        Ok(child) => {
-            // Monitor exit status on a background thread to log failures
-            let cmd = command.to_string();
-            std::thread::spawn(move || {
-                let mut child = child;
-                match child.wait() {
-                    Ok(status) if !status.success() => {
-                        log::warn!("Shell command '{}' exited with {}", cmd, status);
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to wait on shell command '{}': {}", cmd, e);
-                    }
-                    _ => {}
-                }
-            });
-        }
-        Err(e) => {
-            log::error!("Failed to spawn shell command '{}': {}", command, e);
-        }
+        Ok(child) => reap_child(child, command.to_string()),
+        Err(e) => log::error!("Failed to spawn shell command '{}': {}", command, e),
     }
 }
 
@@ -282,12 +297,12 @@ mod tests {
     const WAIT_RETRIES: usize = 40; // 2s total with 50ms interval
     const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
-    /// Polls a file until it exists and has content, or times out.
-    fn wait_for_file(path: &std::path::Path) -> String {
+    /// Polls a file until a readiness predicate matches, or times out.
+    fn wait_for_file(path: &std::path::Path, ready: impl Fn(&str) -> bool) -> String {
         for _ in 0..WAIT_RETRIES {
             std::thread::sleep(WAIT_INTERVAL);
             if let Ok(c) = std::fs::read_to_string(path)
-                && !c.is_empty()
+                && ready(&c)
             {
                 return c;
             }
@@ -316,7 +331,7 @@ mod tests {
         );
         launch_shell_command(&cmd);
 
-        let content = wait_for_file(&tmp);
+        let content = wait_for_file(&tmp, |c| c.trim() == "hello world");
         assert_eq!(content.trim(), "hello world");
         remove_test_file(&tmp);
     }
@@ -333,7 +348,8 @@ mod tests {
         );
         launch_shell_command(&cmd);
 
-        let content = wait_for_file(&tmp);
+        // Wait for both lines to be written
+        let content = wait_for_file(&tmp, |c| c.trim().lines().count() >= 2);
         let lines: Vec<&str> = content.trim().lines().collect();
         assert_eq!(lines, vec!["arg with spaces", "another 'nested' arg"]);
         remove_test_file(&tmp);
