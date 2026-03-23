@@ -68,21 +68,26 @@ fn enqueue_or_reap_sync(
     mut child: Child,
     label: String,
 ) {
-    match sender.lock() {
+    // Send under the lock, then drop the guard before any blocking wait
+    let send_err = match sender.lock() {
         Ok(tx) => {
-            if let Err(e) = tx.send((child, label.clone())) {
-                log::error!("Reaper channel closed for '{}': {}", label, e);
-                let (mut orphan, _) = e.0;
-                if let Err(wait_err) = orphan.wait() {
-                    log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
-                }
-            }
+            let result = tx.send((child, label.clone()));
+            drop(tx);
+            result.err()
         }
         Err(e) => {
             log::error!("Reaper mutex poisoned for '{}': {}", label, e);
             if let Err(wait_err) = child.wait() {
                 log::warn!("Failed to wait on child '{}': {}", label, wait_err);
             }
+            return;
+        }
+    };
+    if let Some(e) = send_err {
+        log::error!("Reaper channel closed for '{}': {}", label, e);
+        let (mut orphan, _) = e.0;
+        if let Err(wait_err) = orphan.wait() {
+            log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
         }
     }
 }
