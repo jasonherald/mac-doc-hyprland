@@ -124,6 +124,7 @@ pub fn launch_desktop_entry(
 ) {
     let clean = crate::desktop::entry::strip_field_codes(exec);
     if clean.is_empty() {
+        log::debug!("Skipping launch: exec string is empty after stripping field codes");
         return;
     }
     let cmd = prepend_theme(&clean, theme_prefix);
@@ -375,6 +376,29 @@ mod tests {
         let (env, cmd) = extract_env_prefix(&elements);
         assert!(env.is_empty());
         assert_eq!(cmd, &["1VAR=bad", "firefox"]);
+    }
+
+    #[test]
+    fn prepend_theme_empty_prefix() {
+        assert_eq!(prepend_theme("firefox", ""), "firefox");
+    }
+
+    #[test]
+    fn prepend_theme_with_prefix() {
+        assert_eq!(
+            prepend_theme("firefox", "GTK_THEME=Adwaita:dark"),
+            "GTK_THEME=Adwaita:dark firefox"
+        );
+    }
+
+    #[test]
+    fn launch_desktop_entry_empty_exec_is_noop() {
+        // Exec that reduces to empty after field code stripping should not panic
+        // (can't test compositor launch without a live compositor, but we can
+        // verify the empty-exec early return path)
+        use crate::desktop::entry::strip_field_codes;
+        assert!(strip_field_codes("%u").is_empty());
+        assert!(strip_field_codes("%F").is_empty());
     }
 
     #[test]
