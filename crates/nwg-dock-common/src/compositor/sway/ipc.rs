@@ -15,12 +15,12 @@ pub(super) const HEADER_SIZE: usize = 14; // 6 (magic) + 4 (length) + 4 (type)
 const MAX_PAYLOAD_SIZE: usize = 100_000_000;
 
 pub(super) fn send_message(conn: &mut UnixStream, msg_type: u32, payload: &[u8]) -> Result<()> {
-    let mut header = Vec::with_capacity(HEADER_SIZE + payload.len());
-    header.extend_from_slice(I3_IPC_MAGIC);
-    header.extend_from_slice(&(payload.len() as u32).to_le_bytes());
-    header.extend_from_slice(&msg_type.to_le_bytes());
-    header.extend_from_slice(payload);
-    conn.write_all(&header)?;
+    let mut message = Vec::with_capacity(HEADER_SIZE + payload.len());
+    message.extend_from_slice(I3_IPC_MAGIC);
+    message.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+    message.extend_from_slice(&msg_type.to_le_bytes());
+    message.extend_from_slice(payload);
+    conn.write_all(&message)?;
     Ok(())
 }
 
