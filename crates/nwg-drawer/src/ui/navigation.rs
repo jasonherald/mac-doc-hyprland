@@ -263,3 +263,40 @@ fn remove_named_controller(widget: &impl IsA<gtk4::Widget>, name: &str) {
         widget.remove_controller(&ctrl);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_column_from_bottom_exact() {
+        // 3 columns, 6 items (2 full rows). Column 1, bottom row → index 4.
+        assert_eq!(find_column_from_bottom(1, 3, 6), 4);
+    }
+
+    #[test]
+    fn find_column_from_bottom_partial_last_row() {
+        // 3 columns, 5 items. Last row has only 2 items (indices 3,4).
+        // Column 2 doesn't exist in last row → walk up to row 0, index 2.
+        assert_eq!(find_column_from_bottom(2, 3, 5), 2);
+    }
+
+    #[test]
+    fn find_column_from_bottom_single_item() {
+        // 3 columns, 1 item. Only index 0 exists.
+        assert_eq!(find_column_from_bottom(0, 3, 1), 0);
+        assert_eq!(find_column_from_bottom(1, 3, 1), 0); // col 1 not in row 0, saturates
+    }
+
+    #[test]
+    fn find_column_from_bottom_full_grid() {
+        // 4 columns, 8 items (2 full rows). Column 3, bottom row → index 7.
+        assert_eq!(find_column_from_bottom(3, 4, 8), 7);
+    }
+
+    #[test]
+    fn find_column_from_bottom_single_column() {
+        // 1 column, 5 items. Column 0, bottom → index 4.
+        assert_eq!(find_column_from_bottom(0, 1, 5), 4);
+    }
+}
