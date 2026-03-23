@@ -77,6 +77,22 @@ fn launch_via_uwsm(command: &str) {
     }
 }
 
+/// Launches a user-provided shell command string via `sh -c`.
+///
+/// Handles complex quoting, pipes, redirects, and nested quotes correctly.
+/// Use this for user-configured commands (power bar, launcher button, etc.)
+/// where the command string is a full shell expression.
+pub fn launch_shell_command(command: &str) {
+    let command = command.trim();
+    if command.is_empty() {
+        return;
+    }
+    log::info!("Running shell command: {}", command);
+    if let Err(e) = Command::new("sh").args(["-c", command]).spawn() {
+        log::error!("Failed to run shell command '{}': {}", command, e);
+    }
+}
+
 /// Launches a command with terminal wrapping via the compositor.
 pub fn launch_terminal_via_compositor(command: &str, term: &str, compositor: &dyn Compositor) {
     let full = format!("{} -e {}", term, command);
@@ -236,5 +252,55 @@ mod tests {
         let (env, cmd) = extract_env_prefix(&elements);
         assert!(env.is_empty());
         assert_eq!(cmd, &["1VAR=bad", "firefox"]);
+    }
+
+    #[test]
+    fn shell_command_empty_is_noop() {
+        // Should not panic or spawn anything
+        launch_shell_command("");
+        launch_shell_command("   ");
+    }
+
+    #[test]
+    fn shell_command_handles_nested_quotes() {
+        // Simulate nwg-piotr's power bar command with nested quotes.
+        // Use echo to a temp file so we can verify the shell parsed it correctly.
+        let tmp = std::env::temp_dir().join("nwg-shell-test-output");
+        let _ = std::fs::remove_file(&tmp);
+
+        let cmd = format!(
+            r#"sh -c "echo 'hello world' > {}""#,
+            tmp.display()
+        );
+        launch_shell_command(&cmd);
+
+        // Wait briefly for the child process to finish
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        let content = std::fs::read_to_string(&tmp).unwrap_or_default();
+        assert_eq!(content.trim(), "hello world");
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn shell_command_handles_complex_quoting() {
+        // Simulates: nwg-dialog -p exit -c "loginctl terminate-user \"\""
+        // We can't run nwg-dialog, but we can verify sh -c handles the quoting
+        // by using printf to write the parsed arguments to a temp file.
+        let tmp = std::env::temp_dir().join("nwg-shell-test-complex");
+        let _ = std::fs::remove_file(&tmp);
+
+        let cmd = format!(
+            r#"printf '%s\n' "arg with spaces" "another 'nested' arg" > {}"#,
+            tmp.display()
+        );
+        launch_shell_command(&cmd);
+
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        let content = std::fs::read_to_string(&tmp).unwrap_or_default();
+        let lines: Vec<&str> = content.trim().lines().collect();
+        assert_eq!(lines, vec!["arg with spaces", "another 'nested' arg"]);
+        let _ = std::fs::remove_file(&tmp);
     }
 }
