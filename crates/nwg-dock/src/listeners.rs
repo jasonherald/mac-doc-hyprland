@@ -44,7 +44,7 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
         };
 
         if let Some(parent) = pin_path.parent() {
-            let _ = watcher.watch(parent, RecursiveMode::NonRecursive); // Best-effort: logged by notify
+            let _ = watcher.watch(parent, RecursiveMode::NonRecursive); // Best-effort: failure means no pin file events
         }
         // Block forever — watcher stops if thread exits
         std::thread::park();
