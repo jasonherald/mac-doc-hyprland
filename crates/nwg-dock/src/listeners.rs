@@ -43,8 +43,11 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
             }
         };
 
-        if let Some(parent) = pin_path.parent() {
-            let _ = watcher.watch(parent, RecursiveMode::NonRecursive); // Best-effort: failure means no pin file events
+        if let Some(parent) = pin_path.parent()
+            && let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive)
+        {
+            log::warn!("Failed to watch pin file directory '{}': {}", parent.display(), e);
+            return;
         }
         // Block forever — watcher stops if thread exits
         std::thread::park();
@@ -181,7 +184,7 @@ fn reconcile_monitors(
 
     // Always refresh GDK monitor references — a reconnected monitor with the same
     // connector name produces a new gdk::Monitor object, and the old one is stale.
-    refresh_monitor_refs(per_monitor, &monitor_map);
+    refresh_monitor_refs(per_monitor, &monitor_map, hotspot_ctx);
 
     if to_add.is_empty() && to_remove.is_empty() {
         log::debug!("Monitor topology unchanged after debounce");
@@ -193,15 +196,19 @@ fn reconcile_monitors(
     rebuild_fn();
 }
 
-/// Refreshes GDK monitor references on existing dock windows.
+/// Refreshes GDK monitor references on existing dock and hotspot windows.
 fn refresh_monitor_refs(
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     monitor_map: &std::collections::HashMap<String, gtk4::gdk::Monitor>,
+    hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
 ) {
     for dock in per_monitor.borrow().iter() {
         if let Some(mon) = monitor_map.get(&dock.output_name) {
             dock.win.set_monitor(Some(mon));
         }
+    }
+    if let Some(ctx) = hotspot_ctx {
+        ctx.refresh_monitor_refs(monitor_map);
     }
 }
 

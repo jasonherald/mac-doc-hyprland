@@ -29,8 +29,15 @@ pub(super) fn start_cursor_poller(
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
     // Cache monitors — refreshed periodically and immediately on topology changes
-    let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> =
-        Rc::new(RefCell::new(compositor.list_monitors().unwrap_or_default()));
+    let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> = Rc::new(RefCell::new(
+        match compositor.list_monitors() {
+            Ok(m) => m,
+            Err(e) => {
+                log::warn!("Initial monitor list failed: {}", e);
+                Vec::new()
+            }
+        },
+    ));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
     let last_outputs: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(
         docks
@@ -68,8 +75,9 @@ pub(super) fn start_cursor_poller(
             *count += 1;
             if *count >= 50 || topology_changed {
                 *count = 0;
-                if let Ok(m) = compositor.list_monitors() {
-                    *cached_monitors.borrow_mut() = m;
+                match compositor.list_monitors() {
+                    Ok(m) => *cached_monitors.borrow_mut() = m,
+                    Err(e) => log::debug!("Monitor cache refresh failed: {}", e),
                 }
             }
         }

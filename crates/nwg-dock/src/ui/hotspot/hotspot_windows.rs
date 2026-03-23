@@ -41,6 +41,18 @@ impl HotspotContext {
             hotspot.close();
         }
     }
+
+    /// Refreshes GDK monitor references on hotspot windows (same-name reconnect).
+    pub fn refresh_monitor_refs(
+        &self,
+        monitor_map: &std::collections::HashMap<String, gtk4::gdk::Monitor>,
+    ) {
+        for (name, hotspot) in self.hotspots.borrow().iter() {
+            if let Some(mon) = monitor_map.get(name) {
+                hotspot.set_monitor(Some(mon));
+            }
+        }
+    }
 }
 
 /// Creates thin layer-shell windows at the dock edge to trigger show on hover.

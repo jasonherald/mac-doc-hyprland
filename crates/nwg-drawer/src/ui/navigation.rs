@@ -47,9 +47,13 @@ pub fn install_grid_nav(
 /// GTK handles Down between buttons natively. Up from the first button
 /// needs to reach the app search FlowBox above.
 pub(super) fn install_file_results_nav(container: &gtk4::Box) {
+    // Remove any previous controller to avoid stacking on rebuild
+    remove_named_controller(container, "file-results-nav");
+
     let container_ref = container.clone();
     let ctrl = gtk4::EventControllerKey::new();
     ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    ctrl.set_name(Some("file-results-nav"));
     ctrl.connect_key_pressed(move |_, keyval, _, _| {
         match keyval {
             gtk4::gdk::Key::Up => {
@@ -100,7 +104,12 @@ fn nav_down(
     if let Some(target) = down_target {
         let target_total = count_flow_children(target);
         if target_total > 0 {
-            focus_child_button(target, col.min(target_total - 1));
+            // Clamp by target grid width so we land in the first row, not a later one
+            let target_cols = target
+                .max_children_per_line()
+                .min(target_total as u32)
+                .max(1) as i32;
+            focus_child_button(target, col.min(target_cols - 1));
             return gtk4::glib::Propagation::Stop;
         }
         // Target exists but is empty — fall through to widget search

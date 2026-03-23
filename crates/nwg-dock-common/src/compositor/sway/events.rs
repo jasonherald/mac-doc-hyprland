@@ -21,9 +21,11 @@ impl SwayEventStream {
         // Check subscription success
         let result: serde_json::Value = serde_json::from_slice(&reply)?;
         if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
-            return Err(DockError::Ipc(std::io::Error::other(
-                "Sway event subscription failed",
-            )));
+            let err = result
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Sway event subscription failed");
+            return Err(DockError::Ipc(std::io::Error::other(err.to_string())));
         }
         Ok(Self { conn })
     }

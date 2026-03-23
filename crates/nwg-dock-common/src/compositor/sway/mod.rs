@@ -131,7 +131,7 @@ impl Compositor for SwayBackend {
 
 /// Validates that a Sway container ID is numeric to prevent command injection.
 fn validate_con_id(id: &str) -> Result<&str> {
-    if id.chars().all(|c| c.is_ascii_digit()) {
+    if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
         Ok(id)
     } else {
         Err(DockError::Ipc(std::io::Error::new(
