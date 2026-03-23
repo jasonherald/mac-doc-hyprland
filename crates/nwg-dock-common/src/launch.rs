@@ -9,66 +9,85 @@ const REAPER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_mill
 
 /// Sends a child process to the shared reaper thread for exit status monitoring.
 /// Uses try_wait polling so long-running GUI apps don't block reaping of others.
-fn reap_child(mut child: Child, label: String) {
+fn reap_child(child: Child, label: String) {
     static SENDER: std::sync::OnceLock<std::sync::Mutex<mpsc::Sender<(Child, String)>>> =
         std::sync::OnceLock::new();
 
     let sender = SENDER.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<(Child, String)>();
-        let spawn_result = std::thread::Builder::new()
+        if let Err(e) = std::thread::Builder::new()
             .name("child-reaper".into())
-            .spawn(move || {
-                let mut children: Vec<(Child, String)> = Vec::new();
-                loop {
-                    // Drain new children from the channel
-                    match rx.recv_timeout(REAPER_POLL_INTERVAL) {
-                        Ok(job) => children.push(job),
-                        Err(mpsc::RecvTimeoutError::Timeout) => {}
-                        Err(mpsc::RecvTimeoutError::Disconnected) if children.is_empty() => break,
-                        Err(mpsc::RecvTimeoutError::Disconnected) => {}
-                    }
-                    // Poll all tracked children with try_wait (non-blocking)
-                    let mut i = 0;
-                    while i < children.len() {
-                        match children[i].0.try_wait() {
-                            Ok(Some(status)) => {
-                                let (_, cmd) = children.swap_remove(i);
-                                if !status.success() {
-                                    log::warn!("Shell command '{}' exited with {}", cmd, status);
-                                }
-                            }
-                            Ok(None) => i += 1, // Still running
-                            Err(e) => {
-                                let (_, cmd) = children.swap_remove(i);
-                                log::warn!("Failed to wait on shell command '{}': {}", cmd, e);
-                            }
-                        }
-                    }
-                }
-            });
-        if let Err(e) = spawn_result {
+            .spawn(move || reaper_loop(rx))
+        {
             log::error!("Failed to spawn child-reaper thread: {}", e);
             // Fallback is safe: send() will fail and callers synchronously reap.
         }
         std::sync::Mutex::new(tx)
     });
 
-    // Enqueue child; fall back to synchronous wait if reaper is unavailable
-    match sender.lock() {
-        Ok(tx) => {
-            if let Err(e) = tx.send((child, label.clone())) {
-                log::error!("Reaper channel closed for '{}': {}", label, e);
-                let (mut orphan, _) = e.0;
-                if let Err(wait_err) = orphan.wait() {
-                    log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
+    enqueue_or_reap_sync(sender, child, label);
+}
+
+/// Main loop for the child-reaper thread: receives children and polls them.
+fn reaper_loop(rx: mpsc::Receiver<(Child, String)>) {
+    let mut children: Vec<(Child, String)> = Vec::new();
+    loop {
+        match rx.recv_timeout(REAPER_POLL_INTERVAL) {
+            Ok(job) => children.push(job),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) if children.is_empty() => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {}
+        }
+        poll_children(&mut children);
+    }
+}
+
+/// Non-blocking poll of all tracked children, removing finished ones.
+fn poll_children(children: &mut Vec<(Child, String)>) {
+    let mut i = 0;
+    while i < children.len() {
+        match children[i].0.try_wait() {
+            Ok(Some(status)) => {
+                let (_, cmd) = children.swap_remove(i);
+                if !status.success() {
+                    log::warn!("Shell command '{}' exited with {}", cmd, status);
                 }
             }
+            Ok(None) => i += 1, // Still running
+            Err(e) => {
+                let (_, cmd) = children.swap_remove(i);
+                log::warn!("Failed to wait on shell command '{}': {}", cmd, e);
+            }
+        }
+    }
+}
+
+/// Enqueues a child for reaping, or waits synchronously if the reaper is unavailable.
+fn enqueue_or_reap_sync(
+    sender: &std::sync::Mutex<mpsc::Sender<(Child, String)>>,
+    mut child: Child,
+    label: String,
+) {
+    // Send under the lock, then drop the guard before any blocking wait
+    let send_err = match sender.lock() {
+        Ok(tx) => {
+            let result = tx.send((child, label.clone()));
+            drop(tx);
+            result.err()
         }
         Err(e) => {
             log::error!("Reaper mutex poisoned for '{}': {}", label, e);
             if let Err(wait_err) = child.wait() {
                 log::warn!("Failed to wait on child '{}': {}", label, wait_err);
             }
+            return;
+        }
+    };
+    if let Some(e) = send_err {
+        log::error!("Reaper channel closed for '{}': {}", label, e);
+        let (mut orphan, _) = e.0;
+        if let Err(wait_err) = orphan.wait() {
+            log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
         }
     }
 }
