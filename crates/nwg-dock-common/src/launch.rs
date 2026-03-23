@@ -261,10 +261,22 @@ mod tests {
         launch_shell_command("   ");
     }
 
+    /// Polls a file until it exists and has content, or times out.
+    fn wait_for_file(path: &std::path::Path) -> String {
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if let Ok(c) = std::fs::read_to_string(path) {
+                if !c.is_empty() {
+                    return c;
+                }
+            }
+        }
+        panic!("Timed out waiting for {}", path.display());
+    }
+
     #[test]
     fn shell_command_handles_nested_quotes() {
         // Simulate nwg-piotr's power bar command with nested quotes.
-        // Use echo to a temp file so we can verify the shell parsed it correctly.
         let tmp = std::env::temp_dir().join("nwg-shell-test-output");
         let _ = std::fs::remove_file(&tmp);
 
@@ -274,10 +286,7 @@ mod tests {
         );
         launch_shell_command(&cmd);
 
-        // Wait briefly for the child process to finish
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        let content = std::fs::read_to_string(&tmp).unwrap_or_default();
+        let content = wait_for_file(&tmp);
         assert_eq!(content.trim(), "hello world");
         let _ = std::fs::remove_file(&tmp);
     }
@@ -285,8 +294,6 @@ mod tests {
     #[test]
     fn shell_command_handles_complex_quoting() {
         // Simulates: nwg-dialog -p exit -c "loginctl terminate-user \"\""
-        // We can't run nwg-dialog, but we can verify sh -c handles the quoting
-        // by using printf to write the parsed arguments to a temp file.
         let tmp = std::env::temp_dir().join("nwg-shell-test-complex");
         let _ = std::fs::remove_file(&tmp);
 
@@ -296,9 +303,7 @@ mod tests {
         );
         launch_shell_command(&cmd);
 
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        let content = std::fs::read_to_string(&tmp).unwrap_or_default();
+        let content = wait_for_file(&tmp);
         let lines: Vec<&str> = content.trim().lines().collect();
         assert_eq!(lines, vec!["arg with spaces", "another 'nested' arg"]);
         let _ = std::fs::remove_file(&tmp);
