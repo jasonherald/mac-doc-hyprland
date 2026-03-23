@@ -88,8 +88,26 @@ pub fn launch_shell_command(command: &str) {
         return;
     }
     log::info!("Running shell command: {}", command);
-    if let Err(e) = Command::new("sh").args(["-c", command]).spawn() {
-        log::error!("Failed to run shell command '{}': {}", command, e);
+    match Command::new("sh").args(["-c", command]).spawn() {
+        Ok(child) => {
+            // Monitor exit status on a background thread to log failures
+            let cmd = command.to_string();
+            std::thread::spawn(move || {
+                let mut child = child;
+                match child.wait() {
+                    Ok(status) if !status.success() => {
+                        log::warn!("Shell command '{}' exited with {}", cmd, status);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to wait on shell command '{}': {}", cmd, e);
+                    }
+                    _ => {}
+                }
+            });
+        }
+        Err(e) => {
+            log::error!("Failed to spawn shell command '{}': {}", command, e);
+        }
     }
 }
 
@@ -293,7 +311,7 @@ mod tests {
         remove_test_file(&tmp);
 
         let cmd = format!(
-            r#"sh -c "echo 'hello world' > {}""#,
+            r#"sh -c "echo 'hello world' > '{}'""#,
             tmp.display()
         );
         launch_shell_command(&cmd);
@@ -310,7 +328,7 @@ mod tests {
         remove_test_file(&tmp);
 
         let cmd = format!(
-            r#"printf '%s\n' "arg with spaces" "another 'nested' arg" > {}"#,
+            r#"printf '%s\n' "arg with spaces" "another 'nested' arg" > '{}'"#,
             tmp.display()
         );
         launch_shell_command(&cmd);
