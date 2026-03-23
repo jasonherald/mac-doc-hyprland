@@ -9,6 +9,9 @@ use gtk4_layer_shell::LayerShell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Hide-timer poll interval in milliseconds for hotspot mode.
+const HOTSPOT_HIDE_POLL_INTERVAL_MS: u64 = 100;
+
 /// Shared state for creating/destroying hotspot windows on Sway during monitor hotplug.
 /// Returned by `setup_autohide` when the compositor uses the hotspot approach.
 pub struct HotspotContext {
@@ -90,7 +93,7 @@ pub(super) fn start_hotspot_windows(
     // Poll the hide timer to actually hide dock windows
     let docks = Rc::clone(per_monitor);
     let state = Rc::clone(state);
-    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+    glib::timeout_add_local(std::time::Duration::from_millis(HOTSPOT_HIDE_POLL_INTERVAL_MS), move || {
         let mut left = left_at.borrow_mut();
         if let Some(when) = *left {
             // Don't hide while a popover menu is open or drag in progress
