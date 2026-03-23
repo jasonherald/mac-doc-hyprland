@@ -172,7 +172,11 @@ fn focus_prev_visible(start: &impl IsA<gtk4::Widget>) -> bool {
     while let Some(widget) = current {
         let mut prev = widget.prev_sibling();
         while let Some(p) = prev {
-            if p.is_visible() && p.is_sensitive() && p.child_focus(gtk4::DirectionType::Up) {
+            // Try direct focus first (e.g. SearchEntry), then delegate to children
+            if p.is_visible()
+                && p.is_sensitive()
+                && (p.grab_focus() || p.child_focus(gtk4::DirectionType::Up))
+            {
                 return true;
             }
             prev = p.prev_sibling();
@@ -189,7 +193,10 @@ fn focus_next_visible(start: &impl IsA<gtk4::Widget>) -> bool {
     while let Some(widget) = current {
         let mut next = widget.next_sibling();
         while let Some(n) = next {
-            if n.is_visible() && n.is_sensitive() && n.child_focus(gtk4::DirectionType::Down) {
+            if n.is_visible()
+                && n.is_sensitive()
+                && (n.grab_focus() || n.child_focus(gtk4::DirectionType::Down))
+            {
                 return true;
             }
             next = n.next_sibling();
