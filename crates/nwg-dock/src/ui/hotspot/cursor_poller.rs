@@ -222,8 +222,8 @@ fn is_cursor_at_edge(
 
         let at_edge = match position {
             crate::config::Position::Bottom => cursor.y >= mon.y + mon.height - EDGE_THRESHOLD,
-            crate::config::Position::Top => cursor.y <= mon.y + EDGE_THRESHOLD,
-            crate::config::Position::Left => cursor.x <= mon.x + EDGE_THRESHOLD,
+            crate::config::Position::Top => cursor.y < mon.y + EDGE_THRESHOLD,
+            crate::config::Position::Left => cursor.x < mon.x + EDGE_THRESHOLD,
             crate::config::Position::Right => cursor.x >= mon.x + mon.width - EDGE_THRESHOLD,
         };
 
