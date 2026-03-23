@@ -105,20 +105,10 @@ fn create_pinned_button(
     let compositor = Rc::clone(&state.borrow().compositor);
     let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
-        let clean = widgets::strip_field_codes(&exec);
-        if !clean.is_empty() {
-            let clean = widgets::prepend_theme(&clean, &theme_prefix);
-            if terminal {
-                nwg_dock_common::launch::launch_terminal_via_compositor(
-                    &clean,
-                    &term,
-                    &*compositor,
-                );
-            } else {
-                nwg_dock_common::launch::launch_via_compositor(&clean, &*compositor);
-            }
-            on_launch_ref();
-        }
+        nwg_dock_common::launch::launch_desktop_entry(
+            &exec, terminal, &term, &theme_prefix, &*compositor,
+        );
+        on_launch_ref();
     });
 
     // Right-click → unpin
