@@ -4,6 +4,9 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::mpsc;
 
+/// Interval between try_wait polls in the child-reaper thread.
+const REAPER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// Sends a child process to the shared reaper thread for exit status monitoring.
 /// Uses try_wait polling so long-running GUI apps don't block reaping of others.
 fn reap_child(mut child: Child, label: String) {
@@ -18,7 +21,7 @@ fn reap_child(mut child: Child, label: String) {
                 let mut children: Vec<(Child, String)> = Vec::new();
                 loop {
                     // Drain new children from the channel
-                    match rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    match rx.recv_timeout(REAPER_POLL_INTERVAL) {
                         Ok(job) => children.push(job),
                         Err(mpsc::RecvTimeoutError::Timeout) => {}
                         Err(mpsc::RecvTimeoutError::Disconnected) if children.is_empty() => break,
@@ -53,12 +56,16 @@ fn reap_child(mut child: Child, label: String) {
             if let Err(e) = tx.send((child, label.clone())) {
                 log::error!("Reaper channel closed for '{}': {}", label, e);
                 let (mut orphan, _) = e.0;
-                let _ = orphan.wait(); // Best-effort: prevent zombie
+                if let Err(wait_err) = orphan.wait() {
+                    log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
+                }
             }
         }
         Err(e) => {
             log::error!("Reaper mutex poisoned for '{}': {}", label, e);
-            let _ = child.wait(); // Best-effort: prevent zombie
+            if let Err(wait_err) = child.wait() {
+                log::warn!("Failed to wait on child '{}': {}", label, wait_err);
+            }
         }
     }
 }
