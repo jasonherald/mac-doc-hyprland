@@ -15,7 +15,7 @@ fn reap_child(mut child: Child, label: String) {
 
     let sender = SENDER.get_or_init(|| {
         let (tx, rx) = mpsc::channel::<(Child, String)>();
-        std::thread::Builder::new()
+        let spawn_result = std::thread::Builder::new()
             .name("child-reaper".into())
             .spawn(move || {
                 let mut children: Vec<(Child, String)> = Vec::new();
@@ -45,8 +45,11 @@ fn reap_child(mut child: Child, label: String) {
                         }
                     }
                 }
-            })
-            .expect("failed to spawn child-reaper thread");
+            });
+        if let Err(e) = spawn_result {
+            log::error!("Failed to spawn child-reaper thread: {}", e);
+            // Fallback is safe: send() will fail and callers synchronously reap.
+        }
         std::sync::Mutex::new(tx)
     });
 
