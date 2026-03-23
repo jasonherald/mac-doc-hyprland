@@ -11,9 +11,10 @@ pub fn install_grid_nav(
     up_target: Option<&gtk4::FlowBox>,
     down_target: Option<&gtk4::FlowBox>,
 ) {
-    let flow_ref = flow.clone();
-    let up_ref = up_target.cloned();
-    let down_ref = down_target.cloned();
+    // Use weak references to avoid cycles: widget owns controller → closure → widget
+    let flow_weak = flow.downgrade();
+    let up_weak = up_target.map(|t| t.downgrade());
+    let down_weak = down_target.map(|t| t.downgrade());
     let cols = columns.max(1);
 
     // Remove any previous grid-nav controller to avoid stacking
@@ -24,11 +25,16 @@ pub fn install_grid_nav(
     ctrl.set_name(Some("grid-nav"));
 
     ctrl.connect_key_pressed(move |_, keyval, _, _| {
+        let Some(flow_ref) = flow_weak.upgrade() else {
+            return gtk4::glib::Propagation::Proceed;
+        };
         let total = count_flow_children(&flow_ref);
         if total == 0 {
             return gtk4::glib::Propagation::Proceed;
         }
 
+        let up_ref = up_weak.as_ref().and_then(|w| w.upgrade());
+        let down_ref = down_weak.as_ref().and_then(|w| w.upgrade());
         let (idx, col) = focused_position(&flow_ref, cols);
 
         match keyval {
@@ -50,11 +56,14 @@ pub(super) fn install_file_results_nav(container: &gtk4::Box) {
     // Remove any previous controller to avoid stacking on rebuild
     remove_named_controller(container, "file-results-nav");
 
-    let container_ref = container.clone();
+    let container_weak = container.downgrade();
     let ctrl = gtk4::EventControllerKey::new();
     ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
     ctrl.set_name(Some("file-results-nav"));
     ctrl.connect_key_pressed(move |_, keyval, _, _| {
+        let Some(container_ref) = container_weak.upgrade() else {
+            return gtk4::glib::Propagation::Proceed;
+        };
         match keyval {
             gtk4::gdk::Key::Up => {
                 // Check if focus is on the first button
