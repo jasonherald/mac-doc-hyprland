@@ -34,9 +34,11 @@ pub trait Compositor {
     fn move_to_workspace(&self, id: &str, workspace: i32) -> Result<()>;
 
     /// Toggle a special/scratchpad workspace.
+    /// Hyprland: toggles the named special workspace. Sway: toggles the scratchpad.
     fn toggle_special_workspace(&self, name: &str) -> Result<()>;
 
     /// Raise the active window to the top of the stack.
+    /// Hyprland: `bringactivetotop`. Sway: no-op (manages its own stacking).
     fn raise_active(&self) -> Result<()>;
 
     /// Launch a command via the compositor's exec mechanism.

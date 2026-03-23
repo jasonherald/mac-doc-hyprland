@@ -1,61 +1,42 @@
 use clap::{Parser, ValueEnum};
 
-/// Go's `flag` package uses single-dash for all flags (e.g. `-is 64`, `-term foot`).
-/// Clap only supports single-dash for single-character flags.
-/// This preprocessor converts known Go-style single-dash flags to double-dash
-/// so existing user configs continue to work after migration.
-pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
-    // All Go-style flags that are longer than one character and used with single dash.
-    // Single-character flags (-s, -o, -g, -i, -c, -r, -d, -k, -v) work natively.
-    const LEGACY_FLAGS: &[&str] = &[
-        "is",
-        "ovl",
-        "open",
-        "close",
-        "mt",
-        "ml",
-        "mr",
-        "mb",
-        "fscol",
-        "ft",
-        "fm",
-        "spacing",
-        "lang",
-        "term",
-        "wm",
-        "fslen",
-        "nocats",
-        "nofs",
-        "pbexit",
-        "pblock",
-        "pbpoweroff",
-        "pbreboot",
-        "pbsleep",
-        "pbsize",
-        "pbuseicontheme",
-        "pbauto",
-        "closebtn",
-        "opacity",
-        "pi",
-    ];
+/// Known Go-style single-dash flags for the drawer binary.
+/// Single-character flags (-s, -o, -g, -i, -c, -r, -d, -k, -v) work natively.
+const LEGACY_FLAGS: &[&str] = &[
+    "is",
+    "ovl",
+    "open",
+    "close",
+    "mt",
+    "ml",
+    "mr",
+    "mb",
+    "fscol",
+    "ft",
+    "fm",
+    "spacing",
+    "lang",
+    "term",
+    "wm",
+    "fslen",
+    "nocats",
+    "nofs",
+    "pbexit",
+    "pblock",
+    "pbpoweroff",
+    "pbreboot",
+    "pbsleep",
+    "pbsize",
+    "pbuseicontheme",
+    "pbauto",
+    "closebtn",
+    "opacity",
+    "pi",
+];
 
-    args.map(|arg| {
-        // Convert -flag or -flag=value to --flag or --flag=value
-        if let Some(name) = arg.strip_prefix('-')
-            && !name.starts_with('-')
-        {
-            // Handle -flag=value form
-            if let Some((flag, value)) = name.split_once('=') {
-                if LEGACY_FLAGS.contains(&flag) {
-                    return format!("--{}={}", flag, value);
-                }
-            } else if LEGACY_FLAGS.contains(&name) {
-                return format!("--{}", name);
-            }
-        }
-        arg
-    })
-    .collect()
+/// Converts Go-style single-dash flags to clap-compatible double-dash flags.
+pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
+    nwg_dock_common::config::flags::normalize_legacy_flags(args, LEGACY_FLAGS)
 }
 
 /// A macOS-style application drawer/launcher for Hyprland/Sway.

@@ -5,8 +5,6 @@ use nwg_dock_common::desktop::icons;
 /// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
 ///
 /// Shared between app_grid and pinned modules to eliminate duplication.
-/// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
-///
 /// If `status_label` and `description` are provided, the button updates the
 /// status bar on hover/focus with the app description (matching Go behavior).
 pub fn app_icon_button(
@@ -120,39 +118,8 @@ pub fn apply_pin_badge(button: &gtk4::Button) {
     vbox.append(&hbox);
 }
 
-/// Strips desktop field codes (%u, %F, %%, etc.) from an Exec command.
-/// Per the freedesktop Desktop Entry spec, recognised single-letter codes are
-/// removed and `%%` is collapsed to a literal `%`. Arguments after field codes
-/// are preserved. Quotes are preserved — shell splitting happens at launch time
-/// via shell_words::split() (issue #11).
-pub fn strip_field_codes(exec: &str) -> String {
-    let mut result = String::with_capacity(exec.len());
-    let mut chars = exec.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            match chars.peek() {
-                // %% → literal %
-                Some('%') => {
-                    chars.next();
-                    result.push('%');
-                }
-                // Known field codes per freedesktop spec — drop them
-                Some('f' | 'F' | 'u' | 'U' | 'd' | 'D' | 'n' | 'N' | 'i' | 'c' | 'k' | 'v' | 'm') => {
-                    chars.next();
-                    // Trim a single leading space before the field code if present
-                    if result.ends_with(' ') && chars.peek().is_none_or(|&ch| ch == ' ') {
-                        result.pop();
-                    }
-                }
-                // Unknown %-sequence — keep as-is
-                _ => result.push('%'),
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    result.trim().to_string()
-}
+/// Re-export from nwg-dock-common — single source of truth for field code stripping.
+pub use nwg_dock_common::desktop::entry::strip_field_codes;
 
 /// Prepends GTK_THEME= to a command if force-theme is enabled.
 pub fn prepend_theme(cmd: &str, theme_prefix: &str) -> String {
@@ -176,58 +143,6 @@ pub fn truncate(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn strip_field_codes_basic() {
-        assert_eq!(strip_field_codes("firefox %u"), "firefox");
-        assert_eq!(strip_field_codes("code %F"), "code");
-        assert_eq!(strip_field_codes("gimp"), "gimp");
-    }
-
-    #[test]
-    fn strip_field_codes_preserves_quotes() {
-        assert_eq!(strip_field_codes(r#""firefox" %u"#), r#""firefox""#);
-        assert_eq!(
-            strip_field_codes(r#"sh -c "echo hello" %u"#),
-            r#"sh -c "echo hello""#
-        );
-    }
-
-    #[test]
-    fn strip_field_codes_no_space_before_percent() {
-        assert_eq!(strip_field_codes("firefox%u"), "firefox");
-    }
-
-    #[test]
-    fn strip_field_codes_preserves_args_after_code() {
-        assert_eq!(
-            strip_field_codes("foo %U --new-window"),
-            "foo --new-window"
-        );
-        assert_eq!(strip_field_codes("bar %f --flag %F --other"), "bar --flag --other");
-    }
-
-    #[test]
-    fn strip_field_codes_literal_percent() {
-        assert_eq!(
-            strip_field_codes(r#"sh -c "printf '100%%'""#),
-            r#"sh -c "printf '100%'""#
-        );
-    }
-
-    #[test]
-    fn strip_field_codes_preserves_inner_whitespace() {
-        assert_eq!(
-            strip_field_codes(r#"sh -c "printf 'a  b'" %u"#),
-            r#"sh -c "printf 'a  b'""#
-        );
-    }
-
-    #[test]
-    fn strip_field_codes_trims_whitespace() {
-        assert_eq!(strip_field_codes("  firefox  "), "firefox");
-        assert_eq!(strip_field_codes(""), "");
-    }
 
     #[test]
     fn truncate_short_string() {

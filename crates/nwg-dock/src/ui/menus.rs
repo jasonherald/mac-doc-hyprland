@@ -87,21 +87,21 @@ pub fn show_context_menu(
             let id = id.clone();
             let comp = Rc::clone(compositor);
             move || {
-                let _ = comp.close_window(&id);
+                let _ = comp.close_window(&id); // Best-effort: window may have closed
             }
         }));
         actions_box.append(&action_button("Toggle Floating", &popover, {
             let id = id.clone();
             let comp = Rc::clone(compositor);
             move || {
-                let _ = comp.toggle_floating(&id);
+                let _ = comp.toggle_floating(&id); // Best-effort: window may have closed
             }
         }));
         actions_box.append(&action_button("Fullscreen", &popover, {
             let id = id.clone();
             let comp = Rc::clone(compositor);
             move || {
-                let _ = comp.toggle_fullscreen(&id);
+                let _ = comp.toggle_fullscreen(&id); // Best-effort: window may have closed
             }
         }));
 
@@ -110,7 +110,7 @@ pub fn show_context_menu(
                 let id = id.clone();
                 let comp = Rc::clone(compositor);
                 move || {
-                    let _ = comp.move_to_workspace(&id, ws);
+                    let _ = comp.move_to_workspace(&id, ws); // Best-effort: window may have closed
                 }
             }));
         }
@@ -165,7 +165,7 @@ pub fn show_context_menu(
         } else {
             pinning::pin_item(&mut s.pinned, &class_str);
         }
-        let _ = pinning::save_pinned(&s.pinned, &pinned_path);
+        let _ = pinning::save_pinned(&s.pinned, &pinned_path); // Best-effort: file I/O may fail
         drop(s);
         p.popdown();
         rebuild_ref();
@@ -196,7 +196,7 @@ pub fn show_pinned_context_menu(
     btn.connect_clicked(move |_| {
         let mut s = state_ref.borrow_mut();
         pinning::unpin_item(&mut s.pinned, &id);
-        let _ = pinning::save_pinned(&s.pinned, &pinned_path);
+        let _ = pinning::save_pinned(&s.pinned, &pinned_path); // Best-effort: file I/O may fail
         drop(s);
         p.popdown();
         rebuild_ref();
@@ -209,11 +209,11 @@ pub fn show_pinned_context_menu(
 pub fn focus_window(id: &str, workspace_name: &str, compositor: &dyn Compositor) {
     if workspace_name.starts_with("special") {
         let special_name = workspace_name.strip_prefix("special:").unwrap_or("");
-        let _ = compositor.toggle_special_workspace(special_name);
+        let _ = compositor.toggle_special_workspace(special_name); // Best-effort: Hyprland-specific
     } else {
-        let _ = compositor.focus_window(id);
+        let _ = compositor.focus_window(id); // Best-effort: window may have closed
     }
-    let _ = compositor.raise_active();
+    let _ = compositor.raise_active(); // Best-effort: Sway no-ops this
 }
 
 /// Creates a flat button that runs an action and closes the popover.

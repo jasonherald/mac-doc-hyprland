@@ -20,8 +20,8 @@ pub fn build_category_bar(
     let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     hbox.add_css_class("category-bar");
     hbox.set_halign(gtk4::Align::Center);
-    hbox.set_margin_top(8);
-    hbox.set_margin_bottom(4);
+    hbox.set_margin_top(super::constants::CATEGORY_BAR_TOP_MARGIN);
+    hbox.set_margin_bottom(super::constants::CATEGORY_BAR_BOTTOM_MARGIN);
 
     let buttons: Rc<RefCell<Vec<gtk4::Button>>> = Rc::new(RefCell::new(Vec::new()));
 
@@ -185,12 +185,12 @@ pub fn apply_category_filter(
     let pinned_flow = pinned_box
         .first_child()
         .and_then(|w| w.downcast::<gtk4::FlowBox>().ok());
-    ui::well_builder::install_grid_nav(&flow, config.columns, pinned_flow.as_ref(), None);
+    ui::navigation::install_grid_nav(&flow, config.columns, pinned_flow.as_ref(), None);
     // Re-link pinned's Down target to this new flow
     if let Some(ref pf) = pinned_flow {
         let pinned = state.borrow().pinned.clone();
         let pinned_cols = config.columns.min(pinned.len() as u32).max(1);
-        ui::well_builder::install_grid_nav(pf, pinned_cols, None, Some(&flow));
+        ui::navigation::install_grid_nav(pf, pinned_cols, None, Some(&flow));
     }
 }
 

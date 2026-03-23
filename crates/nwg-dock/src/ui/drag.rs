@@ -16,9 +16,7 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 
-/// Pixels outside the dock box before we consider the cursor "outside"
-/// for the unpin-by-drag-off behavior.
-const OUTSIDE_MARGIN: f64 = 30.0;
+use super::constants::DRAG_OUTSIDE_MARGIN as OUTSIDE_MARGIN;
 
 /// Transient state for an active drag operation.
 struct DragSession {

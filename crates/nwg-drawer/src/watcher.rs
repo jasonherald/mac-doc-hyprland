@@ -27,7 +27,7 @@ pub fn start_watcher(
 
         let mut watcher = match notify::recommended_watcher(move |res: Result<Event, _>| {
             if let Ok(event) = res {
-                let _ = notify_tx.send(event);
+                let _ = notify_tx.send(event); // Non-critical: receiver may have dropped
             }
         }) {
             Ok(w) => w,
@@ -41,7 +41,7 @@ pub fn start_watcher(
 
         for event in notify_rx {
             if let Some(watch_event) = classify_watch_event(&event, &pin_path) {
-                let _ = tx.send(watch_event);
+                let _ = tx.send(watch_event); // Non-critical: receiver may have dropped
             }
         }
     });

@@ -28,10 +28,10 @@ pub fn show_result_window(
     let label_text = format!("{} = {}", expression, result_str);
 
     let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
-    vbox.set_margin_top(12);
-    vbox.set_margin_bottom(12);
-    vbox.set_margin_start(24);
-    vbox.set_margin_end(24);
+    vbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);
+    vbox.set_margin_bottom(super::constants::STATUS_AREA_VERTICAL_MARGIN);
+    vbox.set_margin_start(super::constants::STATUS_AREA_SIDE_MARGIN);
+    vbox.set_margin_end(super::constants::STATUS_AREA_SIDE_MARGIN);
 
     let label = gtk4::Label::new(Some(&label_text));
     label.set_widget_name("math-label");

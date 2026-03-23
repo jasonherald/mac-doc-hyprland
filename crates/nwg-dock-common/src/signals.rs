@@ -39,15 +39,10 @@ pub enum WindowCommand {
     Quit,
 }
 
-/// Sets up signal handlers and returns a receiver for window commands.
-///
-/// Handles SIGTERM via sigaction, and SIGUSR1 + SIGRTMIN+1/2/3 via
-/// raw libc sigwait (nix's Signal enum doesn't support real-time signals).
-pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand> {
-    let (tx, rx) = mpsc::channel();
-
-    // SIGTERM → quit
-    // SAFETY: sigaction requires unsafe. The handler calls process::exit.
+/// Installs the SIGTERM handler (immediate termination via `_exit`).
+/// Shared by all three binaries to avoid duplicating unsafe sigaction setup.
+pub fn setup_sigterm_handler() {
+    // SAFETY: sigaction requires unsafe. The handler performs only async-signal-safe termination.
     if let Err(e) = unsafe {
         signal::sigaction(
             Signal::SIGTERM,
@@ -60,6 +55,16 @@ pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand>
     } {
         log::warn!("Failed to set SIGTERM handler: {}", e);
     }
+}
+
+/// Sets up signal handlers and returns a receiver for window commands.
+///
+/// Handles SIGTERM via sigaction, and SIGUSR1 + SIGRTMIN+1/2/3 via
+/// raw libc sigwait (nix's Signal enum doesn't support real-time signals).
+pub fn setup_signal_handlers(is_resident: bool) -> mpsc::Receiver<WindowCommand> {
+    let (tx, rx) = mpsc::channel();
+
+    setup_sigterm_handler();
 
     // Block SIGUSR1 and SIGRTMIN+1/2/3 in the main thread BEFORE spawning.
     // Uses raw libc because nix's Signal enum doesn't support RT signals.
@@ -135,6 +140,6 @@ pub fn send_signal_to_pid(pid: u32, sig_num: i32) -> bool {
 }
 
 extern "C" fn sigterm_handler(_: i32) {
-    log::info!("SIGTERM received, bye bye!");
-    std::process::exit(0);
+    // SAFETY: libc::_exit is async-signal-safe and terminates immediately.
+    unsafe { libc::_exit(0) }
 }
