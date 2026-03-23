@@ -16,6 +16,7 @@ pub fn build_category_bar(
     pinned_file: &Rc<std::path::PathBuf>,
     on_launch: &Rc<dyn Fn()>,
     status_label: &gtk4::Label,
+    search_entry: &gtk4::SearchEntry,
 ) -> gtk4::Box {
     let hbox = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
     hbox.add_css_class("category-bar");
@@ -40,8 +41,11 @@ pub fn build_category_bar(
         let on_launch = Rc::clone(on_launch);
         let buttons = Rc::clone(&buttons);
         let status_label = status_label.clone();
+        let search_entry = search_entry.clone();
         all_btn.connect_clicked(move |btn| {
             select_button(btn, &buttons);
+            search_entry.set_text("");
+            state.borrow_mut().active_search.clear();
             state.borrow_mut().active_category.clear();
             pinned_box.set_visible(true);
             ui::well_builder::build_normal_well(
@@ -83,6 +87,7 @@ pub fn build_category_bar(
             on_launch,
             &buttons,
             status_label,
+            search_entry,
         );
         hbox.append(&btn);
         buttons.borrow_mut().push(btn);
@@ -105,6 +110,7 @@ fn create_category_button(
     on_launch: &Rc<dyn Fn()>,
     buttons: &Rc<RefCell<Vec<gtk4::Button>>>,
     status_label: &gtk4::Label,
+    search_entry: &gtk4::SearchEntry,
 ) -> gtk4::Button {
     let btn = gtk4::Button::new();
     let btn_box = gtk4::Box::new(gtk4::Orientation::Horizontal, 4);
@@ -124,8 +130,11 @@ fn create_category_button(
     let on_launch = Rc::clone(on_launch);
     let buttons = Rc::clone(buttons);
     let status_label = status_label.clone();
+    let search_entry = search_entry.clone();
     btn.connect_clicked(move |btn| {
         select_button(btn, &buttons);
+        search_entry.set_text("");
+        state.borrow_mut().active_search.clear();
         state.borrow_mut().active_category = ids.clone();
         apply_category_filter(
             &well,

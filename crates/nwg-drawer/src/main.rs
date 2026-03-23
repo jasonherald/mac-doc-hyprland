@@ -215,6 +215,7 @@ fn activate_drawer(
             &pinned_file,
             &on_launch,
             &status_label,
+            &search_entry,
         );
         main_vbox.append(&cat_bar);
     }
