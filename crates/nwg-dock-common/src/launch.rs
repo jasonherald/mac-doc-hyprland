@@ -261,24 +261,36 @@ mod tests {
         launch_shell_command("   ");
     }
 
+    const WAIT_RETRIES: usize = 40; // 2s total with 50ms interval
+    const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
     /// Polls a file until it exists and has content, or times out.
     fn wait_for_file(path: &std::path::Path) -> String {
-        for _ in 0..40 {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            if let Ok(c) = std::fs::read_to_string(path) {
-                if !c.is_empty() {
-                    return c;
-                }
+        for _ in 0..WAIT_RETRIES {
+            std::thread::sleep(WAIT_INTERVAL);
+            if let Ok(c) = std::fs::read_to_string(path)
+                && !c.is_empty()
+            {
+                return c;
             }
         }
         panic!("Timed out waiting for {}", path.display());
+    }
+
+    /// Removes a file, ignoring NotFound but panicking on other errors.
+    fn remove_test_file(path: &std::path::Path) {
+        if let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            panic!("Failed to remove {}: {}", path.display(), e);
+        }
     }
 
     #[test]
     fn shell_command_handles_nested_quotes() {
         // Simulate nwg-piotr's power bar command with nested quotes.
         let tmp = std::env::temp_dir().join("nwg-shell-test-output");
-        let _ = std::fs::remove_file(&tmp);
+        remove_test_file(&tmp);
 
         let cmd = format!(
             r#"sh -c "echo 'hello world' > {}""#,
@@ -288,14 +300,14 @@ mod tests {
 
         let content = wait_for_file(&tmp);
         assert_eq!(content.trim(), "hello world");
-        let _ = std::fs::remove_file(&tmp);
+        remove_test_file(&tmp);
     }
 
     #[test]
     fn shell_command_handles_complex_quoting() {
         // Simulates: nwg-dialog -p exit -c "loginctl terminate-user \"\""
         let tmp = std::env::temp_dir().join("nwg-shell-test-complex");
-        let _ = std::fs::remove_file(&tmp);
+        remove_test_file(&tmp);
 
         let cmd = format!(
             r#"printf '%s\n' "arg with spaces" "another 'nested' arg" > {}"#,
@@ -306,6 +318,6 @@ mod tests {
         let content = wait_for_file(&tmp);
         let lines: Vec<&str> = content.trim().lines().collect();
         assert_eq!(lines, vec!["arg with spaces", "another 'nested' arg"]);
-        let _ = std::fs::remove_file(&tmp);
+        remove_test_file(&tmp);
     }
 }
