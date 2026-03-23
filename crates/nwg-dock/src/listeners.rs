@@ -181,19 +181,37 @@ fn reconcile_monitors(
 
     // Always refresh GDK monitor references — a reconnected monitor with the same
     // connector name produces a new gdk::Monitor object, and the old one is stale.
-    for dock in per_monitor.borrow().iter() {
-        if let Some(mon) = monitor_map.get(&dock.output_name) {
-            dock.win.set_monitor(Some(mon));
-        }
-    }
+    refresh_monitor_refs(per_monitor, &monitor_map);
 
     if to_add.is_empty() && to_remove.is_empty() {
         log::debug!("Monitor topology unchanged after debounce");
         return;
     }
 
-    // Remove orphaned dock windows and their hotspot windows
-    for name in &to_remove {
+    remove_orphaned_docks(per_monitor, &to_remove, hotspot_ctx);
+    add_new_docks(app, per_monitor, &to_add, &monitor_map, config, hotspot_ctx);
+    rebuild_fn();
+}
+
+/// Refreshes GDK monitor references on existing dock windows.
+fn refresh_monitor_refs(
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    monitor_map: &std::collections::HashMap<String, gtk4::gdk::Monitor>,
+) {
+    for dock in per_monitor.borrow().iter() {
+        if let Some(mon) = monitor_map.get(&dock.output_name) {
+            dock.win.set_monitor(Some(mon));
+        }
+    }
+}
+
+/// Removes dock windows (and hotspot windows) for disconnected monitors.
+fn remove_orphaned_docks(
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    to_remove: &[String],
+    hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
+) {
+    for name in to_remove {
         if let Some(ctx) = hotspot_ctx {
             ctx.remove_hotspot_for_output(name);
         }
@@ -207,27 +225,33 @@ fn reconcile_monitors(
             }
         });
     }
+}
 
-    // Create dock windows for new monitors
-    for name in &to_add {
-        if let Some(gdk_mon) = monitor_map.get(name) {
-            log::info!("Creating dock window for new monitor: {}", name);
-            let dock = dock_windows::create_single_dock_window(app, name, gdk_mon, config);
-            dock.win.present();
-            if config.autohide {
-                let win = dock.win.clone();
-                glib::timeout_add_local_once(AUTOHIDE_INITIAL_DELAY, move || {
-                    win.set_visible(false);
-                });
-            }
-            // Create Sway hotspot window for the new dock if needed
-            if let Some(ctx) = hotspot_ctx {
-                ctx.add_hotspot_for_dock(&dock);
-            }
-            per_monitor.borrow_mut().push(dock);
+/// Creates dock windows (and hotspot windows) for newly connected monitors.
+fn add_new_docks(
+    app: &gtk4::Application,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    to_add: &[String],
+    monitor_map: &std::collections::HashMap<String, gtk4::gdk::Monitor>,
+    config: &DockConfig,
+    hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
+) {
+    for name in to_add {
+        let Some(gdk_mon) = monitor_map.get(name) else {
+            continue;
+        };
+        log::info!("Creating dock window for new monitor: {}", name);
+        let dock = dock_windows::create_single_dock_window(app, name, gdk_mon, config);
+        dock.win.present();
+        if config.autohide {
+            let win = dock.win.clone();
+            glib::timeout_add_local_once(AUTOHIDE_INITIAL_DELAY, move || {
+                win.set_visible(false);
+            });
         }
+        if let Some(ctx) = hotspot_ctx {
+            ctx.add_hotspot_for_dock(&dock);
+        }
+        per_monitor.borrow_mut().push(dock);
     }
-
-    // Rebuild content in all windows (new windows need buttons)
-    rebuild_fn();
 }
