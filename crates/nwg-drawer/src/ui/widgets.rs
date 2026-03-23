@@ -118,17 +118,6 @@ pub fn apply_pin_badge(button: &gtk4::Button) {
     vbox.append(&hbox);
 }
 
-/// Re-export from nwg-dock-common — single source of truth for field code stripping.
-pub use nwg_dock_common::desktop::entry::strip_field_codes;
-
-/// Prepends GTK_THEME= to a command if force-theme is enabled.
-pub fn prepend_theme(cmd: &str, theme_prefix: &str) -> String {
-    if theme_prefix.is_empty() {
-        cmd.to_string()
-    } else {
-        format!("{} {}", theme_prefix, cmd)
-    }
-}
 
 /// Truncates a string to max chars, appending ellipsis if needed.
 pub fn truncate(s: &str, max: usize) -> String {
