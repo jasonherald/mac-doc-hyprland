@@ -68,14 +68,7 @@ pub fn build_power_bar(
         let cmd = command.to_string();
         let on_launch = Rc::clone(&on_launch);
         button.connect_clicked(move |_| {
-            let parts: Vec<&str> = cmd.split_whitespace().collect();
-            if let Some((&prog, args)) = parts.split_first() {
-                let mut command = std::process::Command::new(prog);
-                command.args(args);
-                if let Err(e) = command.spawn() {
-                    log::error!("Failed to run power command '{}': {}", cmd, e);
-                }
-            }
+            nwg_dock_common::launch::launch_shell_command(&cmd);
             on_launch();
         });
 

@@ -1,7 +1,77 @@
 use crate::compositor::Compositor;
 use crate::desktop::icons::get_exec;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command};
+use std::sync::mpsc;
+
+/// Interval between try_wait polls in the child-reaper thread.
+const REAPER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Sends a child process to the shared reaper thread for exit status monitoring.
+/// Uses try_wait polling so long-running GUI apps don't block reaping of others.
+fn reap_child(mut child: Child, label: String) {
+    static SENDER: std::sync::OnceLock<std::sync::Mutex<mpsc::Sender<(Child, String)>>> =
+        std::sync::OnceLock::new();
+
+    let sender = SENDER.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<(Child, String)>();
+        let spawn_result = std::thread::Builder::new()
+            .name("child-reaper".into())
+            .spawn(move || {
+                let mut children: Vec<(Child, String)> = Vec::new();
+                loop {
+                    // Drain new children from the channel
+                    match rx.recv_timeout(REAPER_POLL_INTERVAL) {
+                        Ok(job) => children.push(job),
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(mpsc::RecvTimeoutError::Disconnected) if children.is_empty() => break,
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {}
+                    }
+                    // Poll all tracked children with try_wait (non-blocking)
+                    let mut i = 0;
+                    while i < children.len() {
+                        match children[i].0.try_wait() {
+                            Ok(Some(status)) => {
+                                let (_, cmd) = children.swap_remove(i);
+                                if !status.success() {
+                                    log::warn!("Shell command '{}' exited with {}", cmd, status);
+                                }
+                            }
+                            Ok(None) => i += 1, // Still running
+                            Err(e) => {
+                                let (_, cmd) = children.swap_remove(i);
+                                log::warn!("Failed to wait on shell command '{}': {}", cmd, e);
+                            }
+                        }
+                    }
+                }
+            });
+        if let Err(e) = spawn_result {
+            log::error!("Failed to spawn child-reaper thread: {}", e);
+            // Fallback is safe: send() will fail and callers synchronously reap.
+        }
+        std::sync::Mutex::new(tx)
+    });
+
+    // Enqueue child; fall back to synchronous wait if reaper is unavailable
+    match sender.lock() {
+        Ok(tx) => {
+            if let Err(e) = tx.send((child, label.clone())) {
+                log::error!("Reaper channel closed for '{}': {}", label, e);
+                let (mut orphan, _) = e.0;
+                if let Err(wait_err) = orphan.wait() {
+                    log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("Reaper mutex poisoned for '{}': {}", label, e);
+            if let Err(wait_err) = child.wait() {
+                log::warn!("Failed to wait on child '{}': {}", label, wait_err);
+            }
+        }
+    }
+}
 
 /// Launches an application by its class/app ID.
 ///
@@ -74,6 +144,23 @@ fn launch_via_uwsm(command: &str) {
             log::warn!("uwsm not found, falling back to direct launch: {}", e);
             launch_command(command);
         }
+    }
+}
+
+/// Launches a user-provided shell command string via `sh -c`.
+///
+/// Handles complex quoting, pipes, redirects, and nested quotes correctly.
+/// Use this for user-configured commands (power bar, launcher button, etc.)
+/// where the command string is a full shell expression.
+pub fn launch_shell_command(command: &str) {
+    let command = command.trim();
+    if command.is_empty() {
+        return;
+    }
+    log::info!("Running shell command: {}", command);
+    match Command::new("sh").args(["-c", command]).spawn() {
+        Ok(child) => reap_child(child, command.to_string()),
+        Err(e) => log::error!("Failed to spawn shell command '{}': {}", command, e),
     }
 }
 
@@ -236,5 +323,73 @@ mod tests {
         let (env, cmd) = extract_env_prefix(&elements);
         assert!(env.is_empty());
         assert_eq!(cmd, &["1VAR=bad", "firefox"]);
+    }
+
+    #[test]
+    fn shell_command_empty_is_noop() {
+        // Should not panic or spawn anything
+        launch_shell_command("");
+        launch_shell_command("   ");
+    }
+
+    const WAIT_RETRIES: usize = 40; // 2s total with 50ms interval
+    const WAIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
+    /// Polls a file until a readiness predicate matches, or times out.
+    fn wait_for_file(path: &std::path::Path, ready: impl Fn(&str) -> bool) -> String {
+        for _ in 0..WAIT_RETRIES {
+            std::thread::sleep(WAIT_INTERVAL);
+            if let Ok(c) = std::fs::read_to_string(path)
+                && ready(&c)
+            {
+                return c;
+            }
+        }
+        panic!("Timed out waiting for {}", path.display());
+    }
+
+    /// Removes a file, ignoring NotFound but panicking on other errors.
+    fn remove_test_file(path: &std::path::Path) {
+        if let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            panic!("Failed to remove {}: {}", path.display(), e);
+        }
+    }
+
+    #[test]
+    fn shell_command_handles_nested_quotes() {
+        // Simulate nwg-piotr's power bar command with nested quotes.
+        let tmp = std::env::temp_dir().join("nwg-shell-test-output");
+        remove_test_file(&tmp);
+
+        let cmd = format!(
+            r#"sh -c "echo 'hello world' > '{}'""#,
+            tmp.display()
+        );
+        launch_shell_command(&cmd);
+
+        let content = wait_for_file(&tmp, |c| c.trim() == "hello world");
+        assert_eq!(content.trim(), "hello world");
+        remove_test_file(&tmp);
+    }
+
+    #[test]
+    fn shell_command_handles_complex_quoting() {
+        // Simulates: nwg-dialog -p exit -c "loginctl terminate-user \"\""
+        let tmp = std::env::temp_dir().join("nwg-shell-test-complex");
+        remove_test_file(&tmp);
+
+        let cmd = format!(
+            r#"printf '%s\n' "arg with spaces" "another 'nested' arg" > '{}'"#,
+            tmp.display()
+        );
+        launch_shell_command(&cmd);
+
+        // Wait for both lines to be written
+        let content = wait_for_file(&tmp, |c| c.trim().lines().count() >= 2);
+        let lines: Vec<&str> = content.trim().lines().collect();
+        assert_eq!(lines, vec!["arg with spaces", "another 'nested' arg"]);
+        remove_test_file(&tmp);
     }
 }
