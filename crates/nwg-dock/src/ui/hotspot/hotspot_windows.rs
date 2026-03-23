@@ -215,16 +215,4 @@ fn setup_hotspot_layer(win: &gtk4::ApplicationWindow, position: crate::config::P
     }
 }
 
-/// Shows the dock on the named monitor and hides it on all others.
-fn show_on_monitor_only_by_name(docks: &Rc<RefCell<Vec<MonitorDock>>>, target_name: &str) {
-    let dock_list = docks.borrow();
-    if !dock_list.iter().any(|d| d.output_name == target_name) {
-        log::debug!("No dock window for monitor {}", target_name);
-        return;
-    }
-
-    for dock in dock_list.iter() {
-        dock.win.set_visible(dock.output_name == target_name);
-    }
-    log::debug!("Dock shown on monitor {}", target_name);
-}
+use super::show_on_monitor_only_by_name;

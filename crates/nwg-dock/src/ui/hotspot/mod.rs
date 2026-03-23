@@ -4,11 +4,30 @@ mod hotspot_windows;
 use crate::config::DockConfig;
 use crate::dock_windows::MonitorDock;
 use crate::state::DockState;
+use gtk4::prelude::*;
 use nwg_dock_common::compositor::Compositor;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub use hotspot_windows::HotspotContext;
+
+/// Shows the dock on the named monitor and hides it on all others.
+/// Bails out if the target isn't a dock-managed output (e.g., -o flag filters to one monitor).
+pub(super) fn show_on_monitor_only_by_name(
+    docks: &Rc<RefCell<Vec<MonitorDock>>>,
+    target_name: &str,
+) {
+    let dock_list = docks.borrow();
+    if !dock_list.iter().any(|d| d.output_name == target_name) {
+        log::debug!("No dock window for monitor {}", target_name);
+        return;
+    }
+
+    for dock in dock_list.iter() {
+        dock.win.set_visible(dock.output_name == target_name);
+    }
+    log::debug!("Dock shown on monitor {}", target_name);
+}
 
 /// Sets up autohide using the appropriate method for the compositor.
 ///
