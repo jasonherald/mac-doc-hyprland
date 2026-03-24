@@ -94,7 +94,7 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
             let hide_ref = copied_ref.clone();
             let timer_reset = std::rc::Rc::clone(&timer_ref);
             let id = gtk4::glib::timeout_add_local_once(
-                std::time::Duration::from_secs(2),
+                std::time::Duration::from_secs(super::constants::COPIED_LABEL_TIMEOUT_SECS),
                 move || {
                     hide_ref.set_visible(false);
                     timer_reset.set(None);
