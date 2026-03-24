@@ -74,6 +74,11 @@ pub fn build_search_results(ctx: &WellContext, phrase: &str) {
     // Hide pinned during search
     ctx.pinned_box.set_visible(false);
 
+    // Inline math result (e.g. "1+1 = 2") shown above app results
+    if let Some(math_widget) = ui::math::build_math_result(phrase) {
+        ctx.well.append(&math_widget);
+    }
+
     // Rebuild callback — rebuild_preserving_category checks active_search
     // and will re-run the search instead of restoring normal view.
     let on_rebuild = build_rebuild_callback(ctx);

@@ -40,6 +40,9 @@ nix = { version = "0.31", features = ["signal", "process", "fs"] }
 # Shell-aware command splitting (POSIX quoting rules)
 shell-words = "1"
 
+# Math expression evaluation (search bar calculator)
+meval = "0.2"
+
 # XDG directory resolution
 dirs = "6"
 

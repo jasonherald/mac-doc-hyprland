@@ -40,9 +40,6 @@ pub const CATEGORY_BAR_BOTTOM_MARGIN: i32 = 4;
 /// Top/bottom margin for the power bar and status display area.
 pub const STATUS_AREA_VERTICAL_MARGIN: i32 = 12;
 
-/// Side margin for the status display area (left/right padding).
-pub const STATUS_AREA_SIDE_MARGIN: i32 = 24;
-
 /// Top/bottom margin for section dividers.
 pub const DIVIDER_VERTICAL_MARGIN: i32 = 8;
 

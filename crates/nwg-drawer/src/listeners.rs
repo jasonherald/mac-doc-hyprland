@@ -24,7 +24,6 @@ pub fn setup_keyboard(
     search_entry: &gtk4::SearchEntry,
     config: &Rc<DrawerConfig>,
     on_launch: &Rc<dyn Fn()>,
-    app: &gtk4::Application,
     compositor: &Rc<dyn Compositor>,
 ) {
     let win_ctrl = win.clone();
@@ -32,8 +31,19 @@ pub fn setup_keyboard(
     let config = Rc::clone(config);
     let search_entry = search_entry.clone();
     let on_launch = Rc::clone(on_launch);
-    let app = app.clone();
     let compositor = Rc::clone(compositor);
+
+    // SearchEntry consumes Return internally via its `activate` signal before
+    // the window's capture-phase key controller sees it. Connect directly to
+    // handle `:command` execution and math evaluation.
+    {
+        let search_entry_ref = search_entry.clone();
+        let compositor = Rc::clone(&compositor);
+        let on_launch = Rc::clone(&on_launch);
+        search_entry.connect_activate(move |_| {
+            handle_return(&search_entry_ref, &*compositor, &on_launch);
+        });
+    }
 
     // Key press handler — intercepts Escape, Return, and auto-focus-search.
     // Capture phase so it fires even when no widget has focus (e.g. fresh open).
@@ -48,7 +58,8 @@ pub fn setup_keyboard(
             }
 
             gtk4::gdk::Key::Return | gtk4::gdk::Key::KP_Enter => {
-                handle_return(&search_entry, &*compositor, &on_launch, &app);
+                // Handled by SearchEntry's activate signal when search has focus.
+                // This path covers Return when a grid button has focus.
                 gtk4::glib::Propagation::Proceed
             }
 
@@ -265,14 +276,14 @@ fn handle_escape(search_entry: &gtk4::SearchEntry, win: &gtk4::ApplicationWindow
     }
 }
 
-/// Handles Return key: execute `:command` or evaluate math (only when search has focus).
+/// Handles Return key: execute `:command` (only when search has focus).
+/// Math evaluation is handled inline by build_search_results.
 fn handle_return(
     search_entry: &gtk4::SearchEntry,
     compositor: &dyn Compositor,
     on_launch: &Rc<dyn Fn()>,
-    app: &gtk4::Application,
 ) {
-    if !search_entry.has_focus() {
+    if !search_entry.has_focus() && !search_entry.is_focus() {
         return;
     }
     let text = search_entry.text().to_string();
@@ -280,8 +291,6 @@ fn handle_return(
         let cmd = &text[1..];
         nwg_dock_common::launch::launch_via_compositor(cmd, compositor);
         on_launch();
-    } else if let Some(result) = crate::ui::math::eval_expression(&text) {
-        crate::ui::math::show_result_window(&text, result, app);
     }
 }
 

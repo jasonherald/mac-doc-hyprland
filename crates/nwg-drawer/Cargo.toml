@@ -20,3 +20,4 @@ log = { workspace = true }
 env_logger = { workspace = true }
 notify = { workspace = true }
 nix = { workspace = true }
+meval = { workspace = true }

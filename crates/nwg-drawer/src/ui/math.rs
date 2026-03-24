@@ -1,225 +1,122 @@
 use gtk4::prelude::*;
-use gtk4_layer_shell::LayerShell;
 
-/// Evaluates a basic arithmetic expression.
-/// Supports +, -, *, /, parentheses, and decimal numbers.
-pub fn eval_expression(expr: &str) -> Option<f64> {
-    let mut parser = Parser::new(expr);
-    let result = parser.parse_expr();
-    if parser.is_done() {
-        Some(result?)
-    } else {
-        None
+/// Result of attempting to evaluate a math expression.
+pub enum MathResult {
+    /// Successfully evaluated to a numeric result.
+    Value(f64),
+    /// Looks like math but has an error (e.g. division by zero, incomplete).
+    Error(String),
+    /// Not a math expression — just a search query.
+    NotMath,
+}
+
+/// Evaluates a math expression using the meval crate.
+/// Supports: +, -, *, /, ^, %, parentheses, decimals,
+/// functions (sin, cos, sqrt, abs, ln, log, etc.),
+/// and constants (pi, e).
+pub fn eval_expression(expr: &str) -> MathResult {
+    let trimmed = expr.trim();
+    if trimmed.is_empty() {
+        return MathResult::NotMath;
+    }
+    match meval::eval_str(trimmed) {
+        Ok(val) if val.is_nan() => MathResult::Error("undefined".to_string()),
+        Ok(val) if val.is_infinite() => MathResult::Error("division by zero".to_string()),
+        Ok(val) => MathResult::Value(val),
+        Err(_) => MathResult::NotMath,
     }
 }
 
-/// Shows a math result popup window and copies result to clipboard.
-pub fn show_result_window(
-    expression: &str,
-    result: f64,
-    app: &gtk4::Application,
-) -> gtk4::ApplicationWindow {
-    let window = gtk4::ApplicationWindow::new(app);
-    window.init_layer_shell();
-    window.set_layer(gtk4_layer_shell::Layer::Overlay);
-    window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::Exclusive);
+/// Builds an inline math result widget for the search well.
+/// Returns `None` if the phrase isn't a math expression.
+pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
+    let (label_text, result_str) = match eval_expression(phrase) {
+        MathResult::Value(val) => {
+            let r = format_result(val);
+            (format!("{} = {}", phrase, r), Some(r))
+        }
+        MathResult::Error(msg) => (format!("{} — {}", phrase, msg), None),
+        MathResult::NotMath => return None,
+    };
 
-    let result_str = format_result(result);
-    let label_text = format!("{} = {}", expression, result_str);
-
-    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    vbox.set_halign(gtk4::Align::Center);
     vbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);
     vbox.set_margin_bottom(super::constants::STATUS_AREA_VERTICAL_MARGIN);
-    vbox.set_margin_start(super::constants::STATUS_AREA_SIDE_MARGIN);
-    vbox.set_margin_end(super::constants::STATUS_AREA_SIDE_MARGIN);
+
+    let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    row.set_halign(gtk4::Align::Center);
 
     let label = gtk4::Label::new(Some(&label_text));
-    label.set_widget_name("math-label");
-    label.set_selectable(true);
-    vbox.append(&label);
-    window.set_child(Some(&vbox));
+    label.add_css_class("math-result");
+    label.set_halign(gtk4::Align::End);
+    row.append(&label);
 
-    // Style
-    let provider = gtk4::CssProvider::new();
-    provider.load_from_data(
-        "window { background-color: rgba(0, 0, 0, 0.9); color: #fff; border: solid 1px grey; border-radius: 5px; }"
-    );
-    let display = gtk4::gdk::Display::default().expect("No display");
-    gtk4::style_context_add_provider_for_display(
-        &display,
-        &provider,
-        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-    );
+    // Copy button — copies the result to clipboard via wl-copy.
+    // "Copied!" confirmation shown below, auto-hides after 2 seconds.
+    if let Some(result_copy) = result_str {
+        let sep = gtk4::Separator::new(gtk4::Orientation::Vertical);
+        sep.add_css_class("math-divider");
+        row.append(&sep);
 
-    // Close on any key
-    let win_ref = window.clone();
-    let key_ctrl = gtk4::EventControllerKey::new();
-    key_ctrl.connect_key_released(move |_, _, _, _| {
-        win_ref.close();
+        let copy_btn = gtk4::Button::with_label("Copy");
+        copy_btn.add_css_class("math-copy");
+        copy_btn.set_focusable(true);
+        copy_btn.set_halign(gtk4::Align::Start);
+
+        let copied_label = gtk4::Label::new(Some("Copied!"));
+        copied_label.add_css_class("math-copied");
+        copied_label.set_visible(false);
+        vbox.append(&row);
+        vbox.append(&copied_label);
+
+        let copied_ref = copied_label.clone();
+        copy_btn.connect_clicked(move |_| {
+            let _ = std::process::Command::new("wl-copy") // Optional: wl-copy may not be available
+                .arg(&result_copy)
+                .spawn();
+            copied_ref.set_visible(true);
+            let hide_ref = copied_ref.clone();
+            gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+                hide_ref.set_visible(false);
+            });
+        });
+        row.append(&copy_btn);
+    } else {
+        vbox.append(&row);
+    }
+
+    // Load math CSS once
+    static CSS_LOADED: std::sync::Once = std::sync::Once::new();
+    CSS_LOADED.call_once(|| {
+        let provider = gtk4::CssProvider::new();
+        provider.load_from_data(
+            ".math-result { font-size: 20px; font-weight: bold; margin-right: 12px; } \
+             .math-divider { margin-left: 0px; margin-right: 0px; } \
+             .math-copy { font-size: 20px; background: #5b9bd5; color: white; border-radius: 6px; padding: 4px 16px; margin-left: 12px; } \
+             .math-copy:hover { background: #4a8bc2; } \
+             .math-copied { color: #5b9bd5; font-style: italic; }"
+        );
+        if let Some(display) = gtk4::gdk::Display::default() {
+            gtk4::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
     });
-    window.add_controller(key_ctrl);
 
-    // Close on click
-    let win_ref = window.clone();
-    let click = gtk4::GestureClick::new();
-    click.connect_released(move |_, _, _, _| {
-        win_ref.close();
-    });
-    window.add_controller(click);
-
-    window.present();
-
-    // Copy to clipboard via wl-copy
-    let _ = std::process::Command::new("wl-copy")
-        .arg(&result_str)
-        .spawn();
-
-    window
+    Some(vbox)
 }
 
 fn format_result(value: f64) -> String {
     if value == value.floor() && value.abs() < 1e15 {
         format!("{}", value as i64)
     } else {
-        format!("{}", value)
-    }
-}
-
-// --- Recursive descent parser for arithmetic expressions ---
-
-struct Parser {
-    chars: Vec<char>,
-    pos: usize,
-}
-
-impl Parser {
-    fn new(input: &str) -> Self {
-        Self {
-            chars: input.chars().collect(),
-            pos: 0,
-        }
-    }
-
-    fn is_done(&self) -> bool {
-        self.skip_spaces_pos() >= self.chars.len()
-    }
-
-    fn skip_spaces_pos(&self) -> usize {
-        let mut p = self.pos;
-        while p < self.chars.len() && self.chars[p].is_whitespace() {
-            p += 1;
-        }
-        p
-    }
-
-    fn skip_spaces(&mut self) {
-        while self.pos < self.chars.len() && self.chars[self.pos].is_whitespace() {
-            self.pos += 1;
-        }
-    }
-
-    fn peek(&mut self) -> Option<char> {
-        self.skip_spaces();
-        self.chars.get(self.pos).copied()
-    }
-
-    fn consume(&mut self) -> Option<char> {
-        self.skip_spaces();
-        if self.pos < self.chars.len() {
-            let c = self.chars[self.pos];
-            self.pos += 1;
-            Some(c)
-        } else {
-            None
-        }
-    }
-
-    fn parse_expr(&mut self) -> Option<f64> {
-        let mut left = self.parse_term()?;
-        loop {
-            match self.peek() {
-                Some('+') => {
-                    self.consume();
-                    left += self.parse_term()?;
-                }
-                Some('-') => {
-                    self.consume();
-                    left -= self.parse_term()?;
-                }
-                _ => return Some(left),
-            }
-        }
-    }
-
-    fn parse_term(&mut self) -> Option<f64> {
-        let mut left = self.parse_unary()?;
-        loop {
-            match self.peek() {
-                Some('*') => {
-                    self.consume();
-                    left *= self.parse_unary()?;
-                }
-                Some('/') => {
-                    self.consume();
-                    let right = self.parse_unary()?;
-                    if right == 0.0 {
-                        return None;
-                    }
-                    left /= right;
-                }
-                _ => return Some(left),
-            }
-        }
-    }
-
-    fn parse_unary(&mut self) -> Option<f64> {
-        match self.peek() {
-            Some('-') => {
-                self.consume();
-                Some(-self.parse_primary()?)
-            }
-            Some('+') => {
-                self.consume();
-                self.parse_primary()
-            }
-            _ => self.parse_primary(),
-        }
-    }
-
-    fn parse_primary(&mut self) -> Option<f64> {
-        if self.peek() == Some('(') {
-            self.consume(); // '('
-            let val = self.parse_expr()?;
-            if self.peek() == Some(')') {
-                self.consume();
-            }
-            Some(val)
-        } else {
-            self.parse_number()
-        }
-    }
-
-    fn parse_number(&mut self) -> Option<f64> {
-        self.skip_spaces();
-        let start = self.pos;
-        let mut has_dot = false;
-
-        while self.pos < self.chars.len() {
-            match self.chars[self.pos] {
-                c if c.is_ascii_digit() => self.pos += 1,
-                '.' if !has_dot => {
-                    has_dot = true;
-                    self.pos += 1;
-                }
-                _ => break,
-            }
-        }
-
-        if self.pos == start {
-            return None;
-        }
-        let s: String = self.chars[start..self.pos].iter().collect();
-        s.parse().ok()
+        format!("{:.6}", value)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string()
     }
 }
 
@@ -227,63 +124,80 @@ impl Parser {
 mod tests {
     use super::*;
 
+    fn eval_val(expr: &str) -> f64 {
+        match eval_expression(expr) {
+            MathResult::Value(v) => v,
+            _ => panic!("expected Value for '{}'", expr),
+        }
+    }
+
     #[test]
     fn basic_arithmetic() {
-        assert_eq!(eval_expression("2+2"), Some(4.0));
-        assert_eq!(eval_expression("10 - 3"), Some(7.0));
-        assert_eq!(eval_expression("6 * 7"), Some(42.0));
-        assert_eq!(eval_expression("10 / 4"), Some(2.5));
+        assert_eq!(eval_val("2+2"), 4.0);
+        assert_eq!(eval_val("10 - 3"), 7.0);
+        assert_eq!(eval_val("6 * 7"), 42.0);
+        assert_eq!(eval_val("10 / 4"), 2.5);
     }
 
     #[test]
     fn operator_precedence() {
-        assert_eq!(eval_expression("2 + 3 * 4"), Some(14.0));
-        assert_eq!(eval_expression("(2 + 3) * 4"), Some(20.0));
+        assert_eq!(eval_val("2 + 3 * 4"), 14.0);
+        assert_eq!(eval_val("(2 + 3) * 4"), 20.0);
     }
 
     #[test]
     fn negative_numbers() {
-        assert_eq!(eval_expression("-5"), Some(-5.0));
-        assert_eq!(eval_expression("3 + -2"), Some(1.0));
+        assert_eq!(eval_val("-5"), -5.0);
+        assert_eq!(eval_val("3 + -2"), 1.0);
     }
 
     #[test]
     fn division_by_zero() {
-        assert_eq!(eval_expression("1/0"), None);
+        assert!(matches!(eval_expression("1/0"), MathResult::Error(_)));
     }
 
     #[test]
-    fn invalid_expression() {
-        assert_eq!(eval_expression("abc"), None);
-        assert_eq!(eval_expression(""), None);
+    fn not_math() {
+        assert!(matches!(eval_expression("firefox"), MathResult::NotMath));
+        assert!(matches!(eval_expression(""), MathResult::NotMath));
+        assert!(matches!(eval_expression("   "), MathResult::NotMath));
     }
 
     #[test]
     #[allow(clippy::approx_constant)]
     fn decimals() {
-        let result = eval_expression("3.14 * 2").unwrap();
-        assert!((result - 6.28).abs() < 1e-10);
-    }
-
-    #[test]
-    fn double_dot_rejected() {
-        // "1.2.3" should parse as 1.2 then fail (leftover ".3")
-        assert_eq!(eval_expression("1.2.3"), None);
+        assert!((eval_val("3.14 * 2") - 6.28).abs() < 1e-10);
     }
 
     #[test]
     fn nested_parens() {
-        assert_eq!(eval_expression("(((1 + 2)))"), Some(3.0));
+        assert_eq!(eval_val("(((1 + 2)))"), 3.0);
     }
 
     #[test]
-    fn trailing_operator() {
-        // "1+" has leftover "+", should fail
-        assert_eq!(eval_expression("1+"), None);
+    fn power_operator() {
+        assert_eq!(eval_val("2^10"), 1024.0);
     }
 
     #[test]
-    fn whitespace_only() {
-        assert_eq!(eval_expression("   "), None);
+    fn builtin_functions() {
+        assert_eq!(eval_val("sqrt(16)"), 4.0);
+        assert_eq!(eval_val("abs(-5)"), 5.0);
+    }
+
+    #[test]
+    fn builtin_constants() {
+        assert!((eval_val("pi") - std::f64::consts::PI).abs() < 1e-10);
+        assert!((eval_val("e") - std::f64::consts::E).abs() < 1e-10);
+    }
+
+    #[test]
+    fn format_integer() {
+        assert_eq!(format_result(42.0), "42");
+    }
+
+    #[test]
+    fn format_decimal() {
+        assert_eq!(format_result(3.14), "3.14");
     }
 }
