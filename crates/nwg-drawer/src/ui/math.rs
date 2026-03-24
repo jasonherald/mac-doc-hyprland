@@ -78,17 +78,17 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
             std::rc::Rc::new(std::cell::Cell::new(None));
         let timer_ref = std::rc::Rc::clone(&pending_timer);
         copy_btn.connect_clicked(move |_| {
-            // Cancel previous hide timer so repeated clicks reset the 2s window
-            if let Some(id) = timer_ref.take() {
-                id.remove();
-            }
-            // Only show "Copied!" if wl-copy actually started
+            // Only proceed if wl-copy actually started
             if std::process::Command::new("wl-copy")
                 .arg(&result_copy)
                 .spawn()
                 .is_err()
             {
                 return;
+            }
+            // Cancel previous hide timer so repeated clicks reset the 2s window
+            if let Some(id) = timer_ref.take() {
+                id.remove();
             }
             copied_ref.set_visible(true);
             let hide_ref = copied_ref.clone();
@@ -143,11 +143,18 @@ fn format_result(value: f64) -> String {
     if value == value.floor() && value.abs() < 1e15 {
         format!("{}", value as i64)
     } else if value.abs() >= 1e15 || (value != 0.0 && value.abs() < 1e-4) {
-        // Scientific notation for very large or very small numbers
-        format!("{:.6e}", value)
-            .trim_end_matches('0')
-            .trim_end_matches('.')
-            .to_string()
+        // Scientific notation for very large or very small numbers.
+        // Only trim zeros from the mantissa, not the exponent.
+        let scientific = format!("{:.6e}", value);
+        if let Some((mantissa, exponent)) = scientific.split_once('e') {
+            format!(
+                "{}e{}",
+                mantissa.trim_end_matches('0').trim_end_matches('.'),
+                exponent
+            )
+        } else {
+            scientific
+        }
     } else {
         // 6 decimal places, trailing zeros stripped for clean display
         let formatted = format!("{:.6}", value)
@@ -284,5 +291,14 @@ mod tests {
     fn format_tiny_number_uses_scientific() {
         let result = format_result(0.00001);
         assert!(result.contains('e'), "expected scientific notation, got: {}", result);
+    }
+
+    #[test]
+    fn format_scientific_preserves_exponent() {
+        // Exponents ending in 0 must not be corrupted by mantissa trimming
+        let result = format_result(1e20);
+        assert!(result.ends_with("e20"), "exponent corrupted: {}", result);
+        let result = format_result(1e-10);
+        assert!(result.ends_with("e-10"), "exponent corrupted: {}", result);
     }
 }
