@@ -43,7 +43,7 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
 
     let vbox = gtk4::Box::new(
         gtk4::Orientation::Vertical,
-        super::constants::MATH_VBOX_SPACING as i32,
+        super::constants::MATH_VBOX_SPACING,
     );
     vbox.set_halign(gtk4::Align::Center);
     vbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);

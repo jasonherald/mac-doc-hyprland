@@ -60,7 +60,7 @@ pub const MATH_BUTTON_PADDING_V: i32 = 4;
 pub const MATH_BUTTON_PADDING_H: i32 = 16;
 
 /// Vertical spacing between math result row and "Copied!" label.
-pub const MATH_VBOX_SPACING: u32 = 4;
+pub const MATH_VBOX_SPACING: i32 = 4;
 
 /// Duration in seconds before the "Copied!" confirmation label auto-hides.
 pub const COPIED_LABEL_TIMEOUT_SECS: u64 = 2;
