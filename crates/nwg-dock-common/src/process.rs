@@ -40,31 +40,32 @@ fn parse_cmdline_bytes(data: &[u8]) -> Vec<String> {
 }
 
 /// Checks if `--dump-args <pid>` was passed and handles it.
-/// Returns `true` if handled (caller should exit), `false` otherwise.
+/// If present, prints the shell-quoted command line and terminates the process.
+/// Returns only when the flag is absent.
 /// Uses `args_os()` to avoid panicking on non-Unicode argv.
-pub fn handle_dump_args() -> bool {
+pub fn handle_dump_args() {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
     let flag = OsStr::new("--dump-args");
-    if let Some(pos) = args.iter().position(|a| a == flag) {
-        if let Some(pid_os) = args.get(pos + 1)
-            && let Some(pid_str) = pid_os.to_str()
-            && let Ok(pid) = pid_str.parse::<u32>()
-        {
-            match dump_args(pid) {
-                Some(cmdline) => {
-                    println!("{}", cmdline);
-                    std::process::exit(0);
-                }
-                None => {
-                    eprintln!("Failed to read cmdline for pid {}", pid);
-                    std::process::exit(1);
-                }
+    let Some(pos) = args.iter().position(|a| a == flag) else {
+        return;
+    };
+    if let Some(pid_os) = args.get(pos + 1)
+        && let Some(pid_str) = pid_os.to_str()
+        && let Ok(pid) = pid_str.parse::<u32>()
+    {
+        match dump_args(pid) {
+            Some(cmdline) => {
+                println!("{}", cmdline);
+                std::process::exit(0); // Success: printed cmdline
+            }
+            None => {
+                eprintln!("Failed to read cmdline for pid {}", pid);
+                std::process::exit(1); // Error: couldn't read /proc
             }
         }
-        eprintln!("Usage: --dump-args <pid>");
-        std::process::exit(1);
     }
-    false
+    eprintln!("Usage: --dump-args <pid>");
+    std::process::exit(1); // Error: missing or invalid PID
 }
 
 #[cfg(test)]
@@ -84,7 +85,7 @@ mod tests {
 
     #[test]
     fn dump_args_nonexistent_pid() {
-        assert!(dump_args(999_999_999).is_none());
+        assert!(dump_args(999_999_999).is_none()); // Intentionally beyond Linux pid_max
     }
 
     #[test]
