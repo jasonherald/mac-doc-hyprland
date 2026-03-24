@@ -141,12 +141,20 @@ fn format_result(value: f64) -> String {
     // Show integers without decimal point (up to i64 safe range)
     if value == value.floor() && value.abs() < 1e15 {
         format!("{}", value as i64)
-    } else {
-        // 6 decimal places, trailing zeros stripped for clean display
-        format!("{:.6}", value)
+    } else if value.abs() >= 1e15 || (value != 0.0 && value.abs() < 1e-4) {
+        // Scientific notation for very large or very small numbers
+        format!("{:.6e}", value)
             .trim_end_matches('0')
             .trim_end_matches('.')
             .to_string()
+    } else {
+        // 6 decimal places, trailing zeros stripped for clean display
+        let formatted = format!("{:.6}", value)
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string();
+        // Normalize -0 to 0 (e.g. sin(-pi) rounds to -0)
+        if formatted == "-0" { "0".to_string() } else { formatted }
     }
 }
 
@@ -250,5 +258,34 @@ mod tests {
     #[test]
     fn format_decimal() {
         assert_eq!(format_result(3.14), "3.14");
+    }
+
+    #[test]
+    fn undefined_nan() {
+        // sqrt(-1) produces NaN — should show "undefined"
+        match eval_expression("sqrt(-1)") {
+            MathResult::Error(msg) => assert_eq!(msg, "undefined"),
+            _ => panic!("expected Error(undefined)"),
+        }
+    }
+
+    #[test]
+    fn negative_zero_normalized() {
+        // -0.0 displays as "0" via integer branch
+        assert_eq!(format_result(-0.0), "0");
+        // Very small negative (like sin(-pi)) uses scientific notation, not "-0"
+        assert_ne!(format_result(-1.2e-16), "-0");
+    }
+
+    #[test]
+    fn format_large_number_uses_scientific() {
+        let result = format_result(2.0f64.powi(1023));
+        assert!(result.contains('e'), "expected scientific notation, got: {}", result);
+    }
+
+    #[test]
+    fn format_tiny_number_uses_scientific() {
+        let result = format_result(0.00001);
+        assert!(result.contains('e'), "expected scientific notation, got: {}", result);
     }
 }
