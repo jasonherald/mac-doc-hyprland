@@ -40,11 +40,27 @@ pub const CATEGORY_BAR_BOTTOM_MARGIN: i32 = 4;
 /// Top/bottom margin for the power bar and status display area.
 pub const STATUS_AREA_VERTICAL_MARGIN: i32 = 12;
 
-/// Side margin for the status display area (left/right padding).
-pub const STATUS_AREA_SIDE_MARGIN: i32 = 24;
-
 /// Top/bottom margin for section dividers.
 pub const DIVIDER_VERTICAL_MARGIN: i32 = 8;
 
 /// Side margin for section dividers (left/right padding).
 pub const DIVIDER_SIDE_MARGIN: i32 = 16;
+
+/// Font size for inline math result text and copy button.
+pub const MATH_FONT_SIZE: i32 = 20;
+
+/// Horizontal margin between math result/button and the divider.
+pub const MATH_SPACING: i32 = 12;
+
+/// Border radius for the math copy button.
+pub const MATH_BORDER_RADIUS: i32 = 6;
+
+/// Vertical/horizontal padding inside the math copy button.
+pub const MATH_BUTTON_PADDING_V: i32 = 4;
+pub const MATH_BUTTON_PADDING_H: i32 = 16;
+
+/// Vertical spacing between math result row and "Copied!" label.
+pub const MATH_VBOX_SPACING: i32 = 4;
+
+/// Duration in seconds before the "Copied!" confirmation label auto-hides.
+pub const COPIED_LABEL_TIMEOUT_SECS: u64 = 2;

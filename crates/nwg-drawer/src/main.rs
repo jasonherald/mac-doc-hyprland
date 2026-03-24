@@ -246,7 +246,7 @@ fn activate_drawer(
     main_vbox.append(&status_label);
 
     // Listeners
-    listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app, compositor);
+    listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, compositor);
     listeners::setup_focus_detector(&win, &on_launch, compositor);
     listeners::setup_file_watcher(app_dirs, &well_ctx);
     listeners::setup_signal_poller(&win, sig_rx, config.resident);
