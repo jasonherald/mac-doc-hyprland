@@ -214,7 +214,38 @@ start:
 
 restart: stop start
 
-upgrade: build stop install-bin install-data start
+# Upgrade captures running process args before stopping, then restarts
+# with the same flags. Falls back to `make start` defaults if nothing
+# was running. Uses shell-quoting to preserve args with spaces/quotes
+# (e.g. -c "nwg-drawer --opacity 88").
+upgrade: build
+	@# Capture running command lines from /proc before stopping.
+	@# Each null-separated arg is individually shell-quoted to preserve
+	@# arguments that contain spaces or special characters.
+	@saved_cmds=$$(mktemp) || exit 1; \
+	for bin in $(BINARIES); do \
+		for pid in $$(pidof $$bin 2>/dev/null); do \
+			if [ -f "/proc/$$pid/cmdline" ]; then \
+				cmdline=$$(target/release/$$bin --dump-args $$pid) && \
+				echo "$$bin|$$cmdline" >> "$$saved_cmds"; \
+			fi; \
+		done; \
+	done; \
+	\
+	$(MAKE) stop || exit 1; \
+	$(MAKE) install-bin install-data || exit 1; \
+	\
+	if [ -s "$$saved_cmds" ]; then \
+		echo "Restarting with previous arguments..."; \
+		while IFS='|' read -r bin cmdline; do \
+			echo "  $$bin"; \
+			eval nohup $$cmdline '>/dev/null' '2>&1' '&'; \
+		done < "$$saved_cmds"; \
+	else \
+		echo "No previous instances found, using defaults..."; \
+		$(MAKE) start; \
+	fi; \
+	rm -f "$$saved_cmds"
 	@echo ""
 	@echo "Upgrade complete — running instances restarted."
 

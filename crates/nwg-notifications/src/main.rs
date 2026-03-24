@@ -20,6 +20,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn main() {
+    nwg_dock_common::process::handle_dump_args();
     let config = NotificationConfig::parse();
 
     if config.debug {

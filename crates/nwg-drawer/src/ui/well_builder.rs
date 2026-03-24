@@ -1,74 +1,48 @@
-use crate::config::DrawerConfig;
-use crate::state::DrawerState;
 use crate::ui;
 use crate::ui::navigation;
+use crate::ui::well_context::WellContext;
 use gtk4::prelude::*;
 use nwg_dock_common::pinning;
-use std::cell::RefCell;
-use std::path::Path;
 use std::rc::Rc;
 
 /// Builds the normal (non-search) well content.
 ///
 /// Pinned items go into `pinned_box` (above the ScrolledWindow, fixed).
 /// App grid goes into `well` (inside the ScrolledWindow, scrollable).
-pub fn build_normal_well(
-    well: &gtk4::Box,
-    pinned_box: &gtk4::Box,
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-) {
-    clear_box(well);
-    clear_box(pinned_box);
+pub fn build_normal_well(ctx: &WellContext) {
+    clear_box(&ctx.well);
+    clear_box(&ctx.pinned_box);
 
-    let pinned = state.borrow().pinned.clone();
+    let pinned = ctx.state.borrow().pinned.clone();
 
     // Rebuild callback shared by pinned unpin + app grid pin
-    let on_rebuild = build_rebuild_callback(
-        well,
-        pinned_box,
-        config,
-        state,
-        pinned_file,
-        on_launch,
-        status_label,
-    );
+    let on_rebuild = build_rebuild_callback(ctx);
 
     // Pinned items (above scroll)
     if !pinned.is_empty() {
-        let pf = build_pinned_flow(
-            config,
-            state,
-            pinned_file,
-            on_launch,
-            status_label,
-            &on_rebuild,
-        );
+        let pf = build_pinned_flow(ctx, &on_rebuild);
         pf.set_halign(gtk4::Align::Center);
-        pinned_box.append(&pf);
+        ctx.pinned_box.append(&pf);
     }
 
     // App grid (scrollable)
     let flow = ui::app_grid::build_app_flow_box(
-        config,
-        state,
+        &ctx.config,
+        &ctx.state,
         None,
         "",
-        pinned_file,
-        Rc::clone(on_launch),
-        status_label,
+        &ctx.pinned_file,
+        Rc::clone(&ctx.on_launch),
+        &ctx.status_label,
         Some(&on_rebuild),
     );
     flow.set_halign(gtk4::Align::Center);
-    well.append(&flow);
+    ctx.well.append(&flow);
 
     // Install grid navigation on both FlowBoxes.
     let has_pinned = !pinned.is_empty();
     let pinned_flow_opt = if has_pinned {
-        pinned_box
+        ctx.pinned_box
             .first_child()
             .and_then(|w| w.downcast::<gtk4::FlowBox>().ok())
     } else {
@@ -78,7 +52,7 @@ pub fn build_normal_well(
     // App grid gets capture-phase arrow handler + cross-section up
     navigation::install_grid_nav(
         &flow,
-        config.columns,
+        ctx.config.columns,
         pinned_flow_opt.as_ref(), // up target
         None,                     // no down target (bottom of layout)
     );
@@ -87,7 +61,7 @@ pub fn build_normal_well(
     if let Some(ref pf) = pinned_flow_opt {
         navigation::install_grid_nav(
             pf,
-            config.columns.min(pinned.len() as u32).max(1),
+            ctx.config.columns.min(pinned.len() as u32).max(1),
             None,        // no up target (top of layout)
             Some(&flow), // down target
         );
@@ -95,63 +69,49 @@ pub fn build_normal_well(
 }
 
 /// Builds search results — hides pinned, shows matching apps + files.
-#[allow(clippy::too_many_arguments)]
-pub fn build_search_results(
-    well: &gtk4::Box,
-    pinned_box: &gtk4::Box,
-    phrase: &str,
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-) {
-    clear_box(well);
+pub fn build_search_results(ctx: &WellContext, phrase: &str) {
+    clear_box(&ctx.well);
     // Hide pinned during search
-    pinned_box.set_visible(false);
+    ctx.pinned_box.set_visible(false);
 
     // Rebuild callback — rebuild_preserving_category checks active_search
     // and will re-run the search instead of restoring normal view.
-    let on_rebuild = build_rebuild_callback(
-        well,
-        pinned_box,
-        config,
-        state,
-        pinned_file,
-        on_launch,
-        status_label,
-    );
+    let on_rebuild = build_rebuild_callback(ctx);
     let app_flow = ui::app_grid::build_app_flow_box(
-        config,
-        state,
+        &ctx.config,
+        &ctx.state,
         None,
         phrase,
-        pinned_file,
-        Rc::clone(on_launch),
-        status_label,
+        &ctx.pinned_file,
+        Rc::clone(&ctx.on_launch),
+        &ctx.status_label,
         Some(&on_rebuild),
     );
     app_flow.set_halign(gtk4::Align::Center);
-    well.append(&app_flow);
+    ctx.well.append(&app_flow);
 
     // Search results get navigation too (no cross-section targets)
-    navigation::install_grid_nav(&app_flow, config.columns, None, None);
+    navigation::install_grid_nav(&app_flow, ctx.config.columns, None, None);
 
     // File results
-    if !config.no_fs && phrase.len() > 2 {
-        let file_results =
-            ui::file_search::search_files(phrase, config, state, Rc::clone(on_launch));
+    if !ctx.config.no_fs && phrase.len() > 2 {
+        let file_results = ui::file_search::search_files(
+            phrase,
+            &ctx.config,
+            &ctx.state,
+            Rc::clone(&ctx.on_launch),
+        );
         // file_search::search_files adds a header + separator before result rows
         let total_children = count_children(&file_results);
         let file_count = total_children.saturating_sub(2);
         if file_count > 0 {
-            well.append(&divider());
-            status_label.set_text(&format!(
+            ctx.well.append(&divider());
+            ctx.status_label.set_text(&format!(
                 "{} file results | LMB: open | RMB: file manager",
                 file_count
             ));
             file_results.set_halign(gtk4::Align::Center);
-            well.append(&file_results);
+            ctx.well.append(&file_results);
 
             // Up from first file result → back to app search results
             navigation::install_file_results_nav(&file_results);
@@ -160,128 +120,52 @@ pub fn build_search_results(
 }
 
 /// Rebuilds the well, preserving the current view mode (search, category, or normal).
-#[allow(clippy::too_many_arguments)]
-pub fn rebuild_preserving_category(
-    well: &gtk4::Box,
-    pinned_box: &gtk4::Box,
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-) {
-    let active_search = state.borrow().active_search.clone();
-    let active_cat = state.borrow().active_category.clone();
+pub fn rebuild_preserving_category(ctx: &WellContext) {
+    let active_search = ctx.state.borrow().active_search.clone();
+    let active_cat = ctx.state.borrow().active_category.clone();
 
     match determine_rebuild_mode(&active_search, &active_cat) {
         RebuildMode::Search => {
-            build_search_results(
-                well,
-                pinned_box,
-                &active_search,
-                config,
-                state,
-                pinned_file,
-                on_launch,
-                status_label,
-            );
+            build_search_results(ctx, &active_search);
         }
         RebuildMode::Category => {
-            build_normal_well(
-                well,
-                pinned_box,
-                config,
-                state,
-                pinned_file,
-                on_launch,
-                status_label,
-            );
-            crate::ui::categories::apply_category_filter(
-                well,
-                pinned_box,
-                config,
-                state,
-                &active_cat,
-                pinned_file,
-                on_launch,
-                status_label,
-            );
+            build_normal_well(ctx);
+            crate::ui::categories::apply_category_filter(ctx, &active_cat);
         }
         RebuildMode::Normal => {
-            build_normal_well(
-                well,
-                pinned_box,
-                config,
-                state,
-                pinned_file,
-                on_launch,
-                status_label,
-            );
+            build_normal_well(ctx);
         }
     }
 }
 
 /// Restores the normal well (used when clearing search).
-pub fn restore_normal_well(
-    well: &gtk4::Box,
-    pinned_box: &gtk4::Box,
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-) {
-    pinned_box.set_visible(true);
-    build_normal_well(
-        well,
-        pinned_box,
-        config,
-        state,
-        pinned_file,
-        on_launch,
-        status_label,
-    );
+pub fn restore_normal_well(ctx: &WellContext) {
+    ctx.pinned_box.set_visible(true);
+    build_normal_well(ctx);
 }
 
 /// Builds the pinned items FlowBox with right-click unpin + immediate rebuild.
-fn build_pinned_flow(
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-    on_rebuild: &Rc<dyn Fn()>,
-) -> gtk4::FlowBox {
+fn build_pinned_flow(ctx: &WellContext, on_rebuild: &Rc<dyn Fn()>) -> gtk4::FlowBox {
     let flow_box = gtk4::FlowBox::new();
-    let pinned = state.borrow().pinned.clone();
-    let cols = config.columns.min(pinned.len() as u32).max(1);
+    let pinned = ctx.state.borrow().pinned.clone();
+    let cols = ctx.config.columns.min(pinned.len() as u32).max(1);
     flow_box.set_min_children_per_line(cols);
     flow_box.set_max_children_per_line(cols);
-    flow_box.set_column_spacing(config.spacing);
-    flow_box.set_row_spacing(config.spacing);
+    flow_box.set_column_spacing(ctx.config.spacing);
+    flow_box.set_row_spacing(ctx.config.spacing);
     flow_box.set_homogeneous(true);
     flow_box.set_selection_mode(gtk4::SelectionMode::None);
 
-    let id2entry = state.borrow().apps.id2entry.clone();
-    let app_dirs = state.borrow().app_dirs.clone();
+    let id2entry = ctx.state.borrow().apps.id2entry.clone();
+    let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     for desktop_id in &pinned {
         let entry = match id2entry.get(desktop_id) {
             Some(e) if !e.desktop_id.is_empty() && !e.no_display => e,
             _ => continue,
         };
-        let button = build_pinned_button(
-            entry,
-            config,
-            state,
-            &app_dirs,
-            pinned_file,
-            on_launch,
-            status_label,
-            on_rebuild,
-            desktop_id,
-        );
-        if config.pin_indicator {
+        let button = build_pinned_button(entry, ctx, &app_dirs, on_rebuild, desktop_id);
+        if ctx.config.pin_indicator {
             crate::ui::widgets::apply_pin_badge(&button);
         }
         flow_box.insert(&button, -1);
@@ -295,15 +179,10 @@ fn build_pinned_flow(
 }
 
 /// Builds a single pinned icon button with click-to-launch and right-click-to-unpin.
-#[allow(clippy::too_many_arguments)]
 fn build_pinned_button(
     entry: &nwg_dock_common::desktop::entry::DesktopEntry,
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
+    ctx: &WellContext,
     app_dirs: &[std::path::PathBuf],
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
     on_rebuild: &Rc<dyn Fn()>,
     desktop_id: &str,
 ) -> gtk4::Button {
@@ -320,19 +199,19 @@ fn build_pinned_button(
     let button = crate::ui::widgets::app_icon_button(
         &entry.icon,
         name,
-        config.icon_size,
+        ctx.config.icon_size,
         app_dirs,
-        status_label,
+        &ctx.status_label,
         desc,
     );
 
     // Click → launch
     let exec = entry.exec.clone();
     let terminal = entry.terminal;
-    let term = config.term.clone();
-    let on_launch_ref = Rc::clone(on_launch);
-    let compositor = Rc::clone(&state.borrow().compositor);
-    let theme_prefix = state.borrow().gtk_theme_prefix.clone();
+    let term = ctx.config.term.clone();
+    let on_launch_ref = Rc::clone(&ctx.on_launch);
+    let compositor = Rc::clone(&ctx.state.borrow().compositor);
+    let theme_prefix = ctx.state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
         nwg_dock_common::launch::launch_desktop_entry(
             &exec, terminal, &term, &theme_prefix, &*compositor,
@@ -342,8 +221,8 @@ fn build_pinned_button(
 
     // Right-click → unpin + immediate rebuild
     let id = desktop_id.to_string();
-    let state_ref = Rc::clone(state);
-    let path = pinned_file.to_path_buf();
+    let state_ref = Rc::clone(&ctx.state);
+    let path = ctx.pinned_file.as_ref().clone();
     let rebuild = Rc::clone(on_rebuild);
     let gesture = gtk4::GestureClick::new();
     gesture.set_button(3);
@@ -369,41 +248,12 @@ fn build_pinned_button(
 
 /// Creates a callback that rebuilds the entire well + pinned_box.
 /// Public so category filter can create rebuild callbacks for pin/unpin.
-#[allow(clippy::too_many_arguments)]
-pub fn build_rebuild_callback(
-    well: &gtk4::Box,
-    pinned_box: &gtk4::Box,
-    config: &DrawerConfig,
-    state: &Rc<RefCell<DrawerState>>,
-    pinned_file: &Path,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
-) -> Rc<dyn Fn()> {
-    let well = well.clone();
-    let pinned_box = pinned_box.clone();
-    let config = config.clone();
-    let state = Rc::clone(state);
-    let pinned_file = pinned_file.to_path_buf();
-    let on_launch = Rc::clone(on_launch);
-    let status_label = status_label.clone();
+pub fn build_rebuild_callback(ctx: &WellContext) -> Rc<dyn Fn()> {
+    let ctx = ctx.clone();
     Rc::new(move || {
-        let well = well.clone();
-        let pinned_box = pinned_box.clone();
-        let config = config.clone();
-        let state = Rc::clone(&state);
-        let pinned_file = pinned_file.clone();
-        let on_launch = Rc::clone(&on_launch);
-        let status_label = status_label.clone();
+        let ctx = ctx.clone();
         gtk4::glib::idle_add_local_once(move || {
-            rebuild_preserving_category(
-                &well,
-                &pinned_box,
-                &config,
-                &state,
-                &pinned_file,
-                &on_launch,
-                &status_label,
-            );
+            rebuild_preserving_category(&ctx);
         });
     })
 }
