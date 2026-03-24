@@ -18,6 +18,16 @@ pub fn dump_args(pid: u32) -> Option<String> {
             return None;
         }
     };
+    let args = parse_cmdline_bytes(&data);
+    if args.is_empty() {
+        return None;
+    }
+    Some(shell_words::join(&args))
+}
+
+/// Parses raw `/proc/<pid>/cmdline` bytes into a list of arguments.
+/// Splits on NUL bytes, strips the trailing empty element from the terminator.
+fn parse_cmdline_bytes(data: &[u8]) -> Vec<String> {
     let mut args: Vec<String> = data
         .split(|&b| b == 0)
         .map(|s| String::from_utf8_lossy(s).into_owned())
@@ -26,10 +36,7 @@ pub fn dump_args(pid: u32) -> Option<String> {
     if matches!(args.last(), Some(s) if s.is_empty()) {
         args.pop();
     }
-    if args.is_empty() {
-        return None;
-    }
-    Some(shell_words::join(&args))
+    args
 }
 
 /// Checks if `--dump-args <pid>` was passed and handles it.
@@ -108,5 +115,30 @@ mod tests {
         let joined = shell_words::join(&args);
         let split = shell_words::split(&joined).unwrap();
         assert_eq!(split, args);
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_basic() {
+        let data = b"cmd\0--flag\0value\0";
+        assert_eq!(parse_cmdline_bytes(data), vec!["cmd", "--flag", "value"]);
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_empty_middle_arg() {
+        // Empty argument between two others (e.g. -c "")
+        let data = b"cmd\0\0last\0";
+        assert_eq!(parse_cmdline_bytes(data), vec!["cmd", "", "last"]);
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_no_trailing_null() {
+        // Some edge cases may lack the trailing null
+        let data = b"cmd\0arg";
+        assert_eq!(parse_cmdline_bytes(data), vec!["cmd", "arg"]);
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_empty() {
+        assert!(parse_cmdline_bytes(b"").is_empty());
     }
 }
