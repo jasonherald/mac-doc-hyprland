@@ -222,17 +222,18 @@ upgrade: build
 	@# Capture running command lines from /proc before stopping.
 	@# Each null-separated arg is individually shell-quoted to preserve
 	@# arguments that contain spaces or special characters.
-	@saved_cmds=$$(mktemp); \
+	@saved_cmds=$$(mktemp) || exit 1; \
 	for bin in $(BINARIES); do \
-		pid=$$(pidof $$bin 2>/dev/null | awk '{print $$1}'); \
-		if [ -n "$$pid" ] && [ -f "/proc/$$pid/cmdline" ]; then \
-			cmdline=$$(target/release/$$bin --dump-args $$pid); \
-			echo "$$bin|$$cmdline" >> "$$saved_cmds"; \
-		fi; \
+		for pid in $$(pidof $$bin 2>/dev/null); do \
+			if [ -f "/proc/$$pid/cmdline" ]; then \
+				cmdline=$$(target/release/$$bin --dump-args $$pid) && \
+				echo "$$bin|$$cmdline" >> "$$saved_cmds"; \
+			fi; \
+		done; \
 	done; \
 	\
-	$(MAKE) stop; \
-	$(MAKE) install-bin install-data; \
+	$(MAKE) stop || exit 1; \
+	$(MAKE) install-bin install-data || exit 1; \
 	\
 	if [ -s "$$saved_cmds" ]; then \
 		echo "Restarting with previous arguments..."; \

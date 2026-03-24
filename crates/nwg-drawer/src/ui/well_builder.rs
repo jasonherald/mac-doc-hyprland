@@ -249,25 +249,9 @@ fn build_pinned_button(
 /// Creates a callback that rebuilds the entire well + pinned_box.
 /// Public so category filter can create rebuild callbacks for pin/unpin.
 pub fn build_rebuild_callback(ctx: &WellContext) -> Rc<dyn Fn()> {
-    let well = ctx.well.clone();
-    let pinned_box = ctx.pinned_box.clone();
-    let config = Rc::clone(&ctx.config);
-    let state = Rc::clone(&ctx.state);
-    let pinned_file = Rc::clone(&ctx.pinned_file);
-    let on_launch = Rc::clone(&ctx.on_launch);
-    let status_label = ctx.status_label.clone();
-    let search_entry = ctx.search_entry.clone();
+    let ctx = ctx.clone();
     Rc::new(move || {
-        let ctx = WellContext {
-            well: well.clone(),
-            pinned_box: pinned_box.clone(),
-            config: Rc::clone(&config),
-            state: Rc::clone(&state),
-            pinned_file: Rc::clone(&pinned_file),
-            on_launch: Rc::clone(&on_launch),
-            status_label: status_label.clone(),
-            search_entry: search_entry.clone(),
-        };
+        let ctx = ctx.clone();
         gtk4::glib::idle_add_local_once(move || {
             rebuild_preserving_category(&ctx);
         });

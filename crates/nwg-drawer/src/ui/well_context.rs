@@ -8,6 +8,7 @@ use std::rc::Rc;
 ///
 /// Bundles commonly-needed references so functions don't need 7+ parameters.
 /// Follows the DockContext pattern from nwg-dock/src/context.rs.
+#[derive(Clone)]
 pub struct WellContext {
     pub well: gtk4::Box,
     pub pinned_box: gtk4::Box,

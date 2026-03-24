@@ -11,11 +11,14 @@ use std::fs;
 pub fn dump_args(pid: u32) -> Option<String> {
     let path = format!("/proc/{}/cmdline", pid);
     let data = fs::read(&path).ok()?;
-    let args: Vec<String> = data
+    let mut args: Vec<String> = data
         .split(|&b| b == 0)
-        .filter(|s| !s.is_empty())
         .map(|s| String::from_utf8_lossy(s).into_owned())
         .collect();
+    // /proc/cmdline has a trailing null → remove the empty string it produces
+    if matches!(args.last(), Some(s) if s.is_empty()) {
+        args.pop();
+    }
     if args.is_empty() {
         return None;
     }

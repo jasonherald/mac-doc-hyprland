@@ -22,31 +22,14 @@ pub fn build_category_bar(ctx: &WellContext) -> gtk4::Box {
     all_btn.set_widget_name("category-button");
 
     {
-        let well = ctx.well.clone();
-        let pinned_box = ctx.pinned_box.clone();
-        let config = Rc::clone(&ctx.config);
-        let state = Rc::clone(&ctx.state);
-        let pinned_file = Rc::clone(&ctx.pinned_file);
-        let on_launch = Rc::clone(&ctx.on_launch);
+        let ctx = ctx.clone();
         let buttons = Rc::clone(&buttons);
-        let status_label = ctx.status_label.clone();
-        let search_entry = ctx.search_entry.clone();
         all_btn.connect_clicked(move |btn| {
             select_button(btn, &buttons);
-            search_entry.set_text("");
-            state.borrow_mut().active_search.clear();
-            state.borrow_mut().active_category.clear();
-            pinned_box.set_visible(true);
-            let ctx = WellContext {
-                well: well.clone(),
-                pinned_box: pinned_box.clone(),
-                config: Rc::clone(&config),
-                state: Rc::clone(&state),
-                pinned_file: Rc::clone(&pinned_file),
-                on_launch: Rc::clone(&on_launch),
-                status_label: status_label.clone(),
-                search_entry: search_entry.clone(),
-            };
+            ctx.search_entry.set_text("");
+            ctx.state.borrow_mut().active_search.clear();
+            ctx.state.borrow_mut().active_category.clear();
+            ctx.pinned_box.set_visible(true);
             ui::well_builder::build_normal_well(&ctx);
         });
     }
@@ -92,30 +75,13 @@ fn create_category_button(
     btn.add_css_class("category-button");
     btn.set_widget_name("category-button");
 
-    let well = ctx.well.clone();
-    let pinned_box = ctx.pinned_box.clone();
-    let config = Rc::clone(&ctx.config);
-    let state = Rc::clone(&ctx.state);
-    let pinned_file = Rc::clone(&ctx.pinned_file);
-    let on_launch = Rc::clone(&ctx.on_launch);
+    let ctx = ctx.clone();
     let buttons = Rc::clone(buttons);
-    let status_label = ctx.status_label.clone();
-    let search_entry = ctx.search_entry.clone();
     btn.connect_clicked(move |btn| {
         select_button(btn, &buttons);
-        search_entry.set_text("");
-        state.borrow_mut().active_search.clear();
-        state.borrow_mut().active_category = ids.clone();
-        let ctx = WellContext {
-            well: well.clone(),
-            pinned_box: pinned_box.clone(),
-            config: Rc::clone(&config),
-            state: Rc::clone(&state),
-            pinned_file: Rc::clone(&pinned_file),
-            on_launch: Rc::clone(&on_launch),
-            status_label: status_label.clone(),
-            search_entry: search_entry.clone(),
-        };
+        ctx.search_entry.set_text("");
+        ctx.state.borrow_mut().active_search.clear();
+        ctx.state.borrow_mut().active_category = ids.clone();
         apply_category_filter(&ctx, &ids);
     });
 

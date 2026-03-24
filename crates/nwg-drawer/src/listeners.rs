@@ -115,16 +115,7 @@ pub fn setup_file_watcher(
     ctx: &crate::ui::well_context::WellContext,
 ) {
     let watch_rx = watcher::start_watcher(app_dirs, &ctx.pinned_file);
-    let ctx = crate::ui::well_context::WellContext {
-        well: ctx.well.clone(),
-        pinned_box: ctx.pinned_box.clone(),
-        config: Rc::clone(&ctx.config),
-        state: Rc::clone(&ctx.state),
-        pinned_file: Rc::clone(&ctx.pinned_file),
-        on_launch: Rc::clone(&ctx.on_launch),
-        status_label: ctx.status_label.clone(),
-        search_entry: ctx.search_entry.clone(),
-    };
+    let ctx = ctx.clone();
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(event) = watch_rx.try_recv() {

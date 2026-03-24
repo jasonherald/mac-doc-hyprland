@@ -7,16 +7,7 @@ use std::rc::Rc;
 /// Connects the search entry to the well, handling search/clear/command modes.
 pub fn connect_search(ctx: &WellContext) {
     let search_entry = ctx.search_entry.clone();
-    let ctx = WellContext {
-        well: ctx.well.clone(),
-        pinned_box: ctx.pinned_box.clone(),
-        config: Rc::clone(&ctx.config),
-        state: Rc::clone(&ctx.state),
-        pinned_file: Rc::clone(&ctx.pinned_file),
-        on_launch: Rc::clone(&ctx.on_launch),
-        status_label: ctx.status_label.clone(),
-        search_entry: ctx.search_entry.clone(),
-    };
+    let ctx = ctx.clone();
     let in_search_mode = Rc::new(RefCell::new(false));
 
     search_entry.connect_search_changed(move |entry| {
