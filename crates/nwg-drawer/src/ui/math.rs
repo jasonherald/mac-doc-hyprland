@@ -139,6 +139,11 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
 }
 
 fn format_result(value: f64) -> String {
+    // Snap to zero at display precision (6 decimal places) so
+    // expressions like sin(pi) show "0" instead of "1.2e-16"
+    if value.abs() < 0.5e-6 {
+        return "0".to_string();
+    }
     // Show integers without decimal point (up to i64 safe range)
     if value == value.floor() && value.abs() < 1e15 {
         format!("{}", value as i64)
@@ -183,6 +188,7 @@ mod tests {
         assert_eq!(eval_val("10 - 3"), 7.0);
         assert_eq!(eval_val("6 * 7"), 42.0);
         assert_eq!(eval_val("10 / 4"), 2.5);
+        assert_eq!(eval_val("10 % 3"), 1.0);
     }
 
     #[test]
@@ -207,6 +213,8 @@ mod tests {
         assert!(matches!(eval_expression("firefox"), MathResult::NotMath));
         assert!(matches!(eval_expression(""), MathResult::NotMath));
         assert!(matches!(eval_expression("   "), MathResult::NotMath));
+        // :command prefix is not math — handled by listeners.rs
+        assert!(matches!(eval_expression(":firefox"), MathResult::NotMath));
     }
 
     #[test]
@@ -274,6 +282,13 @@ mod tests {
     }
 
     #[test]
+    fn tiny_values_snap_to_zero() {
+        // Floating-point noise like sin(pi) ≈ 1.2e-16 should display as "0"
+        assert_eq!(format_result(1.2e-16), "0");
+        assert_eq!(format_result(-1.2e-16), "0");
+    }
+
+    #[test]
     fn negative_zero_normalized() {
         // -0.0 displays as "0" via integer branch
         assert_eq!(format_result(-0.0), "0");
@@ -298,7 +313,8 @@ mod tests {
         // Exponents ending in 0 must not be corrupted by mantissa trimming
         let result = format_result(1e20);
         assert!(result.ends_with("e20"), "exponent corrupted: {}", result);
-        let result = format_result(1e-10);
-        assert!(result.ends_with("e-10"), "exponent corrupted: {}", result);
+        // Test negative exponent with trailing zero: 1e-5 < 1e-4, above zero-snap
+        let result = format_result(1e-5);
+        assert!(result.contains("e-5"), "exponent corrupted: {}", result);
     }
 }
