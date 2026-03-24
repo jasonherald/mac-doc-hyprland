@@ -58,3 +58,6 @@ pub const MATH_BORDER_RADIUS: i32 = 6;
 /// Vertical/horizontal padding inside the math copy button.
 pub const MATH_BUTTON_PADDING_V: i32 = 4;
 pub const MATH_BUTTON_PADDING_H: i32 = 16;
+
+/// Vertical spacing between math result row and "Copied!" label.
+pub const MATH_VBOX_SPACING: u32 = 4;

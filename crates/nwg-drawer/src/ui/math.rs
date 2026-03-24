@@ -39,7 +39,10 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
         MathResult::NotMath => return None,
     };
 
-    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    let vbox = gtk4::Box::new(
+        gtk4::Orientation::Vertical,
+        super::constants::MATH_VBOX_SPACING as i32,
+    );
     vbox.set_halign(gtk4::Align::Center);
     vbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);
     vbox.set_margin_bottom(super::constants::STATUS_AREA_VERTICAL_MARGIN);
@@ -69,15 +72,28 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
         copied_label.set_visible(false);
 
         let copied_ref = copied_label.clone();
+        let pending_timer: std::rc::Rc<std::cell::Cell<Option<gtk4::glib::SourceId>>> =
+            std::rc::Rc::new(std::cell::Cell::new(None));
+        let timer_ref = std::rc::Rc::clone(&pending_timer);
         copy_btn.connect_clicked(move |_| {
             let _ = std::process::Command::new("wl-copy") // Optional: wl-copy may not be available
                 .arg(&result_copy)
                 .spawn();
+            // Cancel previous hide timer so repeated clicks reset the 2s window
+            if let Some(id) = timer_ref.take() {
+                id.remove();
+            }
             copied_ref.set_visible(true);
             let hide_ref = copied_ref.clone();
-            gtk4::glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
-                hide_ref.set_visible(false);
-            });
+            let timer_reset = std::rc::Rc::clone(&timer_ref);
+            let id = gtk4::glib::timeout_add_local_once(
+                std::time::Duration::from_secs(2),
+                move || {
+                    hide_ref.set_visible(false);
+                    timer_reset.set(None);
+                },
+            );
+            timer_ref.set(Some(id));
         });
         row.append(&copy_btn);
         vbox.append(&row);
