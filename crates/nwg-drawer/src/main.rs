@@ -21,6 +21,7 @@ use std::rc::Rc;
 const DRAWER_CSS: &str = include_str!("assets/drawer.css");
 
 fn main() {
+    nwg_dock_common::process::handle_dump_args();
     let mut config = DrawerConfig::parse_from(config::normalize_legacy_flags(std::env::args()));
 
     if config.debug {
@@ -205,18 +206,21 @@ fn activate_drawer(
     well.set_margin_top(ui::constants::CONTENT_TOP_MARGIN);
     scrolled.set_child(Some(&well));
 
+    // Shared context for well/category/search builders
+    let well_ctx = ui::well_context::WellContext {
+        well: well.clone(),
+        pinned_box: pinned_box.clone(),
+        config: Rc::clone(&config),
+        state: Rc::clone(&state),
+        pinned_file: Rc::clone(&pinned_file),
+        on_launch: Rc::clone(&on_launch),
+        status_label: status_label.clone(),
+        search_entry: search_entry.clone(),
+    };
+
     // Categories (above scroll, fixed)
     if !config.no_cats {
-        let cat_bar = ui::categories::build_category_bar(
-            &config,
-            &state,
-            &well,
-            &pinned_box,
-            &pinned_file,
-            &on_launch,
-            &status_label,
-            &search_entry,
-        );
+        let cat_bar = ui::categories::build_category_bar(&well_ctx);
         main_vbox.append(&cat_bar);
     }
 
@@ -225,27 +229,10 @@ fn activate_drawer(
     main_vbox.append(&scrolled);
 
     // Build initial content
-    ui::well_builder::build_normal_well(
-        &well,
-        &pinned_box,
-        &config,
-        &state,
-        &pinned_file,
-        &on_launch,
-        &status_label,
-    );
+    ui::well_builder::build_normal_well(&well_ctx);
 
     // Search
-    ui::search_handler::connect_search(
-        &search_entry,
-        &well,
-        &pinned_box,
-        &status_label,
-        &config,
-        &state,
-        &pinned_file,
-        &on_launch,
-    );
+    ui::search_handler::connect_search(&well_ctx);
 
     // Power bar + status
     if config.has_power_bar() {
@@ -261,16 +248,7 @@ fn activate_drawer(
     // Listeners
     listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, app, compositor);
     listeners::setup_focus_detector(&win, &on_launch, compositor);
-    listeners::setup_file_watcher(
-        app_dirs,
-        &pinned_file,
-        &well,
-        &pinned_box,
-        &config,
-        &state,
-        &on_launch,
-        &status_label,
-    );
+    listeners::setup_file_watcher(app_dirs, &well_ctx);
     listeners::setup_signal_poller(&win, sig_rx, config.resident);
 
     // In resident mode, start hidden — the signal poller will show the window

@@ -5,5 +5,6 @@ pub mod error;
 pub mod hyprland;
 pub mod launch;
 pub mod pinning;
+pub mod process;
 pub mod signals;
 pub mod singleton;

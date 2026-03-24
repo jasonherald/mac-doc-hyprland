@@ -23,6 +23,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 fn main() {
+    nwg_dock_common::process::handle_dump_args();
     let mut config = DockConfig::parse_from(config::normalize_legacy_flags(std::env::args()));
 
     if config.debug {

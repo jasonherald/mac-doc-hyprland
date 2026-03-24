@@ -1,5 +1,4 @@
 use crate::config::DrawerConfig;
-use crate::state::DrawerState;
 use crate::ui::well_builder;
 use crate::{desktop_loader, watcher};
 use gtk4::glib;
@@ -8,7 +7,6 @@ use nwg_dock_common::compositor::Compositor;
 use nwg_dock_common::pinning;
 use nwg_dock_common::signals::WindowCommand;
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -112,54 +110,34 @@ pub fn setup_focus_detector(
 }
 
 /// Sets up inotify-based file watcher for pin and desktop file changes.
-#[allow(clippy::too_many_arguments)]
 pub fn setup_file_watcher(
     app_dirs: &[std::path::PathBuf],
-    pinned_file: &Rc<PathBuf>,
-    well: &gtk4::Box,
-    pinned_box: &gtk4::Box,
-    config: &Rc<DrawerConfig>,
-    state: &Rc<RefCell<DrawerState>>,
-    on_launch: &Rc<dyn Fn()>,
-    status_label: &gtk4::Label,
+    ctx: &crate::ui::well_context::WellContext,
 ) {
-    let watch_rx = watcher::start_watcher(app_dirs, pinned_file);
-    let state = Rc::clone(state);
-    let pinned_file = Rc::clone(pinned_file);
-    let well = well.clone();
-    let pinned_box = pinned_box.clone();
-    let config = Rc::clone(config);
-    let on_launch = Rc::clone(on_launch);
-    let status_label = status_label.clone();
+    let watch_rx = watcher::start_watcher(app_dirs, &ctx.pinned_file);
+    let ctx = crate::ui::well_context::WellContext {
+        well: ctx.well.clone(),
+        pinned_box: ctx.pinned_box.clone(),
+        config: Rc::clone(&ctx.config),
+        state: Rc::clone(&ctx.state),
+        pinned_file: Rc::clone(&ctx.pinned_file),
+        on_launch: Rc::clone(&ctx.on_launch),
+        status_label: ctx.status_label.clone(),
+        search_entry: ctx.search_entry.clone(),
+    };
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(event) = watch_rx.try_recv() {
             match event {
                 watcher::WatchEvent::DesktopFilesChanged => {
                     log::info!("Desktop files changed, reloading...");
-                    desktop_loader::load_desktop_entries(&mut state.borrow_mut());
-                    well_builder::rebuild_preserving_category(
-                        &well,
-                        &pinned_box,
-                        &config,
-                        &state,
-                        &pinned_file,
-                        &on_launch,
-                        &status_label,
-                    );
+                    desktop_loader::load_desktop_entries(&mut ctx.state.borrow_mut());
+                    well_builder::rebuild_preserving_category(&ctx);
                 }
                 watcher::WatchEvent::PinnedChanged => {
                     log::info!("Pinned file changed, rebuilding...");
-                    state.borrow_mut().pinned = pinning::load_pinned(&pinned_file);
-                    well_builder::rebuild_preserving_category(
-                        &well,
-                        &pinned_box,
-                        &config,
-                        &state,
-                        &pinned_file,
-                        &on_launch,
-                        &status_label,
-                    );
+                    ctx.state.borrow_mut().pinned = pinning::load_pinned(&ctx.pinned_file);
+                    well_builder::rebuild_preserving_category(&ctx);
                 }
             }
         }
