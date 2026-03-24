@@ -67,8 +67,6 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
         let copied_label = gtk4::Label::new(Some("Copied!"));
         copied_label.add_css_class("math-copied");
         copied_label.set_visible(false);
-        vbox.append(&row);
-        vbox.append(&copied_label);
 
         let copied_ref = copied_label.clone();
         copy_btn.connect_clicked(move |_| {
@@ -82,6 +80,8 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
             });
         });
         row.append(&copy_btn);
+        vbox.append(&row);
+        vbox.append(&copied_label);
     } else {
         vbox.append(&row);
     }
@@ -110,9 +110,11 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
 }
 
 fn format_result(value: f64) -> String {
+    // Show integers without decimal point (up to i64 safe range)
     if value == value.floor() && value.abs() < 1e15 {
         format!("{}", value as i64)
     } else {
+        // 6 decimal places, trailing zeros stripped for clean display
         format!("{:.6}", value)
             .trim_end_matches('0')
             .trim_end_matches('.')

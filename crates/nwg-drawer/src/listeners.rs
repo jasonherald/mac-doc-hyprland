@@ -283,7 +283,7 @@ fn handle_return(
     compositor: &dyn Compositor,
     on_launch: &Rc<dyn Fn()>,
 ) {
-    if !search_entry.has_focus() && !search_entry.is_focus() {
+    if !search_entry.has_focus() {
         return;
     }
     let text = search_entry.text().to_string();
