@@ -86,17 +86,23 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
         vbox.append(&row);
     }
 
-    // Load math CSS once
+    // Load math CSS once (dimensions from ui/constants.rs)
+    use super::constants::*;
     static CSS_LOADED: std::sync::Once = std::sync::Once::new();
     CSS_LOADED.call_once(|| {
         let provider = gtk4::CssProvider::new();
-        provider.load_from_data(
-            ".math-result { font-size: 20px; font-weight: bold; margin-right: 12px; } \
-             .math-divider { margin-left: 0px; margin-right: 0px; } \
-             .math-copy { font-size: 20px; background: #5b9bd5; color: white; border-radius: 6px; padding: 4px 16px; margin-left: 12px; } \
-             .math-copy:hover { background: #4a8bc2; } \
-             .math-copied { color: #5b9bd5; font-style: italic; }"
-        );
+        provider.load_from_data(&format!(
+            ".math-result {{ font-size: {fs}px; font-weight: bold; margin-right: {sp}px; }} \
+             .math-divider {{ margin-left: 0px; margin-right: 0px; }} \
+             .math-copy {{ font-size: {fs}px; background: #5b9bd5; color: white; border-radius: {br}px; padding: {pv}px {ph}px; margin-left: {sp}px; }} \
+             .math-copy:hover {{ background: #4a8bc2; }} \
+             .math-copied {{ color: #5b9bd5; font-style: italic; }}",
+            fs = MATH_FONT_SIZE,
+            sp = MATH_SPACING,
+            br = MATH_BORDER_RADIUS,
+            pv = MATH_BUTTON_PADDING_V,
+            ph = MATH_BUTTON_PADDING_H,
+        ));
         if let Some(display) = gtk4::gdk::Display::default() {
             gtk4::style_context_add_provider_for_display(
                 &display,
