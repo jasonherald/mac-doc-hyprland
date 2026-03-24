@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fs;
 
 /// Reads the command line of a process by PID from `/proc/<pid>/cmdline`
@@ -10,7 +11,13 @@ use std::fs;
 /// running process arguments before restarting.
 pub fn dump_args(pid: u32) -> Option<String> {
     let path = format!("/proc/{}/cmdline", pid);
-    let data = fs::read(&path).ok()?;
+    let data = match fs::read(&path) {
+        Ok(d) => d,
+        Err(e) => {
+            log::warn!("Failed to read {}: {}", path, e);
+            return None;
+        }
+    };
     let mut args: Vec<String> = data
         .split(|&b| b == 0)
         .map(|s| String::from_utf8_lossy(s).into_owned())
@@ -27,10 +34,13 @@ pub fn dump_args(pid: u32) -> Option<String> {
 
 /// Checks if `--dump-args <pid>` was passed and handles it.
 /// Returns `true` if handled (caller should exit), `false` otherwise.
+/// Uses `args_os()` to avoid panicking on non-Unicode argv.
 pub fn handle_dump_args() -> bool {
-    let args: Vec<String> = std::env::args().collect();
-    if let Some(pos) = args.iter().position(|a| a == "--dump-args") {
-        if let Some(pid_str) = args.get(pos + 1)
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    let flag = OsStr::new("--dump-args");
+    if let Some(pos) = args.iter().position(|a| a == flag) {
+        if let Some(pid_os) = args.get(pos + 1)
+            && let Some(pid_str) = pid_os.to_str()
             && let Ok(pid) = pid_str.parse::<u32>()
         {
             match dump_args(pid) {
@@ -55,13 +65,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dump_args_current_process() {
+    fn dump_args_current_process_round_trips() {
+        // dump_args reads /proc/self/cmdline and shell-quotes it.
+        // Splitting the result back should produce valid args.
         let pid = std::process::id();
-        let result = dump_args(pid);
-        assert!(result.is_some());
-        // Should contain our test binary name at minimum
-        let cmdline = result.unwrap();
-        assert!(!cmdline.is_empty());
+        let result = dump_args(pid).expect("should read own cmdline");
+        assert!(!result.is_empty());
+        let round_tripped = shell_words::split(&result).expect("should parse back");
+        assert!(!round_tripped.is_empty());
     }
 
     #[test]
@@ -70,22 +81,31 @@ mod tests {
     }
 
     #[test]
-    fn shell_quoting_preserves_spaces() {
-        // Verify shell_words::join handles args with spaces
+    fn join_split_round_trip_with_spaces() {
         let args = vec!["cmd".to_string(), "arg with spaces".to_string()];
         let joined = shell_words::join(&args);
-        assert_eq!(joined, "cmd 'arg with spaces'");
+        let split = shell_words::split(&joined).unwrap();
+        assert_eq!(split, args);
     }
 
     #[test]
-    fn shell_quoting_preserves_nested_quotes() {
+    fn join_split_round_trip_nested_quotes() {
+        // Simulates nwg-piotr's power bar command with nested quotes
         let args = vec![
             "nwg-drawer".to_string(),
             "-c".to_string(),
             r#"nwg-dialog -p exit -c "loginctl terminate-user \"\"""#.to_string(),
         ];
         let joined = shell_words::join(&args);
-        // Should round-trip: split the joined string back and get the same args
+        let split = shell_words::split(&joined).unwrap();
+        assert_eq!(split, args);
+    }
+
+    #[test]
+    fn join_split_round_trip_empty_arg() {
+        // An argument that is an empty string should survive the round trip
+        let args = vec!["cmd".to_string(), "".to_string(), "last".to_string()];
+        let joined = shell_words::join(&args);
         let split = shell_words::split(&joined).unwrap();
         assert_eq!(split, args);
     }
