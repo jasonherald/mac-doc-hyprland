@@ -1,6 +1,7 @@
 use gtk4::prelude::*;
 
 /// Result of attempting to evaluate a math expression.
+#[derive(Debug)]
 pub enum MathResult {
     /// Successfully evaluated to a numeric result.
     Value(f64),
@@ -214,11 +215,7 @@ mod tests {
         // 2^1024 overflows to infinity — should say "overflow", not "division by zero"
         match eval_expression("2^1024") {
             MathResult::Error(msg) => assert_eq!(msg, "overflow"),
-            other => panic!("expected Error(overflow), got {:?}", match other {
-                MathResult::Value(v) => format!("Value({})", v),
-                MathResult::NotMath => "NotMath".to_string(),
-                MathResult::Error(e) => format!("Error({})", e),
-            }),
+            other => panic!("expected Error(overflow), got {:?}", other),
         }
     }
 
