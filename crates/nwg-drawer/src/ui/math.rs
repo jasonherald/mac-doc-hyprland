@@ -4,7 +4,8 @@ use gtk4::prelude::*;
 pub enum MathResult {
     /// Successfully evaluated to a numeric result.
     Value(f64),
-    /// Looks like math but has an error (e.g. division by zero, incomplete).
+    /// Evaluated but produced a runtime error (e.g. division by zero, overflow).
+    /// Parse failures go to `NotMath` — incomplete expressions while typing are not shown.
     Error(String),
     /// Not a math expression — just a search query.
     NotMath,
@@ -21,7 +22,7 @@ pub fn eval_expression(expr: &str) -> MathResult {
     }
     match meval::eval_str(trimmed) {
         Ok(val) if val.is_nan() => MathResult::Error("undefined".to_string()),
-        Ok(val) if val.is_infinite() => MathResult::Error("division by zero".to_string()),
+        Ok(val) if val.is_infinite() => MathResult::Error("overflow".to_string()),
         Ok(val) => MathResult::Value(val),
         Err(_) => MathResult::NotMath,
     }
@@ -76,12 +77,17 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
             std::rc::Rc::new(std::cell::Cell::new(None));
         let timer_ref = std::rc::Rc::clone(&pending_timer);
         copy_btn.connect_clicked(move |_| {
-            let _ = std::process::Command::new("wl-copy") // Optional: wl-copy may not be available
-                .arg(&result_copy)
-                .spawn();
             // Cancel previous hide timer so repeated clicks reset the 2s window
             if let Some(id) = timer_ref.take() {
                 id.remove();
+            }
+            // Only show "Copied!" if wl-copy actually started
+            if std::process::Command::new("wl-copy")
+                .arg(&result_copy)
+                .spawn()
+                .is_err()
+            {
+                return;
             }
             copied_ref.set_visible(true);
             let hide_ref = copied_ref.clone();
@@ -185,6 +191,27 @@ mod tests {
         assert!(matches!(eval_expression("firefox"), MathResult::NotMath));
         assert!(matches!(eval_expression(""), MathResult::NotMath));
         assert!(matches!(eval_expression("   "), MathResult::NotMath));
+    }
+
+    #[test]
+    fn incomplete_expression_is_not_math() {
+        // Incomplete expressions while typing should not show inline errors
+        assert!(matches!(eval_expression("2+"), MathResult::NotMath));
+        assert!(matches!(eval_expression("(3*"), MathResult::NotMath));
+        assert!(matches!(eval_expression("sqrt("), MathResult::NotMath));
+    }
+
+    #[test]
+    fn overflow_not_div_by_zero() {
+        // 2^1024 overflows to infinity — should say "overflow", not "division by zero"
+        match eval_expression("2^1024") {
+            MathResult::Error(msg) => assert_eq!(msg, "overflow"),
+            other => panic!("expected Error(overflow), got {:?}", match other {
+                MathResult::Value(v) => format!("Value({})", v),
+                MathResult::NotMath => "NotMath".to_string(),
+                MathResult::Error(e) => format!("Error({})", e),
+            }),
+        }
     }
 
     #[test]
