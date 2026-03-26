@@ -48,13 +48,17 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     vbox.set_halign(gtk4::Align::Center);
     vbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);
     vbox.set_margin_bottom(super::constants::STATUS_AREA_VERTICAL_MARGIN);
+    // Don't trap focus in the math result — allow Tab to move through to search results below
+    vbox.set_focusable(false);
 
     let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     row.set_halign(gtk4::Align::Center);
+    row.set_focusable(false);
 
     let label = gtk4::Label::new(Some(&label_text));
     label.add_css_class("math-result");
     label.set_halign(gtk4::Align::End);
+    label.set_focusable(false);
     row.append(&label);
 
     // Copy button — copies the result to clipboard via wl-copy.
