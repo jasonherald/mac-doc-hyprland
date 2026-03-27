@@ -212,11 +212,10 @@ fn focus_next_visible(start: &impl IsA<gtk4::Widget>) -> bool {
 }
 
 /// Recursively finds and grabs focus on the first focusable widget in a tree.
-/// Handles containers (Box, FlowBox) by drilling into children depth-first.
+/// Checks children first so we land on the deepest interactive widget (e.g. a
+/// button inside a Box) rather than the container itself.
 pub(super) fn grab_first_focusable(widget: &gtk4::Widget) -> bool {
-    if widget.is_focusable() && widget.grab_focus() {
-        return true;
-    }
+    // Try children first — prefer the deepest focusable descendant
     let mut child = widget.first_child();
     while let Some(c) = child {
         if grab_first_focusable(&c) {
@@ -224,7 +223,8 @@ pub(super) fn grab_first_focusable(widget: &gtk4::Widget) -> bool {
         }
         child = c.next_sibling();
     }
-    false
+    // No focusable children — try the widget itself
+    widget.is_focusable() && widget.grab_focus()
 }
 
 /// Recursively finds and grabs focus on the last focusable widget in a tree.

@@ -170,7 +170,7 @@ fn focus_next_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
         }
         next = n.next_sibling();
     }
-    gtk4::glib::Propagation::Stop
+    gtk4::glib::Propagation::Proceed // No target found — let GTK handle it
 }
 
 /// Focuses the previous visible sibling or ancestor's sibling above.
@@ -194,7 +194,7 @@ fn focus_prev_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
         }
         ancestor = a.parent();
     }
-    gtk4::glib::Propagation::Stop
+    gtk4::glib::Propagation::Proceed // No target found — let GTK handle it
 }
 
 fn format_result(value: f64) -> String {
