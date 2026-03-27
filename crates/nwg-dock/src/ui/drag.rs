@@ -79,9 +79,10 @@ pub fn setup_drag_gesture(
             None => return,
         };
 
-        // Don't set drag_source_index or change cursor here — defer to
-        // drag_update after the movement threshold is crossed. Setting state
-        // here would cause the event poller to defer rebuilds during normal clicks.
+        // Mark drag pending immediately so event poller/autohide defer rebuilds
+        // during the entire press→threshold→drag lifecycle. drag_source_index and
+        // cursor change are deferred to drag_update after the threshold is crossed.
+        state_begin.borrow_mut().drag_pending = true;
         let icon_size = state_begin.borrow().img_size_scaled;
 
         *session_begin.borrow_mut() = Some(DragSession {
@@ -139,6 +140,7 @@ pub fn setup_drag_gesture(
         let outside = state_end.borrow().drag_outside_dock;
 
         // Clear drag state
+        state_end.borrow_mut().drag_pending = false;
         state_end.borrow_mut().drag_source_index = None;
         state_end.borrow_mut().drag_outside_dock = false;
 

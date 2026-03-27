@@ -25,7 +25,13 @@ pub struct DockState {
     /// True when dock arrangement is locked (drag-to-reorder disabled).
     pub locked: bool,
 
+    /// True from press-down through drag-end. Set in drag_begin before the
+    /// movement threshold is crossed, so consumers (event poller, autohide)
+    /// can defer rebuilds during the entire press→drag→release lifecycle.
+    pub drag_pending: bool,
+
     /// Index of the pinned item currently being dragged (if any).
+    /// Set only after the movement threshold is crossed in drag_update.
     pub drag_source_index: Option<usize>,
 
     /// True when a drag is active and cursor is outside the dock area.
@@ -53,6 +59,7 @@ impl DockState {
             last_win_addr: String::new(),
             popover_open: false,
             locked: false,
+            drag_pending: false,
             drag_source_index: None,
             drag_outside_dock: false,
             rebuild_pending: false,
