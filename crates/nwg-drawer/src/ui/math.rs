@@ -48,12 +48,11 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     vbox.set_halign(gtk4::Align::Center);
     vbox.set_margin_top(super::constants::STATUS_AREA_VERTICAL_MARGIN);
     vbox.set_margin_bottom(super::constants::STATUS_AREA_VERTICAL_MARGIN);
-    // Don't trap focus in the math result — allow Tab to move through to search results below
-    vbox.set_focusable(false);
+    // Don't set focusable(false) — the capture-phase key controller needs
+    // the container to participate in event dispatch for arrow key navigation.
 
     let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
     row.set_halign(gtk4::Align::Center);
-    row.set_focusable(false);
 
     let label = gtk4::Label::new(Some(&label_text));
     label.add_css_class("math-result");
@@ -112,6 +111,24 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
         vbox.append(&row);
     }
 
+    // Capture-phase key controller on the vbox (parent) — fires before
+    // GTK's focus machinery processes arrow keys on the child Copy button.
+    // Same pattern as install_grid_nav on FlowBoxes (navigation.rs).
+    let vbox_weak = vbox.downgrade();
+    let nav_ctrl = gtk4::EventControllerKey::new();
+    nav_ctrl.set_propagation_phase(gtk4::PropagationPhase::Capture);
+    nav_ctrl.connect_key_pressed(move |_, keyval, _, _| {
+        let Some(vbox_ref) = vbox_weak.upgrade() else {
+            return gtk4::glib::Propagation::Proceed;
+        };
+        match keyval {
+            gtk4::gdk::Key::Down | gtk4::gdk::Key::Tab => focus_next_widget(&vbox_ref),
+            gtk4::gdk::Key::Up | gtk4::gdk::Key::ISO_Left_Tab => focus_prev_widget(&vbox_ref),
+            _ => gtk4::glib::Propagation::Proceed,
+        }
+    });
+    vbox.add_controller(nav_ctrl);
+
     // Load math CSS once (dimensions from ui/constants.rs)
     use super::constants::{
         MATH_BORDER_RADIUS, MATH_BUTTON_PADDING_H, MATH_BUTTON_PADDING_V, MATH_FONT_SIZE,
@@ -142,6 +159,42 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     });
 
     Some(vbox)
+}
+
+/// Focuses the next visible sibling widget below.
+fn focus_next_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
+    let mut next = widget.next_sibling();
+    while let Some(n) = next {
+        if n.is_visible() && super::navigation::grab_first_focusable(&n) {
+            return gtk4::glib::Propagation::Stop;
+        }
+        next = n.next_sibling();
+    }
+    gtk4::glib::Propagation::Stop
+}
+
+/// Focuses the previous visible sibling or ancestor's sibling above.
+fn focus_prev_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
+    let mut prev = widget.prev_sibling();
+    while let Some(p) = prev {
+        if p.is_visible() && super::navigation::grab_last_focusable(&p) {
+            return gtk4::glib::Propagation::Stop;
+        }
+        prev = p.prev_sibling();
+    }
+    // No sibling — walk up to parent's previous sibling (e.g. search entry)
+    let mut ancestor = widget.parent();
+    while let Some(a) = ancestor {
+        let mut pprev = a.prev_sibling();
+        while let Some(p) = pprev {
+            if p.is_visible() && super::navigation::grab_last_focusable(&p) {
+                return gtk4::glib::Propagation::Stop;
+            }
+            pprev = p.prev_sibling();
+        }
+        ancestor = a.parent();
+    }
+    gtk4::glib::Propagation::Stop
 }
 
 fn format_result(value: f64) -> String {

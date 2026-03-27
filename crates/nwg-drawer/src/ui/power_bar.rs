@@ -72,8 +72,6 @@ pub fn build_power_bar(
             on_launch();
         });
 
-        button.set_tooltip_text(Some(command));
-
         // Status label: show command on hover/focus
         let cmd_desc = command.to_string();
         let label_enter = status_label.clone();
