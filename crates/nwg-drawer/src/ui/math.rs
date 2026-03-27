@@ -83,12 +83,11 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
         let timer_ref = std::rc::Rc::clone(&pending_timer);
         copy_btn.connect_clicked(move |_| {
             // Only proceed if wl-copy actually started
-            if std::process::Command::new("wl-copy")
-                .arg(&result_copy)
-                .spawn()
-                .is_err()
-            {
-                return;
+            let mut cmd = std::process::Command::new("wl-copy");
+            cmd.arg(&result_copy);
+            match cmd.spawn() {
+                Ok(child) => nwg_dock_common::launch::reap_child(child, "wl-copy".to_string()),
+                Err(_) => return, // wl-copy not available — skip "Copied!" feedback
             }
             // Cancel previous hide timer so repeated clicks reset the 2s window
             if let Some(id) = timer_ref.take() {
@@ -114,7 +113,10 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     }
 
     // Load math CSS once (dimensions from ui/constants.rs)
-    use super::constants::*;
+    use super::constants::{
+        MATH_BORDER_RADIUS, MATH_BUTTON_PADDING_H, MATH_BUTTON_PADDING_V, MATH_FONT_SIZE,
+        MATH_SPACING,
+    };
     static CSS_LOADED: std::sync::Once = std::sync::Once::new();
     CSS_LOADED.call_once(|| {
         let provider = gtk4::CssProvider::new();

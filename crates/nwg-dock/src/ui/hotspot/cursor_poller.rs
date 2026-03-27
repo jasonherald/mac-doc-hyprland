@@ -140,7 +140,7 @@ fn handle_visible_dock(
 
     // Don't hide while a popover menu is open or a drag is in progress
     let s = state.borrow();
-    let dragging = s.drag_source_index.is_some();
+    let dragging = s.drag_pending || s.drag_source_index.is_some();
     let keep_visible = s.popover_open || dragging;
     drop(s);
 

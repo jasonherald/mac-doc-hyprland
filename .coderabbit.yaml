@@ -1,8 +1,7 @@
-# CodeRabbit configuration for mac-doc-hyprland
-# Rust Cargo workspace: dock, drawer, notification daemon for Hyprland/Sway
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
 language: "en-US"
-tone_instructions: "Professional and concise. Prioritize idiomatic Rust, safety, and correctness."
+tone_instructions: "Professional, concise. Prioritize idiomatic Rust, safety, correctness, GTK4/Wayland best practices. macOS-style dock/drawer/notifications for Hyprland/Sway, ported from Go."
 
 reviews:
   profile: "assertive"
@@ -19,52 +18,98 @@ reviews:
   path_instructions:
     - path: "crates/nwg-dock-common/src/compositor/**"
       instructions: |
-        Core compositor abstraction layer. Review for:
-        - Trait method completeness (all WM operations covered)
-        - Sway i3-ipc protocol correctness (binary header, message types)
-        - Hyprland IPC command format accuracy
-        - Error handling: compositor errors must be surfaced, not swallowed
+        Compositor abstraction layer. Verify:
+        - All IPC goes through the Compositor trait, never direct hyprland calls from binaries
+        - WmEvent variants are handled exhaustively in match arms
+        - MonitorChanged events parsed for both Hyprland (monitoraddedv2/monitorremoved) and Sway (output events)
+        - Sway i3-ipc message parsing validates magic bytes and payload size
+        - No command injection in hyprctl/swaymsg dispatch strings
         - Thread safety: Rc<dyn Compositor> must never cross thread boundaries
         - WmEventStream must be Send (used in background threads)
-    - path: "crates/nwg-dock-common/src/**"
+    - path: "crates/nwg-dock-common/src/launch.rs"
       instructions: |
-        Shared library with no GTK dependency in types/IPC. Review for:
-        - No magic numbers without named constants or comments
-        - Error handling: log errors, never silently discard
-        - Unsafe code only in signals.rs with SAFETY comments
-        - Desktop entry parsing must handle malformed .desktop files gracefully
+        App launching pipeline. Verify:
+        - All spawned Child processes are passed to reap_child() or spawn_and_forget() — no dropped Children
+        - shell_words::split() used for POSIX command splitting (not split_whitespace)
+        - Quotes preserved end-to-end (PR #11 fix)
+        - extract_env_prefix validates POSIX identifiers (no digit-start keys)
+        - Mutex guard dropped before any blocking wait in enqueue_or_reap_sync
+    - path: "crates/nwg-dock-common/src/desktop/**"
+      instructions: |
+        Desktop file parsing and icon resolution. Verify:
+        - strip_field_codes removes only freedesktop-spec field codes (%u, %F, etc.)
+        - %% is collapsed to literal %
+        - Exec field quotes are preserved (never stripped at parse time)
+        - Malformed .desktop files handled gracefully (no panics)
+    - path: "crates/nwg-dock-common/src/process.rs"
+      instructions: |
+        Process utility for --dump-args. Verify:
+        - Uses args_os() not args() to avoid panic on non-Unicode argv
+        - parse_cmdline_bytes only strips trailing NUL, preserves empty middle args
+        - shell_words::join() for safe quoting (handles spaces, nested quotes, single quotes)
     - path: "crates/nwg-dock/src/ui/**"
       instructions: |
-        GTK4 UI code. Review for:
+        Dock UI layer. Verify:
+        - GestureDrag uses DRAG_CLAIM_THRESHOLD before calling set_state(Claimed)
+        - Threshold only gates initial transition — once dragging, all motion processed
+        - No index-based window↔monitor mapping (use output_name from MonitorDock)
+        - Autohide respects drag_source_index and popover_open state
+        - All UI dimensions use named constants from constants.rs
         - Rc/Weak patterns: watch for reference cycles in rebuild_fn
-        - Popover lifecycle: track open/close state for autohide
-        - Drag-and-drop: verify cursor state machine correctness
-        - Layer-shell: verify anchoring and exclusive zone usage
-    - path: "crates/nwg-notifications/src/dbus.rs"
+    - path: "crates/nwg-drawer/src/ui/**"
       instructions: |
-        D-Bus notification server implementing org.freedesktop.Notifications.
-        - Verify protocol compliance with the Desktop Notifications Specification
-        - ActionInvoked signal must include correct notification ID and action key
-        - GetServerInformation must return valid version info
+        Drawer UI layer. Verify:
+        - All well/category/search builders use WellContext (not 7+ individual params)
+        - Pin/unpin operations rollback on save failure
+        - Math evaluation uses meval crate (safe parser, no eval/shell)
+        - Inline math results don't trap keyboard focus (vbox/row/label non-focusable)
+        - CSS dimensions use named constants from constants.rs
+        - launch_desktop_entry() for app launches (not inline strip/prepend/launch)
+    - path: "crates/nwg-notifications/src/**"
+      instructions: |
+        Notification daemon. Verify:
+        - D-Bus server uses gio bus_own_name (no async bridge)
+        - Backdrop windows have non-zero opacity for input delivery
+        - ActionInvoked signals emitted correctly on action button click
+        - DND state changes fire on_state_change callback
+        - Protocol compliance with Desktop Notifications Specification
     - path: "**/signals.rs"
       instructions: |
         Real-time signal handling via raw libc. All unsafe blocks must have
         SAFETY comments. Only async-signal-safe operations in handler paths.
+    - path: "Makefile"
+      instructions: |
+        Build system. Verify:
+        - make upgrade captures running process args via --dump-args before stopping
+        - Uses target/release/ binaries for --dump-args (not installed binaries which may be old)
+        - Fail-fast with || exit 1 on critical steps
+        - All PIDs captured per binary (not just first) for multi-instance support
+    - path: "crates/**"
+      instructions: |
+        General rules for all crates:
+        - No unwrap() in library code (use proper error handling)
+        - Log errors, never silently discard with let _ = (except optional wl-copy)
+        - No #[allow(dead_code)] — all code should be used
+        - No magic numbers — use named constants or inline comments
+        - Unsafe code only in signals.rs/listeners.rs with SAFETY comments
+        - Tests at bottom of file in #[cfg(test)] mod tests, test behavior not implementation
 
   tools:
-    osvScanner:
-      enabled: true
     clippy:
-      enabled: true
-    shellcheck:
-      enabled: true
-    markdownlint:
       enabled: true
     gitleaks:
       enabled: true
-    actionlint:
+    markdownlint:
       enabled: true
     yamllint:
+      enabled: true
+    actionlint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    osvScanner:
+      enabled: true
+    opengrep:
       enabled: true
 
 chat:
@@ -72,6 +117,12 @@ chat:
 
 knowledge_base:
   opt_out: false
+  learnings:
+    scope: "local"
+  issues:
+    scope: "local"
+  pull_requests:
+    scope: "local"
   web_search:
     enabled: true
   code_guidelines:

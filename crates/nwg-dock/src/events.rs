@@ -13,7 +13,7 @@ fn poll_and_rebuild(
     state: &Rc<RefCell<DockState>>,
     rebuild_fn: &Rc<dyn Fn()>,
 ) {
-    let dragging = state.borrow().drag_source_index.is_some();
+    let dragging = state.borrow().drag_pending || state.borrow().drag_source_index.is_some();
     if drain_new_events(receiver, state) && needs_rebuild(state) {
         if dragging {
             state.borrow_mut().rebuild_pending = true;

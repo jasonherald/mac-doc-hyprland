@@ -226,14 +226,16 @@ fn file_result_row(
     let preferred_cmd =
         nwg_dock_common::desktop::preferred_apps::find_preferred_app(&path_str, preferred_apps);
     button.connect_clicked(move |_| {
-        let result = if let Some(ref cmd) = preferred_cmd {
-            std::process::Command::new(cmd).arg(&path).spawn()
+        let cmd = if let Some(ref app) = preferred_cmd {
+            let mut c = std::process::Command::new(app);
+            c.arg(&path);
+            c
         } else {
-            std::process::Command::new("xdg-open").arg(&path).spawn()
+            let mut c = std::process::Command::new("xdg-open");
+            c.arg(&path);
+            c
         };
-        if let Err(e) = result {
-            log::error!("Failed to open {}: {}", path.display(), e);
-        }
+        nwg_dock_common::launch::spawn_and_forget(cmd, &path.to_string_lossy());
         on_launch();
     });
 

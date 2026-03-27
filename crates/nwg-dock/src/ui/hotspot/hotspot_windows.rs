@@ -98,7 +98,7 @@ pub(super) fn start_hotspot_windows(
         if let Some(when) = *left {
             // Don't hide while a popover menu is open or drag in progress
             let s = state.borrow();
-            let keep_visible = s.popover_open || s.drag_source_index.is_some();
+            let keep_visible = s.popover_open || s.drag_pending || s.drag_source_index.is_some();
             drop(s);
 
             if keep_visible {

@@ -9,7 +9,7 @@ const REAPER_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_mill
 
 /// Sends a child process to the shared reaper thread for exit status monitoring.
 /// Uses try_wait polling so long-running GUI apps don't block reaping of others.
-fn reap_child(child: Child, label: String) {
+pub fn reap_child(child: Child, label: String) {
     static SENDER: std::sync::OnceLock<std::sync::Mutex<mpsc::Sender<(Child, String)>>> =
         std::sync::OnceLock::new();
 
@@ -89,6 +89,15 @@ fn enqueue_or_reap_sync(
         if let Err(wait_err) = orphan.wait() {
             log::warn!("Failed to wait on orphaned child '{}': {}", label, wait_err);
         }
+    }
+}
+
+/// Spawns a command and hands the child to the reaper thread.
+/// For fire-and-forget processes where we don't need the output.
+pub fn spawn_and_forget(mut cmd: Command, label: &str) {
+    match cmd.spawn() {
+        Ok(child) => reap_child(child, label.to_string()),
+        Err(e) => log::error!("Failed to spawn '{}': {}", label, e),
     }
 }
 
@@ -192,7 +201,7 @@ fn launch_via_uwsm(command: &str) {
     }
 
     match cmd.spawn() {
-        Ok(_) => {}
+        Ok(child) => reap_child(child, command.to_string()),
         Err(e) => {
             log::warn!("uwsm not found, falling back to direct launch: {}", e);
             launch_command(command);
@@ -247,10 +256,7 @@ pub fn launch_command(command: &str) {
         cmd.env(key, value);
     }
 
-    match cmd.spawn() {
-        Ok(_) => {}
-        Err(e) => log::error!("Unable to launch command: {}", e),
-    }
+    spawn_and_forget(cmd, &cmd_args.join(" "));
 }
 
 /// Extracts leading KEY=VALUE env assignments from a split command.
