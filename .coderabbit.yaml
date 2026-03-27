@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 
 language: "en-US"
-tone_instructions: "Professional and concise. Prioritize idiomatic Rust, safety, correctness, and GTK4/Wayland best practices. This is a macOS-style dock, drawer, and notification daemon for Hyprland/Sway — a community project ported from Go with the original maintainer's involvement."
+tone_instructions: "Professional, concise. Prioritize idiomatic Rust, safety, correctness, GTK4/Wayland best practices. macOS-style dock/drawer/notifications for Hyprland/Sway, ported from Go."
 
 reviews:
   profile: "assertive"
