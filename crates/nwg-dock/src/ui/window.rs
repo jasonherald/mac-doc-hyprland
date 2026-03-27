@@ -4,7 +4,7 @@ use gtk4_layer_shell::LayerShell;
 /// Configures the main dock window with layer-shell properties.
 pub fn setup_dock_window(win: &gtk4::ApplicationWindow, config: &DockConfig) {
     win.init_layer_shell();
-    win.set_namespace(Some("mac-dock"));
+    win.set_namespace(Some("nwg-dock-hyprland"));
 
     // Position anchoring
     match config.position {

@@ -8,7 +8,7 @@ pub fn setup_drawer_window(
     monitor: Option<&gtk4::gdk::Monitor>,
 ) {
     win.init_layer_shell();
-    win.set_namespace(Some("mac-drawer"));
+    win.set_namespace(Some("nwg-drawer"));
 
     if let Some(mon) = monitor {
         win.set_monitor(Some(mon));
