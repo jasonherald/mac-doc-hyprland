@@ -176,16 +176,15 @@ fn nav_up(
 /// Walks up the widget tree from `start`, looking for the nearest visible
 /// previous sibling that can accept focus. Handles nested containers like
 /// ScrolledWindow by checking siblings at each ancestor level.
+/// Uses `grab_last_focusable` to drill into containers (e.g. the math result
+/// vbox) where GTK's `child_focus()` returns true but doesn't actually move
+/// visible focus to inner buttons.
 fn focus_prev_visible(start: &impl IsA<gtk4::Widget>) -> bool {
     let mut current = Some(start.as_ref().clone());
     while let Some(widget) = current {
         let mut prev = widget.prev_sibling();
         while let Some(p) = prev {
-            // Try direct focus first (e.g. SearchEntry), then delegate to children
-            if p.is_visible()
-                && p.is_sensitive()
-                && (p.grab_focus() || p.child_focus(gtk4::DirectionType::Up))
-            {
+            if p.is_visible() && p.is_sensitive() && grab_last_focusable(&p) {
                 return true;
             }
             prev = p.prev_sibling();
@@ -202,15 +201,46 @@ fn focus_next_visible(start: &impl IsA<gtk4::Widget>) -> bool {
     while let Some(widget) = current {
         let mut next = widget.next_sibling();
         while let Some(n) = next {
-            if n.is_visible()
-                && n.is_sensitive()
-                && (n.grab_focus() || n.child_focus(gtk4::DirectionType::Down))
-            {
+            if n.is_visible() && n.is_sensitive() && grab_first_focusable(&n) {
                 return true;
             }
             next = n.next_sibling();
         }
         current = widget.parent();
+    }
+    false
+}
+
+/// Recursively finds and grabs focus on the first focusable widget in a tree.
+/// Checks children first so we land on the deepest interactive widget (e.g. a
+/// button inside a Box) rather than the container itself.
+pub(super) fn grab_first_focusable(widget: &gtk4::Widget) -> bool {
+    // Try children first — prefer the deepest focusable descendant
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        if grab_first_focusable(&c) {
+            return true;
+        }
+        child = c.next_sibling();
+    }
+    // No focusable children — try the widget itself
+    widget.is_focusable() && widget.grab_focus()
+}
+
+/// Recursively finds and grabs focus on the last focusable widget in a tree.
+/// Used when navigating upward — focuses the bottom-most interactive element.
+pub(super) fn grab_last_focusable(widget: &gtk4::Widget) -> bool {
+    // Check children in reverse order first (deepest last child)
+    let mut child = widget.last_child();
+    while let Some(c) = child {
+        if grab_last_focusable(&c) {
+            return true;
+        }
+        child = c.prev_sibling();
+    }
+    // Then check the widget itself
+    if widget.is_focusable() && widget.grab_focus() {
+        return true;
     }
     false
 }
