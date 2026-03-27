@@ -102,25 +102,29 @@ pub fn setup_drag_gesture(
     let state_update = Rc::clone(state);
     let session_update = Rc::clone(&session);
     gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
-        // Only claim the sequence after meaningful movement. GTK4's GestureDrag
-        // fires drag_update on ANY motion (no built-in threshold), so without
-        // this check, a 1-pixel wobble during a click suppresses Button::clicked.
-        let distance = (offset_x * offset_x + offset_y * offset_y).sqrt();
-        if distance < DRAG_CLAIM_THRESHOLD {
-            return;
-        }
-        gesture.set_state(gtk4::EventSequenceState::Claimed);
+        let dragging = state_update.borrow().drag_source_index.is_some();
 
-        let mut sess = session_update.borrow_mut();
-        let Some(ref mut s) = *sess else { return };
+        if !dragging {
+            // Only claim after meaningful movement. GTK4's GestureDrag fires
+            // drag_update on ANY motion (no built-in threshold), so without
+            // this check, a 1px wobble during a click suppresses Button::clicked.
+            let distance = (offset_x * offset_x + offset_y * offset_y).sqrt();
+            if distance < DRAG_CLAIM_THRESHOLD {
+                return;
+            }
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
 
-        // Set drag state and cursor on first threshold crossing
-        if state_update.borrow().drag_source_index.is_none() {
+            let mut sess = session_update.borrow_mut();
+            let Some(ref mut s) = *sess else { return };
             state_update.borrow_mut().drag_source_index = Some(s.source_index);
             set_dock_cursor(&s.dock_box, "grabbing");
+            handle_drag_motion(gesture, s, &state_update, offset_x, offset_y);
+        } else {
+            // Already dragging — always process motion (no threshold)
+            let mut sess = session_update.borrow_mut();
+            let Some(ref mut s) = *sess else { return };
+            handle_drag_motion(gesture, s, &state_update, offset_x, offset_y);
         }
-
-        handle_drag_motion(gesture, s, &state_update, offset_x, offset_y);
     });
 
     // --- drag-end: save new order or unpin ---
@@ -154,7 +158,6 @@ pub fn setup_drag_gesture(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Sets the cursor on the dock's toplevel window.
 /// Processes pointer motion during an active drag: reorders items and tracks inside/outside.
 fn handle_drag_motion(
     gesture: &gtk4::GestureDrag,
@@ -193,6 +196,7 @@ fn handle_drag_motion(
     );
 }
 
+/// Sets the cursor on the dock's toplevel window.
 fn set_dock_cursor(dock_box: &gtk4::Box, cursor_name: &str) {
     if let Some(root) = dock_box.root() {
         let cursor = gtk4::gdk::Cursor::from_name(cursor_name, None);
