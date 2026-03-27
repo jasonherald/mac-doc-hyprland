@@ -166,7 +166,7 @@ fn hide_panel(
 
 fn setup_panel_window(win: &gtk4::ApplicationWindow) {
     win.init_layer_shell();
-    win.set_namespace(Some("mac-notification-panel"));
+    win.set_namespace(Some("nwg-notification-panel"));
     win.set_layer(gtk4_layer_shell::Layer::Overlay);
     win.set_exclusive_zone(-1);
     win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);

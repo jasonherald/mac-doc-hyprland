@@ -165,7 +165,7 @@ fn setup_backdrop_window(win: &gtk4::ApplicationWindow) {
 
 fn setup_menu_window(win: &gtk4::ApplicationWindow) {
     win.init_layer_shell();
-    win.set_namespace(Some("mac-notification-dnd-menu"));
+    win.set_namespace(Some("nwg-notification-dnd-menu"));
     win.set_layer(gtk4_layer_shell::Layer::Overlay);
     win.set_exclusive_zone(-1);
     win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);

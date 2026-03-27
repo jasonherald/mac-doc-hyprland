@@ -4,7 +4,7 @@ use gtk4_layer_shell::LayerShell;
 /// Configures a popup window with layer-shell properties.
 pub fn setup_popup_window(win: &gtk4::ApplicationWindow, position: PopupPosition, top_offset: i32) {
     win.init_layer_shell();
-    win.set_namespace(Some("mac-notification-popup"));
+    win.set_namespace(Some("nwg-notification-popup"));
     win.set_layer(gtk4_layer_shell::Layer::Overlay);
     win.set_exclusive_zone(-1);
 
