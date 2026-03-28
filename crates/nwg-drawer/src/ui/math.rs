@@ -122,8 +122,20 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
             return gtk4::glib::Propagation::Proceed;
         };
         match keyval {
-            gtk4::gdk::Key::Down | gtk4::gdk::Key::Tab => focus_next_widget(&vbox_ref),
-            gtk4::gdk::Key::Up | gtk4::gdk::Key::ISO_Left_Tab => focus_prev_widget(&vbox_ref),
+            gtk4::gdk::Key::Down | gtk4::gdk::Key::Tab => {
+                if super::navigation::focus_next_sibling(&vbox_ref) {
+                    gtk4::glib::Propagation::Stop
+                } else {
+                    gtk4::glib::Propagation::Proceed
+                }
+            }
+            gtk4::gdk::Key::Up | gtk4::gdk::Key::ISO_Left_Tab => {
+                if super::navigation::focus_prev_sibling(&vbox_ref) {
+                    gtk4::glib::Propagation::Stop
+                } else {
+                    gtk4::glib::Propagation::Proceed
+                }
+            }
             _ => gtk4::glib::Propagation::Proceed,
         }
     });
@@ -161,42 +173,6 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     Some(vbox)
 }
 
-/// Focuses the next visible sibling widget below.
-fn focus_next_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
-    let mut next = widget.next_sibling();
-    while let Some(n) = next {
-        if n.is_visible() && super::navigation::grab_first_focusable(&n) {
-            return gtk4::glib::Propagation::Stop;
-        }
-        next = n.next_sibling();
-    }
-    gtk4::glib::Propagation::Proceed // No target found — let GTK handle it
-}
-
-/// Focuses the previous visible sibling or ancestor's sibling above.
-fn focus_prev_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
-    let mut prev = widget.prev_sibling();
-    while let Some(p) = prev {
-        if p.is_visible() && super::navigation::grab_last_focusable(&p) {
-            return gtk4::glib::Propagation::Stop;
-        }
-        prev = p.prev_sibling();
-    }
-    // No sibling — walk up to parent's previous sibling (e.g. search entry)
-    let mut ancestor = widget.parent();
-    while let Some(a) = ancestor {
-        let mut pprev = a.prev_sibling();
-        while let Some(p) = pprev {
-            if p.is_visible() && super::navigation::grab_last_focusable(&p) {
-                return gtk4::glib::Propagation::Stop;
-            }
-            pprev = p.prev_sibling();
-        }
-        ancestor = a.parent();
-    }
-    gtk4::glib::Propagation::Proceed // No target found — let GTK handle it
-}
-
 fn format_result(value: f64) -> String {
     // Snap to zero at display precision (6 decimal places) so
     // expressions like sin(pi) show "0" instead of "1.2e-16"
@@ -226,7 +202,11 @@ fn format_result(value: f64) -> String {
             .trim_end_matches('.')
             .to_string();
         // Normalize -0 to 0 (e.g. sin(-pi) rounds to -0)
-        if formatted == "-0" { "0".to_string() } else { formatted }
+        if formatted == "-0" {
+            "0".to_string()
+        } else {
+            formatted
+        }
     }
 }
 
@@ -327,6 +307,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn format_decimal() {
         assert_eq!(format_result(3.14), "3.14");
     }
@@ -358,13 +339,21 @@ mod tests {
     #[test]
     fn format_large_number_uses_scientific() {
         let result = format_result(2.0f64.powi(1023));
-        assert!(result.contains('e'), "expected scientific notation, got: {}", result);
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {}",
+            result
+        );
     }
 
     #[test]
     fn format_tiny_number_uses_scientific() {
         let result = format_result(0.00001);
-        assert!(result.contains('e'), "expected scientific notation, got: {}", result);
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {}",
+            result
+        );
     }
 
     #[test]
