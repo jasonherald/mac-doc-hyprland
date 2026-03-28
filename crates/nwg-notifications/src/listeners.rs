@@ -109,4 +109,3 @@ pub fn poll_signals(
         glib::ControlFlow::Continue
     });
 }
-

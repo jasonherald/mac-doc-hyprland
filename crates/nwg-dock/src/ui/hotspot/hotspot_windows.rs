@@ -93,26 +93,30 @@ pub(super) fn start_hotspot_windows(
     // Poll the hide timer to actually hide dock windows
     let docks = Rc::clone(per_monitor);
     let state = Rc::clone(state);
-    glib::timeout_add_local(std::time::Duration::from_millis(HOTSPOT_HIDE_POLL_INTERVAL_MS), move || {
-        let mut left = left_at.borrow_mut();
-        if let Some(when) = *left {
-            // Don't hide while a popover menu is open or drag in progress
-            let s = state.borrow();
-            let keep_visible = s.popover_open || s.drag_pending || s.drag_source_index.is_some();
-            drop(s);
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(HOTSPOT_HIDE_POLL_INTERVAL_MS),
+        move || {
+            let mut left = left_at.borrow_mut();
+            if let Some(when) = *left {
+                // Don't hide while a popover menu is open or drag in progress
+                let s = state.borrow();
+                let keep_visible =
+                    s.popover_open || s.drag_pending || s.drag_source_index.is_some();
+                drop(s);
 
-            if keep_visible {
-                *left = None;
-            } else if when.elapsed().as_millis() >= hide_timeout as u128 {
-                log::debug!("Cursor left dock area, hiding (hotspot mode)");
-                for dock in docks.borrow().iter() {
-                    dock.win.set_visible(false);
+                if keep_visible {
+                    *left = None;
+                } else if when.elapsed().as_millis() >= hide_timeout as u128 {
+                    log::debug!("Cursor left dock area, hiding (hotspot mode)");
+                    for dock in docks.borrow().iter() {
+                        dock.win.set_visible(false);
+                    }
+                    *left = None;
                 }
-                *left = None;
             }
-        }
-        glib::ControlFlow::Continue
-    });
+            glib::ControlFlow::Continue
+        },
+    );
 
     ctx
 }

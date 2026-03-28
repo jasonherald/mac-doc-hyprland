@@ -60,10 +60,7 @@ pub fn create_single_dock_window(
 
 /// Computes which monitors to add and which to remove.
 /// Returns (to_add, to_remove) output names.
-pub fn compute_monitor_diff(
-    existing: &[String],
-    current: &[String],
-) -> (Vec<String>, Vec<String>) {
+pub fn compute_monitor_diff(existing: &[String], current: &[String]) -> (Vec<String>, Vec<String>) {
     let to_add: Vec<String> = current
         .iter()
         .filter(|name| !existing.contains(name))

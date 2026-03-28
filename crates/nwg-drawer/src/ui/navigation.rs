@@ -69,7 +69,7 @@ pub(super) fn install_file_results_nav(container: &gtk4::Box) {
                 // Check if focus is on the first button
                 if let Some(first) = first_focusable_child(&container_ref)
                     && (first.has_focus() || first.is_focus())
-                    && focus_prev_visible(&container_ref)
+                    && focus_prev_sibling(&container_ref)
                 {
                     return gtk4::glib::Propagation::Stop;
                 }
@@ -131,7 +131,7 @@ fn nav_down(
         // Target exists but is empty — fall through to widget search
     }
     // No FlowBox target — try next visible widget (e.g. file results)
-    if focus_next_visible(flow) {
+    if focus_next_sibling(flow) {
         return gtk4::glib::Propagation::Stop;
     }
     gtk4::glib::Propagation::Stop
@@ -167,7 +167,7 @@ fn nav_up(
         // Target exists but is empty — fall through to widget search
     }
     // No FlowBox target — focus nearest widget above (categories, search)
-    if focus_prev_visible(flow) {
+    if focus_prev_sibling(flow) {
         return gtk4::glib::Propagation::Stop;
     }
     gtk4::glib::Propagation::Proceed
@@ -179,7 +179,7 @@ fn nav_up(
 /// Uses `grab_last_focusable` to drill into containers (e.g. the math result
 /// vbox) where GTK's `child_focus()` returns true but doesn't actually move
 /// visible focus to inner buttons.
-fn focus_prev_visible(start: &impl IsA<gtk4::Widget>) -> bool {
+pub(super) fn focus_prev_sibling(start: &impl IsA<gtk4::Widget>) -> bool {
     let mut current = Some(start.as_ref().clone());
     while let Some(widget) = current {
         let mut prev = widget.prev_sibling();
@@ -195,8 +195,8 @@ fn focus_prev_visible(start: &impl IsA<gtk4::Widget>) -> bool {
 }
 
 /// Walks down the widget tree from `start`, looking for the nearest visible
-/// next sibling that can accept focus. Mirror of `focus_prev_visible`.
-fn focus_next_visible(start: &impl IsA<gtk4::Widget>) -> bool {
+/// next sibling that can accept focus. Mirror of `focus_prev_sibling`.
+pub(super) fn focus_next_sibling(start: &impl IsA<gtk4::Widget>) -> bool {
     let mut current = Some(start.as_ref().clone());
     while let Some(widget) = current {
         let mut next = widget.next_sibling();

@@ -60,53 +60,8 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     label.set_focusable(false);
     row.append(&label);
 
-    // Copy button — copies the result to clipboard via wl-copy.
-    // "Copied!" confirmation shown below, auto-hides after 2 seconds.
     if let Some(result_copy) = result_str {
-        let sep = gtk4::Separator::new(gtk4::Orientation::Vertical);
-        sep.add_css_class("math-divider");
-        row.append(&sep);
-
-        let copy_btn = gtk4::Button::with_label("Copy");
-        copy_btn.add_css_class("math-copy");
-        copy_btn.set_focusable(true);
-        copy_btn.set_halign(gtk4::Align::Start);
-
-        let copied_label = gtk4::Label::new(Some("Copied!"));
-        copied_label.add_css_class("math-copied");
-        copied_label.set_visible(false);
-
-        let copied_ref = copied_label.clone();
-        let pending_timer: std::rc::Rc<std::cell::Cell<Option<gtk4::glib::SourceId>>> =
-            std::rc::Rc::new(std::cell::Cell::new(None));
-        let timer_ref = std::rc::Rc::clone(&pending_timer);
-        copy_btn.connect_clicked(move |_| {
-            // Only proceed if wl-copy actually started
-            let mut cmd = std::process::Command::new("wl-copy");
-            cmd.arg(&result_copy);
-            match cmd.spawn() {
-                Ok(child) => nwg_dock_common::launch::reap_child(child, "wl-copy".to_string()),
-                Err(_) => return, // wl-copy not available — skip "Copied!" feedback
-            }
-            // Cancel previous hide timer so repeated clicks reset the 2s window
-            if let Some(id) = timer_ref.take() {
-                id.remove();
-            }
-            copied_ref.set_visible(true);
-            let hide_ref = copied_ref.clone();
-            let timer_reset = std::rc::Rc::clone(&timer_ref);
-            let id = gtk4::glib::timeout_add_local_once(
-                std::time::Duration::from_secs(super::constants::COPIED_LABEL_TIMEOUT_SECS),
-                move || {
-                    hide_ref.set_visible(false);
-                    timer_reset.set(None);
-                },
-            );
-            timer_ref.set(Some(id));
-        });
-        row.append(&copy_btn);
-        vbox.append(&row);
-        vbox.append(&copied_label);
+        append_copy_button(&row, &vbox, result_copy);
     } else {
         vbox.append(&row);
     }
@@ -122,8 +77,20 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
             return gtk4::glib::Propagation::Proceed;
         };
         match keyval {
-            gtk4::gdk::Key::Down | gtk4::gdk::Key::Tab => focus_next_widget(&vbox_ref),
-            gtk4::gdk::Key::Up | gtk4::gdk::Key::ISO_Left_Tab => focus_prev_widget(&vbox_ref),
+            gtk4::gdk::Key::Down | gtk4::gdk::Key::Tab => {
+                if super::navigation::focus_next_sibling(&vbox_ref) {
+                    gtk4::glib::Propagation::Stop
+                } else {
+                    gtk4::glib::Propagation::Proceed
+                }
+            }
+            gtk4::gdk::Key::Up | gtk4::gdk::Key::ISO_Left_Tab => {
+                if super::navigation::focus_prev_sibling(&vbox_ref) {
+                    gtk4::glib::Propagation::Stop
+                } else {
+                    gtk4::glib::Propagation::Proceed
+                }
+            }
             _ => gtk4::glib::Propagation::Proceed,
         }
     });
@@ -161,40 +128,53 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     Some(vbox)
 }
 
-/// Focuses the next visible sibling widget below.
-fn focus_next_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
-    let mut next = widget.next_sibling();
-    while let Some(n) = next {
-        if n.is_visible() && super::navigation::grab_first_focusable(&n) {
-            return gtk4::glib::Propagation::Stop;
-        }
-        next = n.next_sibling();
-    }
-    gtk4::glib::Propagation::Proceed // No target found — let GTK handle it
-}
+/// Appends a copy button and "Copied!" label to the math result row.
+/// Copies the result to clipboard via wl-copy on click, with a 2-second
+/// confirmation label that resets on repeated clicks.
+fn append_copy_button(row: &gtk4::Box, vbox: &gtk4::Box, result_copy: String) {
+    let sep = gtk4::Separator::new(gtk4::Orientation::Vertical);
+    sep.add_css_class("math-divider");
+    row.append(&sep);
 
-/// Focuses the previous visible sibling or ancestor's sibling above.
-fn focus_prev_widget(widget: &gtk4::Box) -> gtk4::glib::Propagation {
-    let mut prev = widget.prev_sibling();
-    while let Some(p) = prev {
-        if p.is_visible() && super::navigation::grab_last_focusable(&p) {
-            return gtk4::glib::Propagation::Stop;
+    let copy_btn = gtk4::Button::with_label("Copy");
+    copy_btn.add_css_class("math-copy");
+    copy_btn.set_focusable(true);
+    copy_btn.set_halign(gtk4::Align::Start);
+
+    let copied_label = gtk4::Label::new(Some("Copied!"));
+    copied_label.add_css_class("math-copied");
+    copied_label.set_visible(false);
+
+    let copied_ref = copied_label.clone();
+    let pending_timer: std::rc::Rc<std::cell::Cell<Option<gtk4::glib::SourceId>>> =
+        std::rc::Rc::new(std::cell::Cell::new(None));
+    let timer_ref = std::rc::Rc::clone(&pending_timer);
+    copy_btn.connect_clicked(move |_| {
+        let mut cmd = std::process::Command::new("wl-copy");
+        cmd.arg(&result_copy);
+        match cmd.spawn() {
+            Ok(child) => nwg_dock_common::launch::reap_child(child, "wl-copy".to_string()),
+            Err(_) => return, // wl-copy not available — skip "Copied!" feedback
         }
-        prev = p.prev_sibling();
-    }
-    // No sibling — walk up to parent's previous sibling (e.g. search entry)
-    let mut ancestor = widget.parent();
-    while let Some(a) = ancestor {
-        let mut pprev = a.prev_sibling();
-        while let Some(p) = pprev {
-            if p.is_visible() && super::navigation::grab_last_focusable(&p) {
-                return gtk4::glib::Propagation::Stop;
-            }
-            pprev = p.prev_sibling();
+        // Cancel previous hide timer so repeated clicks reset the 2s window
+        if let Some(id) = timer_ref.take() {
+            id.remove();
         }
-        ancestor = a.parent();
-    }
-    gtk4::glib::Propagation::Proceed // No target found — let GTK handle it
+        copied_ref.set_visible(true);
+        let hide_ref = copied_ref.clone();
+        let timer_reset = std::rc::Rc::clone(&timer_ref);
+        let id = gtk4::glib::timeout_add_local_once(
+            std::time::Duration::from_secs(super::constants::COPIED_LABEL_TIMEOUT_SECS),
+            move || {
+                hide_ref.set_visible(false);
+                timer_reset.set(None);
+            },
+        );
+        timer_ref.set(Some(id));
+    });
+    row.append(&copy_btn);
+    vbox.append(row);
+    vbox.append(&copied_label);
 }
 
 fn format_result(value: f64) -> String {
@@ -226,7 +206,11 @@ fn format_result(value: f64) -> String {
             .trim_end_matches('.')
             .to_string();
         // Normalize -0 to 0 (e.g. sin(-pi) rounds to -0)
-        if formatted == "-0" { "0".to_string() } else { formatted }
+        if formatted == "-0" {
+            "0".to_string()
+        } else {
+            formatted
+        }
     }
 }
 
@@ -327,6 +311,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn format_decimal() {
         assert_eq!(format_result(3.14), "3.14");
     }
@@ -358,13 +343,21 @@ mod tests {
     #[test]
     fn format_large_number_uses_scientific() {
         let result = format_result(2.0f64.powi(1023));
-        assert!(result.contains('e'), "expected scientific notation, got: {}", result);
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {}",
+            result
+        );
     }
 
     #[test]
     fn format_tiny_number_uses_scientific() {
         let result = format_result(0.00001);
-        assert!(result.contains('e'), "expected scientific notation, got: {}", result);
+        assert!(
+            result.contains('e'),
+            "expected scientific notation, got: {}",
+            result
+        );
     }
 
     #[test]

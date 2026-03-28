@@ -35,15 +35,14 @@ pub(super) fn start_cursor_poller(
     let left_at: Rc<RefCell<Option<std::time::Instant>>> = Rc::new(RefCell::new(None));
 
     // Cache monitors — refreshed periodically and immediately on topology changes
-    let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> = Rc::new(RefCell::new(
-        match compositor.list_monitors() {
+    let cached_monitors: Rc<RefCell<Vec<WmMonitor>>> =
+        Rc::new(RefCell::new(match compositor.list_monitors() {
             Ok(m) => m,
             Err(e) => {
                 log::warn!("Initial monitor list failed: {}", e);
                 Vec::new()
             }
-        },
-    ));
+        }));
     let monitor_refresh_counter = Rc::new(RefCell::new(0u32));
     let last_outputs: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(
         docks
@@ -53,60 +52,63 @@ pub(super) fn start_cursor_poller(
             .collect(),
     ));
 
-    glib::timeout_add_local(std::time::Duration::from_millis(CURSOR_POLL_INTERVAL_MS), move || {
-        let cursor = match compositor.get_cursor_position() {
-            Some((x, y)) => CursorPos { x, y },
-            None => return glib::ControlFlow::Continue,
-        };
+    glib::timeout_add_local(
+        std::time::Duration::from_millis(CURSOR_POLL_INTERVAL_MS),
+        move || {
+            let cursor = match compositor.get_cursor_position() {
+                Some((x, y)) => CursorPos { x, y },
+                None => return glib::ControlFlow::Continue,
+            };
 
-        // Detect topology change: output names changed means reconciliation happened
-        let current_outputs: Vec<String> = docks
-            .borrow()
-            .iter()
-            .map(|d| d.output_name.clone())
-            .collect();
-        let topology_changed = {
-            let mut last = last_outputs.borrow_mut();
-            if *last != current_outputs {
-                *last = current_outputs;
-                true
-            } else {
-                false
-            }
-        };
+            // Detect topology change: output names changed means reconciliation happened
+            let current_outputs: Vec<String> = docks
+                .borrow()
+                .iter()
+                .map(|d| d.output_name.clone())
+                .collect();
+            let topology_changed = {
+                let mut last = last_outputs.borrow_mut();
+                if *last != current_outputs {
+                    *last = current_outputs;
+                    true
+                } else {
+                    false
+                }
+            };
 
-        // Refresh monitor cache every ~10 seconds or immediately on topology change
-        {
-            let mut count = monitor_refresh_counter.borrow_mut();
-            *count += 1;
-            if *count >= MONITOR_REFRESH_POLLS || topology_changed {
-                *count = 0;
-                match compositor.list_monitors() {
-                    Ok(m) => *cached_monitors.borrow_mut() = m,
-                    Err(e) => log::debug!("Monitor cache refresh failed: {}", e),
+            // Refresh monitor cache every ~10 seconds or immediately on topology change
+            {
+                let mut count = monitor_refresh_counter.borrow_mut();
+                *count += 1;
+                if *count >= MONITOR_REFRESH_POLLS || topology_changed {
+                    *count = 0;
+                    match compositor.list_monitors() {
+                        Ok(m) => *cached_monitors.borrow_mut() = m,
+                        Err(e) => log::debug!("Monitor cache refresh failed: {}", e),
+                    }
                 }
             }
-        }
-        let monitors = cached_monitors.borrow();
+            let monitors = cached_monitors.borrow();
 
-        let any_visible = docks.borrow().iter().any(|d| d.win.is_visible());
+            let any_visible = docks.borrow().iter().any(|d| d.win.is_visible());
 
-        if !any_visible {
-            handle_hidden_dock(&cursor, &monitors, position, &docks, &left_at);
-        } else {
-            handle_visible_dock(
-                &cursor,
-                &monitors,
-                position,
-                &docks,
-                &state,
-                &left_at,
-                hide_timeout,
-            );
-        }
+            if !any_visible {
+                handle_hidden_dock(&cursor, &monitors, position, &docks, &left_at);
+            } else {
+                handle_visible_dock(
+                    &cursor,
+                    &monitors,
+                    position,
+                    &docks,
+                    &state,
+                    &left_at,
+                    hide_timeout,
+                );
+            }
 
-        glib::ControlFlow::Continue
-    });
+            glib::ControlFlow::Continue
+        },
+    );
 }
 
 /// Handles cursor polling when the dock is hidden: shows the dock if cursor is at edge.
@@ -323,8 +325,16 @@ mod tests {
         let monitors = vec![test_monitor("DP-1", 0, 0, 1920, 1080)];
         let at_edge = CursorPos { x: 960, y: 1079 };
         let not_edge = CursorPos { x: 960, y: 500 };
-        assert!(is_cursor_at_edge(&at_edge, &monitors, crate::config::Position::Bottom));
-        assert!(!is_cursor_at_edge(&not_edge, &monitors, crate::config::Position::Bottom));
+        assert!(is_cursor_at_edge(
+            &at_edge,
+            &monitors,
+            crate::config::Position::Bottom
+        ));
+        assert!(!is_cursor_at_edge(
+            &not_edge,
+            &monitors,
+            crate::config::Position::Bottom
+        ));
     }
 
     #[test]
@@ -332,8 +342,16 @@ mod tests {
         let monitors = vec![test_monitor("DP-1", 0, 0, 1920, 1080)];
         let at_edge = CursorPos { x: 960, y: 1 };
         let not_edge = CursorPos { x: 960, y: 500 };
-        assert!(is_cursor_at_edge(&at_edge, &monitors, crate::config::Position::Top));
-        assert!(!is_cursor_at_edge(&not_edge, &monitors, crate::config::Position::Top));
+        assert!(is_cursor_at_edge(
+            &at_edge,
+            &monitors,
+            crate::config::Position::Top
+        ));
+        assert!(!is_cursor_at_edge(
+            &not_edge,
+            &monitors,
+            crate::config::Position::Top
+        ));
     }
 
     #[test]

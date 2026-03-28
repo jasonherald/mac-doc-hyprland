@@ -271,9 +271,7 @@ fn extract_env_prefix(elements: &[String]) -> (Vec<(&str, &str)>, &[String]) {
             // (starts with letter or underscore, rest alphanumeric or underscore)
             if !key.is_empty()
                 && key.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
-                && key
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             {
                 env_vars.push((key, value));
                 continue;
@@ -445,10 +443,7 @@ mod tests {
         let tmp = std::env::temp_dir().join("nwg-shell-test-output");
         remove_test_file(&tmp);
 
-        let cmd = format!(
-            r#"sh -c "echo 'hello world' > '{}'""#,
-            tmp.display()
-        );
+        let cmd = format!(r#"sh -c "echo 'hello world' > '{}'""#, tmp.display());
         launch_shell_command(&cmd);
 
         let content = wait_for_file(&tmp, |c| c.trim() == "hello world");

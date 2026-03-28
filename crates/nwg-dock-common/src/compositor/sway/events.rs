@@ -1,4 +1,4 @@
-use super::ipc::{read_response_with_type, send_message, MSG_SUBSCRIBE};
+use super::ipc::{MSG_SUBSCRIBE, read_response_with_type, send_message};
 use crate::compositor::traits::WmEventStream;
 use crate::compositor::types::WmEvent;
 use crate::error::DockError;
