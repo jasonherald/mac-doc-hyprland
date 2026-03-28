@@ -60,53 +60,8 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     label.set_focusable(false);
     row.append(&label);
 
-    // Copy button — copies the result to clipboard via wl-copy.
-    // "Copied!" confirmation shown below, auto-hides after 2 seconds.
     if let Some(result_copy) = result_str {
-        let sep = gtk4::Separator::new(gtk4::Orientation::Vertical);
-        sep.add_css_class("math-divider");
-        row.append(&sep);
-
-        let copy_btn = gtk4::Button::with_label("Copy");
-        copy_btn.add_css_class("math-copy");
-        copy_btn.set_focusable(true);
-        copy_btn.set_halign(gtk4::Align::Start);
-
-        let copied_label = gtk4::Label::new(Some("Copied!"));
-        copied_label.add_css_class("math-copied");
-        copied_label.set_visible(false);
-
-        let copied_ref = copied_label.clone();
-        let pending_timer: std::rc::Rc<std::cell::Cell<Option<gtk4::glib::SourceId>>> =
-            std::rc::Rc::new(std::cell::Cell::new(None));
-        let timer_ref = std::rc::Rc::clone(&pending_timer);
-        copy_btn.connect_clicked(move |_| {
-            // Only proceed if wl-copy actually started
-            let mut cmd = std::process::Command::new("wl-copy");
-            cmd.arg(&result_copy);
-            match cmd.spawn() {
-                Ok(child) => nwg_dock_common::launch::reap_child(child, "wl-copy".to_string()),
-                Err(_) => return, // wl-copy not available — skip "Copied!" feedback
-            }
-            // Cancel previous hide timer so repeated clicks reset the 2s window
-            if let Some(id) = timer_ref.take() {
-                id.remove();
-            }
-            copied_ref.set_visible(true);
-            let hide_ref = copied_ref.clone();
-            let timer_reset = std::rc::Rc::clone(&timer_ref);
-            let id = gtk4::glib::timeout_add_local_once(
-                std::time::Duration::from_secs(super::constants::COPIED_LABEL_TIMEOUT_SECS),
-                move || {
-                    hide_ref.set_visible(false);
-                    timer_reset.set(None);
-                },
-            );
-            timer_ref.set(Some(id));
-        });
-        row.append(&copy_btn);
-        vbox.append(&row);
-        vbox.append(&copied_label);
+        append_copy_button(&row, &vbox, result_copy);
     } else {
         vbox.append(&row);
     }
@@ -171,6 +126,55 @@ pub fn build_math_result(phrase: &str) -> Option<gtk4::Box> {
     });
 
     Some(vbox)
+}
+
+/// Appends a copy button and "Copied!" label to the math result row.
+/// Copies the result to clipboard via wl-copy on click, with a 2-second
+/// confirmation label that resets on repeated clicks.
+fn append_copy_button(row: &gtk4::Box, vbox: &gtk4::Box, result_copy: String) {
+    let sep = gtk4::Separator::new(gtk4::Orientation::Vertical);
+    sep.add_css_class("math-divider");
+    row.append(&sep);
+
+    let copy_btn = gtk4::Button::with_label("Copy");
+    copy_btn.add_css_class("math-copy");
+    copy_btn.set_focusable(true);
+    copy_btn.set_halign(gtk4::Align::Start);
+
+    let copied_label = gtk4::Label::new(Some("Copied!"));
+    copied_label.add_css_class("math-copied");
+    copied_label.set_visible(false);
+
+    let copied_ref = copied_label.clone();
+    let pending_timer: std::rc::Rc<std::cell::Cell<Option<gtk4::glib::SourceId>>> =
+        std::rc::Rc::new(std::cell::Cell::new(None));
+    let timer_ref = std::rc::Rc::clone(&pending_timer);
+    copy_btn.connect_clicked(move |_| {
+        let mut cmd = std::process::Command::new("wl-copy");
+        cmd.arg(&result_copy);
+        match cmd.spawn() {
+            Ok(child) => nwg_dock_common::launch::reap_child(child, "wl-copy".to_string()),
+            Err(_) => return, // wl-copy not available — skip "Copied!" feedback
+        }
+        // Cancel previous hide timer so repeated clicks reset the 2s window
+        if let Some(id) = timer_ref.take() {
+            id.remove();
+        }
+        copied_ref.set_visible(true);
+        let hide_ref = copied_ref.clone();
+        let timer_reset = std::rc::Rc::clone(&timer_ref);
+        let id = gtk4::glib::timeout_add_local_once(
+            std::time::Duration::from_secs(super::constants::COPIED_LABEL_TIMEOUT_SECS),
+            move || {
+                hide_ref.set_visible(false);
+                timer_reset.set(None);
+            },
+        );
+        timer_ref.set(Some(id));
+    });
+    row.append(&copy_btn);
+    vbox.append(row);
+    vbox.append(&copied_label);
 }
 
 fn format_result(value: f64) -> String {
