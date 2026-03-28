@@ -46,8 +46,7 @@ pub(super) fn read_response_with_type(conn: &mut UnixStream) -> Result<(Vec<u8>,
 
     let payload_len =
         u32::from_le_bytes(header[6..10].try_into().expect("slice is exactly 4 bytes")) as usize;
-    let msg_type =
-        u32::from_le_bytes(header[10..14].try_into().expect("slice is exactly 4 bytes"));
+    let msg_type = u32::from_le_bytes(header[10..14].try_into().expect("slice is exactly 4 bytes"));
     if payload_len > MAX_PAYLOAD_SIZE {
         return Err(DockError::Ipc(std::io::Error::new(
             std::io::ErrorKind::InvalidData,

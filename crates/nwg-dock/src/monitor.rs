@@ -27,9 +27,7 @@ pub fn map_outputs_by_connector() -> HashMap<String, gdk::Monitor> {
 
 /// Resolves which monitors to show the dock on, based on the -o flag.
 /// Returns (output_name, gdk_monitor) pairs.
-pub fn resolve_monitors(
-    config: &crate::config::DockConfig,
-) -> Vec<(String, gdk::Monitor)> {
+pub fn resolve_monitors(config: &crate::config::DockConfig) -> Vec<(String, gdk::Monitor)> {
     let output_map = map_outputs_by_connector();
     if !config.output.is_empty() {
         if let Some(mon) = output_map.get(&config.output) {

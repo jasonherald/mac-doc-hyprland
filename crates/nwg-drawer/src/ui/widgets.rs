@@ -118,7 +118,6 @@ pub fn apply_pin_badge(button: &gtk4::Button) {
     vbox.append(&hbox);
 }
 
-
 /// Truncates a string to max chars, appending ellipsis if needed.
 pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() > max {

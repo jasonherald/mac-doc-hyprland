@@ -102,5 +102,4 @@ impl DockState {
         self.active_client = self.compositor.get_active_window().ok();
         Ok(())
     }
-
 }

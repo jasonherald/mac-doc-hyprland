@@ -159,8 +159,7 @@ pub fn strip_field_codes(exec: &str) -> String {
                 }
                 // Known field codes per freedesktop spec — drop them
                 Some(
-                    'f' | 'F' | 'u' | 'U' | 'd' | 'D' | 'n' | 'N' | 'i' | 'c' | 'k' | 'v'
-                    | 'm',
+                    'f' | 'F' | 'u' | 'U' | 'd' | 'D' | 'n' | 'N' | 'i' | 'c' | 'k' | 'v' | 'm',
                 ) => {
                     chars.next();
                     // Trim a single leading space before the field code if present
@@ -391,10 +390,7 @@ mod tests {
 
     #[test]
     fn strip_field_codes_preserves_args_after_code() {
-        assert_eq!(
-            strip_field_codes("foo %U --new-window"),
-            "foo --new-window"
-        );
+        assert_eq!(strip_field_codes("foo %U --new-window"), "foo --new-window");
         assert_eq!(
             strip_field_codes("bar %f --flag %F --other"),
             "bar --flag --other"

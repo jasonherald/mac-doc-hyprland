@@ -46,7 +46,11 @@ pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
         if let Some(parent) = pin_path.parent()
             && let Err(e) = watcher.watch(parent, RecursiveMode::NonRecursive)
         {
-            log::warn!("Failed to watch pin file directory '{}': {}", parent.display(), e);
+            log::warn!(
+                "Failed to watch pin file directory '{}': {}",
+                parent.display(),
+                e
+            );
             return;
         }
         // Block forever — watcher stops if thread exits
@@ -156,7 +160,13 @@ pub fn setup_monitor_watcher(
         glib::idle_add_local_once(move || {
             pending.set(false);
             log::info!("Monitor topology changed, reconciling dock windows");
-            reconcile_monitors(&app, &per_monitor, &config, &rebuild_fn, hotspot_ctx.as_deref());
+            reconcile_monitors(
+                &app,
+                &per_monitor,
+                &config,
+                &rebuild_fn,
+                hotspot_ctx.as_deref(),
+            );
         });
     });
 }

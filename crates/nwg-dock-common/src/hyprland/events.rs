@@ -115,9 +115,6 @@ mod tests {
 
     #[test]
     fn parse_other_event() {
-        assert!(matches!(
-            parse_event("workspace>>2"),
-            HyprEvent::Other(_)
-        ));
+        assert!(matches!(parse_event("workspace>>2"), HyprEvent::Other(_)));
     }
 }

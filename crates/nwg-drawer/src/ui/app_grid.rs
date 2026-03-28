@@ -145,7 +145,11 @@ fn connect_launch(
     let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
         nwg_dock_common::launch::launch_desktop_entry(
-            &exec, terminal, &term_cmd, &theme_prefix, &*compositor,
+            &exec,
+            terminal,
+            &term_cmd,
+            &theme_prefix,
+            &*compositor,
         );
         on_launch_click();
     });
