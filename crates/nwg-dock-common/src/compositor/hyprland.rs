@@ -159,7 +159,7 @@ fn to_wm_monitor(m: HyprMonitor) -> WmMonitor {
         height: (ph as f64 / scale).round() as i32,
         x: m.x,
         y: m.y,
-        scale: m.scale,
+        scale,
         focused: m.focused,
         active_workspace: WmWorkspace {
             id: m.active_workspace.id,
