@@ -249,7 +249,7 @@ fn activate_drawer(
     listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, compositor);
     listeners::setup_focus_detector(&win, &on_launch, compositor);
     listeners::setup_file_watcher(app_dirs, &well_ctx);
-    listeners::setup_signal_poller(&win, sig_rx, config.resident);
+    listeners::setup_signal_poller(&win, &search_entry, &well_ctx, sig_rx, config.resident);
 
     // In resident mode, start hidden — the signal poller will show the window
     // when a SIGRTMIN+1 (toggle) or SIGRTMIN+2 (show) signal is received.
