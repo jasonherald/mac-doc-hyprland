@@ -279,11 +279,16 @@ fn reset_drawer_state(
     search_entry: &gtk4::SearchEntry,
     well_ctx: &crate::ui::well_context::WellContext,
 ) {
+    let had_search = !well_ctx.state.borrow().active_search.is_empty();
     search_entry.set_text("");
     let had_category = !well_ctx.state.borrow().active_category.is_empty();
-    if had_category {
+    // Only rebuild for category if search wasn't active — clearing search text
+    // already triggers a rebuild via the search-changed handler.
+    if had_category && !had_search {
         well_ctx.state.borrow_mut().active_category.clear();
         well_builder::rebuild_preserving_category(well_ctx);
+    } else if had_category {
+        well_ctx.state.borrow_mut().active_category.clear();
     }
 }
 
