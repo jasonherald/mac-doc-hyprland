@@ -386,4 +386,62 @@ mod tests {
         assert_eq!(x, 1920 + (2560 - 800) / 2);
         assert_eq!(y, 1440 - 50);
     }
+
+    /// Reproduces issue #37: 3 monitors where DP-3 is a portrait (rotated) display.
+    /// WmMonitor dimensions must be logical (post-transform, post-scale) so cursor
+    /// bounds checking works correctly for all monitors.
+    #[test]
+    fn three_monitors_with_portrait_display() {
+        // Layout matching nwg-piotr's setup:
+        //   DP-3 (portrait, left): logical 1600×2560 at (0, 0)
+        //   DP-1 (landscape, center): 2560×1440 at (1600, 447)
+        //   DP-2 (landscape, right): 1920×1080 at (4160, 0)
+        let monitors = vec![
+            test_monitor("DP-3", 0, 0, 1600, 2560),
+            test_monitor("DP-1", 1600, 447, 2560, 1440),
+            test_monitor("DP-2", 4160, 0, 1920, 1080),
+        ];
+        // Cursor at bottom of portrait monitor
+        assert_eq!(
+            find_cursor_monitor_name(&CursorPos { x: 800, y: 2559 }, &monitors).as_deref(),
+            Some("DP-3")
+        );
+        assert!(is_cursor_at_edge(
+            &CursorPos { x: 800, y: 2559 },
+            &monitors,
+            crate::config::Position::Bottom
+        ));
+        // Cursor on center monitor
+        assert_eq!(
+            find_cursor_monitor_name(&CursorPos { x: 2000, y: 800 }, &monitors).as_deref(),
+            Some("DP-1")
+        );
+        // Cursor on right monitor
+        assert_eq!(
+            find_cursor_monitor_name(&CursorPos { x: 5000, y: 500 }, &monitors).as_deref(),
+            Some("DP-2")
+        );
+    }
+
+    /// Verifies that scaled monitors don't overlap adjacent monitors' bounds.
+    #[test]
+    fn scaled_monitor_no_overlap() {
+        // Middle monitor is 4K at 1.5x → logical 2560×1440
+        // If we used pixel width (3840), it would overlap DP-3's area
+        let monitors = vec![
+            test_monitor("DP-1", 0, 0, 1920, 1080),
+            test_monitor("HDMI-A-1", 1920, 0, 2560, 1440), // logical after scale
+            test_monitor("DP-3", 4480, 0, 1920, 1080),
+        ];
+        // Cursor on DP-3 must not match HDMI-A-1
+        assert_eq!(
+            find_cursor_monitor_name(&CursorPos { x: 4500, y: 500 }, &monitors).as_deref(),
+            Some("DP-3")
+        );
+        assert!(is_cursor_at_edge(
+            &CursorPos { x: 4500, y: 1079 },
+            &monitors,
+            crate::config::Position::Bottom
+        ));
+    }
 }
