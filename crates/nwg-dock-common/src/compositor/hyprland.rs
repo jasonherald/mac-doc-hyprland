@@ -138,6 +138,36 @@ fn to_wm_client(c: HyprClient) -> WmClient {
     }
 }
 
+/// Converts a Hyprland monitor to a compositor-neutral WmMonitor.
+///
+/// Hyprland's `j/monitors` reports native pixel dimensions (before transform
+/// or scale), but cursor coordinates from `j/cursorpos` use the logical layout
+/// space (after transform and scale). Convert to logical dimensions so bounds
+/// checking in the cursor poller works correctly for rotated and scaled monitors.
+fn to_wm_monitor(m: HyprMonitor) -> WmMonitor {
+    // Transforms 1,3,5,7 swap width↔height (90°, 270°, and their flipped variants)
+    let (pw, ph) = if matches!(m.transform, 1 | 3 | 5 | 7) {
+        (m.height, m.width)
+    } else {
+        (m.width, m.height)
+    };
+    let scale = if m.scale > 0.0 { m.scale } else { 1.0 };
+    WmMonitor {
+        id: m.id,
+        name: m.name,
+        width: (pw as f64 / scale).round() as i32,
+        height: (ph as f64 / scale).round() as i32,
+        x: m.x,
+        y: m.y,
+        scale: m.scale,
+        focused: m.focused,
+        active_workspace: WmWorkspace {
+            id: m.active_workspace.id,
+            name: m.active_workspace.name,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,35 +229,5 @@ mod tests {
         let wm = to_wm_monitor(test_hypr_monitor(2560, 1440, 1.0, 2));
         assert_eq!(wm.width, 2560);
         assert_eq!(wm.height, 1440);
-    }
-}
-
-/// Converts a Hyprland monitor to a compositor-neutral WmMonitor.
-///
-/// Hyprland's `j/monitors` reports native pixel dimensions (before transform
-/// or scale), but cursor coordinates from `j/cursorpos` use the logical layout
-/// space (after transform and scale). Convert to logical dimensions so bounds
-/// checking in the cursor poller works correctly for rotated and scaled monitors.
-fn to_wm_monitor(m: HyprMonitor) -> WmMonitor {
-    // Transforms 1,3,5,7 swap width↔height (90°, 270°, and their flipped variants)
-    let (pw, ph) = if matches!(m.transform, 1 | 3 | 5 | 7) {
-        (m.height, m.width)
-    } else {
-        (m.width, m.height)
-    };
-    let scale = if m.scale > 0.0 { m.scale } else { 1.0 };
-    WmMonitor {
-        id: m.id,
-        name: m.name,
-        width: (pw as f64 / scale).round() as i32,
-        height: (ph as f64 / scale).round() as i32,
-        x: m.x,
-        y: m.y,
-        scale: m.scale,
-        focused: m.focused,
-        active_workspace: WmWorkspace {
-            id: m.active_workspace.id,
-            name: m.active_workspace.name,
-        },
     }
 }
