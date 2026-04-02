@@ -1,8 +1,12 @@
 use crate::config::{DockConfig, Layer, Position};
+use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
 
 /// Configures the main dock window with layer-shell properties.
 pub fn setup_dock_window(win: &gtk4::ApplicationWindow, config: &DockConfig) {
+    // Block compositor close requests (e.g. Hyprland killactive / Super+Q)
+    // so the dock can't be accidentally killed via keyboard shortcut.
+    win.connect_close_request(|_| gtk4::glib::Propagation::Stop);
     win.init_layer_shell();
     win.set_namespace(Some("nwg-dock-hyprland"));
 
