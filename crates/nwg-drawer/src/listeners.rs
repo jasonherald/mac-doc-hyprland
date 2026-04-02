@@ -150,15 +150,19 @@ pub fn setup_file_watcher(
 /// Sets up signal handler polling for SIGRTMIN+1/2/3.
 pub fn setup_signal_poller(
     win: &gtk4::ApplicationWindow,
+    search_entry: &gtk4::SearchEntry,
+    well_ctx: &crate::ui::well_context::WellContext,
     sig_rx: &Rc<mpsc::Receiver<WindowCommand>>,
     resident: bool,
 ) {
     let win = win.clone();
+    let entry = search_entry.clone();
+    let ctx = well_ctx.clone();
     let rx = Rc::clone(sig_rx);
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
-            handle_window_command(&win, cmd, resident);
+            handle_window_command(&win, &entry, &ctx, cmd, resident);
         }
         glib::ControlFlow::Continue
     });
@@ -246,11 +250,45 @@ fn resolve_window_op(cmd: &WindowCommand, visible: bool, resident: bool) -> Wind
 }
 
 /// Processes a single window command from the signal handler.
-fn handle_window_command(win: &gtk4::ApplicationWindow, cmd: WindowCommand, resident: bool) {
+fn handle_window_command(
+    win: &gtk4::ApplicationWindow,
+    search_entry: &gtk4::SearchEntry,
+    well_ctx: &crate::ui::well_context::WellContext,
+    cmd: WindowCommand,
+    resident: bool,
+) {
     match resolve_window_op(&cmd, win.is_visible(), resident) {
-        WindowOp::Show => win.set_visible(true),
+        WindowOp::Show => {
+            // Reset search and category filter so the drawer opens fresh
+            reset_drawer_state(search_entry, well_ctx);
+            win.set_visible(true);
+            // Defer focus grab to ensure the compositor has mapped the window
+            // and delivered keyboard focus before we attempt to grab it.
+            let entry = search_entry.clone();
+            glib::idle_add_local_once(move || {
+                entry.grab_focus();
+            });
+        }
         WindowOp::Hide => win.set_visible(false),
         WindowOp::Close => quit_or_hide(win, false),
+    }
+}
+
+/// Resets the drawer to its initial state (clear search, show all categories).
+fn reset_drawer_state(
+    search_entry: &gtk4::SearchEntry,
+    well_ctx: &crate::ui::well_context::WellContext,
+) {
+    let had_search = !well_ctx.state.borrow().active_search.is_empty();
+    search_entry.set_text("");
+    let had_category = !well_ctx.state.borrow().active_category.is_empty();
+    // Only rebuild for category if search wasn't active — clearing search text
+    // already triggers a rebuild via the search-changed handler.
+    if had_category && !had_search {
+        well_ctx.state.borrow_mut().active_category.clear();
+        well_builder::rebuild_preserving_category(well_ctx);
+    } else if had_category {
+        well_ctx.state.borrow_mut().active_category.clear();
     }
 }
 
