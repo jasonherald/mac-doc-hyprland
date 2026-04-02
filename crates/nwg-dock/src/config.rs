@@ -308,6 +308,18 @@ mod tests {
     const TEST_HOTSPOT_DELAY_STR: &str = "50";
 
     #[test]
+    fn launch_animation_default_off() {
+        let config = DockConfig::parse_from(["test"]);
+        assert!(!config.launch_animation);
+    }
+
+    #[test]
+    fn launch_animation_flag() {
+        let config = DockConfig::parse_from(["test", "--launch-animation"]);
+        assert!(config.launch_animation);
+    }
+
+    #[test]
     fn legacy_single_dash_flags() {
         let args = vec![
             "test",

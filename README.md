@@ -271,7 +271,7 @@ Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
 - **Math evaluation** — the Go drawer uses the `expr` library for arbitrary expression evaluation; the Rust port uses a custom arithmetic parser (safer, covers the common use case).
 - **Drag-to-reorder** — new feature not in the Go dock: drag pinned icons to rearrange, drag off to unpin.
 - **CLI flag naming** — multi-word flags standardized to kebab-case (e.g., `--nocats` → `--no-cats`, `--pbsize` → `--pb-size`). Multi-char Go short forms (`-hd`, `-iw`, `-is`) not available in clap (single-char only); use the long forms instead.
-- **Fuzzy class matching** — compositor classes with hyphens vs spaces (e.g., `github-desktop` vs `github desktop`) are matched automatically for correct icon display and process grouping.
+- **Fuzzy class matching** — compositor classes with hyphens vs spaces (e.g., desktop file `github-desktop` vs compositor class `github desktop`) are matched automatically for correct icon display and process grouping.
 - **Launcher auto-detection** — if the configured launcher command (default `nwg-drawer`) is not found on PATH, the launcher button is automatically hidden with a log message.
 
 ## Credits

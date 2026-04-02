@@ -312,7 +312,7 @@ fn apply_launching_class(item_box: &gtk4::Box, app_id: &str, ctx: &DockContext) 
             .state
             .borrow()
             .launching
-            .contains(&app_id.to_lowercase())
+            .contains_key(&app_id.to_lowercase())
     {
         item_box.add_css_class("dock-launching");
         if ctx.config.is_vertical() {

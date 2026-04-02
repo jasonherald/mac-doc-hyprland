@@ -1,6 +1,6 @@
 use gtk4::glib;
 use nwg_dock_common::compositor::{Compositor, WmClient};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -48,7 +48,9 @@ pub struct DockState {
     pub wm_class_to_desktop_id: HashMap<String, String>,
 
     /// App IDs currently showing launch bounce animation (issue #38).
-    pub launching: HashSet<String>,
+    /// Value is the instance count at launch time — used to detect when a
+    /// new window appears (count increases) vs an already-running app.
+    pub launching: HashMap<String, usize>,
 
     /// Timeout handles for auto-cancelling launch animations.
     pub launch_timeouts: HashMap<String, glib::SourceId>,
@@ -71,7 +73,7 @@ impl DockState {
             drag_outside_dock: false,
             rebuild_pending: false,
             wm_class_to_desktop_id: HashMap::new(),
-            launching: HashSet::new(),
+            launching: HashMap::new(),
             launch_timeouts: HashMap::new(),
         }
     }

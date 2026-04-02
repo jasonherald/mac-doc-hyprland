@@ -38,27 +38,6 @@ window {
     color: #e06c75;
 }
 
-/* Launch bounce animation (issue #38) */
-@keyframes dock-bounce {
-    0%   { transform: translateY(0px); }
-    30%  { transform: translateY(-12px); }
-    60%  { transform: translateY(0px); }
-    78%  { transform: translateY(4px); }
-    100% { transform: translateY(0px); }
-}
-@keyframes dock-bounce-vertical {
-    0%   { transform: translateX(0px); }
-    30%  { transform: translateX(-12px); }
-    60%  { transform: translateX(0px); }
-    78%  { transform: translateX(4px); }
-    100% { transform: translateX(0px); }
-}
-.dock-launching {
-    animation: dock-bounce 600ms linear infinite;
-}
-.dock-launching-vertical {
-    animation: dock-bounce-vertical 600ms linear infinite;
-}
 "#;
 
 /// Loads the dock's CSS file and applies GTK4 compatibility overrides.
@@ -76,6 +55,33 @@ pub fn load_dock_css(css_path: &Path, opacity: u8) -> bool {
         alpha
     );
     css::load_css_from_data(&opacity_css);
+
+    // Launch bounce animation (issue #38) — dimensions from ui/constants.rs
+    use super::constants::{
+        LAUNCH_BOUNCE_DIP_PX, LAUNCH_BOUNCE_DURATION_MS, LAUNCH_BOUNCE_HEIGHT_PX,
+    };
+    let bounce_css = format!(
+        "@keyframes dock-bounce {{\
+            0%   {{ transform: translateY(0px); }}\
+            30%  {{ transform: translateY(-{h}px); }}\
+            60%  {{ transform: translateY(0px); }}\
+            78%  {{ transform: translateY({d}px); }}\
+            100% {{ transform: translateY(0px); }}\
+        }}\
+        @keyframes dock-bounce-vertical {{\
+            0%   {{ transform: translateX(0px); }}\
+            30%  {{ transform: translateX(-{h}px); }}\
+            60%  {{ transform: translateX(0px); }}\
+            78%  {{ transform: translateX({d}px); }}\
+            100% {{ transform: translateX(0px); }}\
+        }}\
+        .dock-launching {{ animation: dock-bounce {dur}ms linear infinite; }}\
+        .dock-launching-vertical {{ animation: dock-bounce-vertical {dur}ms linear infinite; }}",
+        h = LAUNCH_BOUNCE_HEIGHT_PX,
+        d = LAUNCH_BOUNCE_DIP_PX,
+        dur = LAUNCH_BOUNCE_DURATION_MS,
+    );
+    css::load_css_from_data(&bounce_css);
 
     result
 }
