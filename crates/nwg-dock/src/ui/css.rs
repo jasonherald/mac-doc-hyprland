@@ -37,6 +37,28 @@ window {
 .drag-remove-icon {
     color: #e06c75;
 }
+
+/* Launch bounce animation (issue #38) */
+@keyframes dock-bounce {
+    0%   { transform: translateY(0px); }
+    30%  { transform: translateY(-12px); }
+    60%  { transform: translateY(0px); }
+    78%  { transform: translateY(4px); }
+    100% { transform: translateY(0px); }
+}
+@keyframes dock-bounce-vertical {
+    0%   { transform: translateX(0px); }
+    30%  { transform: translateX(-12px); }
+    60%  { transform: translateX(0px); }
+    78%  { transform: translateX(4px); }
+    100% { transform: translateX(0px); }
+}
+.dock-launching {
+    animation: dock-bounce 600ms linear infinite;
+}
+.dock-launching-vertical {
+    animation: dock-bounce-vertical 600ms linear infinite;
+}
 "#;
 
 /// Loads the dock's CSS file and applies GTK4 compatibility overrides.

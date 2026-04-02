@@ -159,6 +159,10 @@ pub struct DockConfig {
     #[arg(long, default_value_t = 100)]
     pub opacity: u8,
 
+    /// Show a bounce animation on dock icons while an app is launching
+    #[arg(long)]
+    pub launch_animation: bool,
+
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
     pub wm: Option<nwg_dock_common::compositor::WmOverride>,

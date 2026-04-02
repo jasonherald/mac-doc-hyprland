@@ -58,6 +58,11 @@ fn is_class_represented(class: &str, items: &[String], wm_map: &HashMap<String, 
     if items.iter().any(|i| i.eq_ignore_ascii_case(class)) {
         return true;
     }
+    // Hyphen↔space variant (e.g. "github desktop" matches "github-desktop")
+    let alt = crate::state::hyphen_space_variant(class);
+    if alt != class && items.iter().any(|i| i.eq_ignore_ascii_case(&alt)) {
+        return true;
+    }
     // WMClass → desktop ID mapping (e.g. "com.billz.app" → "billz")
     if let Some(desktop_id) = wm_map
         .get(class)
@@ -211,13 +216,16 @@ fn build_pinned_items(
         }
         let instances = ctx.state.borrow().task_instances(pin);
         if instances.is_empty() {
-            main_box.append(&buttons::pinned_button(pin, pin_idx, ctx));
+            let btn = buttons::pinned_button(pin, pin_idx, ctx);
+            apply_launching_class(&btn, pin, ctx);
+            main_box.append(&btn);
         } else if instances.len() == 1 || !already_added.contains(pin) {
             let btn = buttons::task_button(&instances[0], &instances, ctx);
             if instances[0].class == active_class && !ctx.config.autohide {
                 btn.set_widget_name("active");
             }
             btn.add_css_class("pinned-item");
+            apply_launching_class(&btn, pin, ctx);
             if !ctx.state.borrow().locked
                 && let Some(inner_btn) = find_child_button(&btn)
             {
@@ -258,6 +266,7 @@ fn build_running_items(
             if task.class == active_class && !ctx.config.autohide {
                 btn.set_widget_name("active");
             }
+            apply_launching_class(&btn, &task.class, ctx);
             main_box.append(&btn);
             already_added.push(task.class.clone());
         }
@@ -291,6 +300,25 @@ fn is_child_already_shown(
             || already_added
                 .iter()
                 .any(|a| a.eq_ignore_ascii_case(&task.initial_class)))
+}
+
+/// Applies the dock-launching CSS class if the app is in the launching set.
+/// The CSS `@keyframes` animation handles the smooth bounce automatically.
+/// Animation stops when the widget is rebuilt without the class (after the
+/// app's window appears or the timeout fires).
+fn apply_launching_class(item_box: &gtk4::Box, app_id: &str, ctx: &DockContext) {
+    if ctx.config.launch_animation
+        && ctx
+            .state
+            .borrow()
+            .launching
+            .contains(&app_id.to_lowercase())
+    {
+        item_box.add_css_class("dock-launching");
+        if ctx.config.is_vertical() {
+            item_box.add_css_class("dock-launching-vertical");
+        }
+    }
 }
 
 /// Finds the Button widget inside a dock item box (which may also contain an indicator).

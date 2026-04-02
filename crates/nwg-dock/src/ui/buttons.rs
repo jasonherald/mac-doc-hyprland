@@ -126,8 +126,14 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
     // Left-click → launch
     let id = app_id.to_string();
     let dirs = app_dirs.clone();
+    let launch_state = Rc::clone(&ctx.state);
+    let launch_rebuild = Rc::clone(&ctx.rebuild);
+    let launch_anim = ctx.config.launch_animation;
     button.connect_clicked(move |_| {
         nwg_dock_common::launch::launch(&id, &dirs);
+        if launch_anim {
+            crate::ui::launch_bounce::start(&id, &launch_state, &launch_rebuild);
+        }
     });
 
     // Right-click → unpin context menu
@@ -210,11 +216,17 @@ pub fn task_button(client: &WmClient, instances: &[WmClient], ctx: &DockContext)
     // Middle-click → launch new instance
     let class = client.class.clone();
     let dirs = app_dirs.clone();
+    let mid_state = Rc::clone(&ctx.state);
+    let mid_rebuild = Rc::clone(&ctx.rebuild);
+    let mid_anim = ctx.config.launch_animation;
     let middle = gtk4::GestureClick::new();
     middle.set_button(2);
     middle.connect_released(move |gesture, _, _, _| {
         gesture.set_state(gtk4::EventSequenceState::Claimed);
         nwg_dock_common::launch::launch(&class, &dirs);
+        if mid_anim {
+            crate::ui::launch_bounce::start(&class, &mid_state, &mid_rebuild);
+        }
     });
     button.add_controller(middle);
 
