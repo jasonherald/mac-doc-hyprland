@@ -7,8 +7,6 @@ use std::path::{Path, PathBuf};
 ///
 /// Searches .desktop files in the given app directories to find the Icon field.
 pub fn get_icon(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
-    let app_name = app_name.split(' ').next().unwrap_or(app_name);
-
     // Special case for GIMP
     if app_name.to_uppercase().starts_with("GIMP") {
         return Some("gimp".to_string());
@@ -62,15 +60,23 @@ pub fn get_name(app_name: &str, app_dirs: &[PathBuf]) -> String {
 
 /// Finds a .desktop file for the given app name.
 fn find_desktop_file(app_name: &str, app_dirs: &[PathBuf]) -> Option<PathBuf> {
-    // Try exact match
+    // Try exact match, lowercase, and hyphen↔space variant
+    let variant = if app_name.contains('-') {
+        app_name.replace('-', " ")
+    } else {
+        app_name.replace(' ', "-")
+    };
     for dir in app_dirs {
-        let path = dir.join(format!("{}.desktop", app_name));
-        if path.exists() {
-            return Some(path);
-        }
-        let lower = dir.join(format!("{}.desktop", app_name.to_lowercase()));
-        if lower.exists() {
-            return Some(lower);
+        for name in [
+            app_name,
+            &app_name.to_lowercase(),
+            &variant,
+            &variant.to_lowercase(),
+        ] {
+            let path = dir.join(format!("{}.desktop", name));
+            if path.exists() {
+                return Some(path);
+            }
         }
     }
 
