@@ -230,4 +230,25 @@ mod tests {
         assert_eq!(wm.width, 2560);
         assert_eq!(wm.height, 1440);
     }
+
+    #[test]
+    fn to_wm_monitor_flipped_rotated_90() {
+        let wm = to_wm_monitor(test_hypr_monitor(2560, 1600, 1.0, 5));
+        assert_eq!(wm.width, 1600);
+        assert_eq!(wm.height, 2560);
+    }
+
+    #[test]
+    fn to_wm_monitor_flipped_rotated_270() {
+        let wm = to_wm_monitor(test_hypr_monitor(2560, 1600, 1.0, 7));
+        assert_eq!(wm.width, 1600);
+        assert_eq!(wm.height, 2560);
+    }
+
+    #[test]
+    fn to_wm_monitor_zero_scale_falls_back() {
+        let wm = to_wm_monitor(test_hypr_monitor(1920, 1080, 0.0, 0));
+        assert_eq!(wm.width, 1920);
+        assert_eq!(wm.height, 1080);
+    }
 }
