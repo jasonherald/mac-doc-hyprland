@@ -15,9 +15,13 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Dock settings menu** — right-click dock background to lock/unlock arrangement
 - **Configurable opacity** — `--opacity 0-100` for translucent or opaque dock
 - **Right-click menus** — pin/unpin, close, toggle floating, fullscreen, move to workspace
+- **Launch animation** — optional bounce animation on dock icons while an app is starting (`--launch-animation`)
 - **Middle-click** — launch new instance of any running app
+- **Monitor hotplug** — dock windows reconcile automatically when monitors are added/removed
+- **Rotated/scaled monitors** — cursor tracking works correctly with portrait and scaled displays
 - **Icon scaling** — icons shrink automatically when many apps are open
 - **Instant pin sync** — inotify-based, shared with the drawer
+- **Kill-proof** — ignores compositor close requests (e.g. Hyprland `killactive` / Super+Q) so the dock can't be accidentally closed; use `make stop` or `pkill -f nwg-dock-hyprland` to stop it intentionally
 - **Go flag compatibility** — accepts original Go nwg-dock-hyprland flag names
 
 ### Drawer (`nwg-drawer`)
@@ -143,8 +147,8 @@ You'll also need to manually install the data files from `data/` to `~/.local/sh
 # Basic — auto-hide, 48px icons, translucent
 nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 --opacity 75
 
-# With drawer power bar auto-detection
-nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 -c "nwg-drawer --pb-auto"
+# With launch animation and drawer
+nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 --opacity 75 --launch-animation -c "nwg-drawer --pb-auto"
 ```
 
 ### Drawer
@@ -171,7 +175,7 @@ nwg-notifications --persist
 
 ```ini
 # ~/.config/hypr/autostart.conf
-exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 --opacity 75 -c "nwg-drawer --opacity 88 --pb-auto"
+exec-once = uwsm-app -- nwg-dock-hyprland -d -i 48 --mb 10 --hide-timeout 400 --opacity 75 --launch-animation -c "nwg-drawer --opacity 88 --pb-auto"
 exec-once = uwsm-app -- nwg-notifications --persist
 ```
 
@@ -227,7 +231,7 @@ mac-dock-hyprland/
 ```
 
 - **Four crates** in a Cargo workspace
-- **136 tests** (118 unit + 18 integration) with zero clippy warnings
+- **244 tests** (226 unit + 18 integration) with zero clippy warnings
 - Type-safe enums for all configuration
 - Named constants for all UI dimensions
 - GTK4 + gtk4-layer-shell for Wayland layer surfaces
@@ -241,8 +245,8 @@ This project maintains high standards through automated analysis:
 |------|--------|---------------|
 | **Cargo Clippy** | Zero warnings | Rust idioms, correctness, performance |
 | **SonarQube** | 0 issues, 0% duplication | Cognitive complexity, code smells, duplications, security |
-| **CodeRabbit** | 4 rounds, all findings addressed | AI-driven code review, security patterns, best practices |
-| **Unit Tests** | 118 passing | Sway tree traversal, notification state, pinning, parsing, config |
+| **CodeRabbit** | All findings addressed | AI-driven code review, security patterns, best practices |
+| **Unit Tests** | 226 passing | Sway tree traversal, notification state, pinning, parsing, config, monitor transforms |
 | **Integration Tests** | 18 passing | Headless Sway: IPC, window management, signals, multi-monitor |
 
 Run locally:
@@ -267,6 +271,7 @@ Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
 - **Math evaluation** — the Go drawer uses the `expr` library for arbitrary expression evaluation; the Rust port uses a custom arithmetic parser (safer, covers the common use case).
 - **Drag-to-reorder** — new feature not in the Go dock: drag pinned icons to rearrange, drag off to unpin.
 - **CLI flag naming** — multi-word flags standardized to kebab-case (e.g., `--nocats` → `--no-cats`, `--pbsize` → `--pb-size`). Multi-char Go short forms (`-hd`, `-iw`, `-is`) not available in clap (single-char only); use the long forms instead.
+- **Fuzzy class matching** — compositor classes with hyphens vs spaces (e.g., desktop file `github-desktop` vs compositor class `github desktop`) are matched automatically for correct icon display and process grouping.
 - **Launcher auto-detection** — if the configured launcher command (default `nwg-drawer`) is not found on PATH, the launcher button is automatically hidden with a log message.
 
 ## Credits

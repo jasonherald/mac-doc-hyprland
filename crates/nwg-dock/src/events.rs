@@ -15,6 +15,8 @@ fn poll_and_rebuild(
 ) {
     let dragging = state.borrow().drag_pending || state.borrow().drag_source_index.is_some();
     if drain_new_events(receiver, state) && needs_rebuild(state) {
+        // Cancel launch animations for apps that now have windows
+        crate::ui::launch_bounce::cancel_matched(state);
         if dragging {
             state.borrow_mut().rebuild_pending = true;
         } else {

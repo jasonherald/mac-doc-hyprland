@@ -1,3 +1,4 @@
+use gtk4::glib;
 use nwg_dock_common::compositor::{Compositor, WmClient};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -45,6 +46,14 @@ pub struct DockState {
     /// Maps StartupWMClass → desktop_id for apps where the compositor class
     /// differs from the desktop file stem (e.g. "com.billz.app" → "billz").
     pub wm_class_to_desktop_id: HashMap<String, String>,
+
+    /// App IDs currently showing launch bounce animation (issue #38).
+    /// Value is the instance count at launch time — used to detect when a
+    /// new window appears (count increases) vs an already-running app.
+    pub launching: HashMap<String, usize>,
+
+    /// Timeout handles for auto-cancelling launch animations.
+    pub launch_timeouts: HashMap<String, glib::SourceId>,
 }
 
 impl DockState {
@@ -64,6 +73,8 @@ impl DockState {
             drag_outside_dock: false,
             rebuild_pending: false,
             wm_class_to_desktop_id: HashMap::new(),
+            launching: HashMap::new(),
+            launch_timeouts: HashMap::new(),
         }
     }
 
@@ -73,8 +84,15 @@ impl DockState {
     /// class "com.billz.app") and windows whose initial_class equals the query
     /// (groups child windows like Playwright browsers under VSCode).
     pub fn task_instances(&self, class: &str) -> Vec<WmClient> {
-        // Build set of classes to match: the query itself + any WMClass that maps to it
+        // Build set of classes to match: the query itself, hyphen↔space variant,
+        // and any WMClass that maps to it
         let mut match_classes = vec![class.to_string()];
+        // Some apps report a compositor class that differs only by hyphen vs space
+        // (e.g. desktop file "github-desktop" vs compositor class "github desktop")
+        let alt = hyphen_space_variant(class);
+        if alt != class {
+            match_classes.push(alt);
+        }
         for (wm_class, desktop_id) in &self.wm_class_to_desktop_id {
             if desktop_id.eq_ignore_ascii_case(class) {
                 match_classes.push(wm_class.clone());
@@ -101,5 +119,17 @@ impl DockState {
         self.clients = self.compositor.list_clients()?;
         self.active_client = self.compositor.get_active_window().ok();
         Ok(())
+    }
+}
+
+/// Returns the hyphen↔space variant of a class name.
+/// Desktop files use hyphens ("github-desktop") but some compositors report
+/// the class with spaces ("github desktop"). Returns the input unchanged if
+/// it contains neither.
+pub fn hyphen_space_variant(class: &str) -> String {
+    if class.contains('-') {
+        class.replace('-', " ")
+    } else {
+        class.replace(' ', "-")
     }
 }
