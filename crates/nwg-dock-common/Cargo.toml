@@ -16,6 +16,7 @@ shell-words = { workspace = true }
 nix = { workspace = true }
 libc = "0.2"
 dirs = { workspace = true }
+notify = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

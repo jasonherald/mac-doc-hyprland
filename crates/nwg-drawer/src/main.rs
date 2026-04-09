@@ -112,8 +112,10 @@ fn activate_drawer(
     let config = Rc::clone(config);
     let pinned_file = Rc::clone(pinned_file);
 
-    // CSS
-    nwg_dock_common::config::css::load_css(css_path);
+    // CSS (with hot-reload for user CSS file)
+    if let Some(provider) = nwg_dock_common::config::css::load_css(css_path) {
+        nwg_dock_common::config::css::watch_css(css_path, &provider);
+    }
     nwg_dock_common::config::css::load_css_from_data(DRAWER_CSS);
 
     // Apply user-configurable opacity (overrides the default in embedded CSS)
@@ -122,7 +124,7 @@ fn activate_drawer(
         "window {{ background-color: rgba(22, 22, 30, {:.2}); }}",
         opacity
     );
-    nwg_dock_common::config::css::load_css_from_data(&opacity_css);
+    nwg_dock_common::config::css::load_css_override(&opacity_css);
 
     apply_theme_settings(&config);
 
