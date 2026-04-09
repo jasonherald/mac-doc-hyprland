@@ -1,12 +1,21 @@
 use gtk4::gdk;
 use std::path::Path;
 
+/// CSS priority: embedded defaults (base layer).
+const CSS_PRIORITY_EMBEDDED: u32 = gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION;
+/// CSS priority: programmatic overrides like --opacity (middle layer).
+const CSS_PRIORITY_OVERRIDE: u32 = CSS_PRIORITY_EMBEDDED + 1;
+/// CSS priority: user CSS file (highest — always wins, including after hot-reload).
+const CSS_PRIORITY_USER: u32 = CSS_PRIORITY_EMBEDDED + 2;
+
+/// Debounce interval for CSS file change detection (milliseconds).
+const CSS_RELOAD_DEBOUNCE_MS: u64 = 100;
+
 /// Loads a CSS file and applies it at the highest priority (user overrides).
 /// Returns the CssProvider (for hot-reload) or None if the file doesn't exist.
 ///
-/// Priority order: embedded defaults (APPLICATION) < programmatic overrides
-/// (APPLICATION+1) < user CSS file (APPLICATION+2). This ensures user CSS
-/// always wins, including after hot-reload.
+/// Priority order: embedded defaults < programmatic overrides < user CSS file.
+/// This ensures user CSS always wins, including after hot-reload.
 pub fn load_css(css_path: &Path) -> Option<gtk4::CssProvider> {
     let provider = gtk4::CssProvider::new();
 
@@ -21,7 +30,7 @@ pub fn load_css(css_path: &Path) -> Option<gtk4::CssProvider> {
         return None;
     }
 
-    apply_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 2);
+    apply_provider(&provider, CSS_PRIORITY_USER);
     Some(provider)
 }
 
@@ -31,7 +40,7 @@ pub fn load_css(css_path: &Path) -> Option<gtk4::CssProvider> {
 pub fn load_css_from_data(css: &str) -> gtk4::CssProvider {
     let provider = gtk4::CssProvider::new();
     provider.load_from_data(css);
-    apply_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    apply_provider(&provider, CSS_PRIORITY_EMBEDDED);
     provider
 }
 
@@ -41,7 +50,7 @@ pub fn load_css_from_data(css: &str) -> gtk4::CssProvider {
 pub fn load_css_override(css: &str) -> gtk4::CssProvider {
     let provider = gtk4::CssProvider::new();
     provider.load_from_data(css);
-    apply_provider(&provider, gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+    apply_provider(&provider, CSS_PRIORITY_OVERRIDE);
     provider
 }
 
@@ -90,36 +99,49 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
 
     // Debounced reload on the GTK main thread
     let path_reload = path.clone();
-    gtk4::glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-        let mut changed = false;
-        while rx.try_recv().is_ok() {
-            changed = true;
-        }
-        if changed {
-            log::info!("CSS file changed, reloading: {}", path_reload.display());
-            provider.load_from_path(&path_reload);
-        }
-        gtk4::glib::ControlFlow::Continue
-    });
+    gtk4::glib::timeout_add_local(
+        std::time::Duration::from_millis(CSS_RELOAD_DEBOUNCE_MS),
+        move || {
+            let mut changed = false;
+            while rx.try_recv().is_ok() {
+                changed = true;
+            }
+            if changed {
+                log::info!("CSS file changed, reloading: {}", path_reload.display());
+                if path_reload.exists() {
+                    provider.load_from_path(&path_reload);
+                } else {
+                    // File deleted — clear user styles so defaults show through
+                    provider.load_from_data("");
+                }
+            }
+            gtk4::glib::ControlFlow::Continue
+        },
+    );
 }
 
 /// Creates a notify event handler that sends on the channel when the
-/// target CSS file is modified (by any save strategy).
+/// target CSS file is modified (by any save strategy, including deletion).
 fn make_css_handler(
     file_name: std::ffi::OsString,
     tx: std::sync::mpsc::Sender<()>,
 ) -> impl FnMut(Result<notify::Event, notify::Error>) {
     move |event| {
-        let Ok(ev) = event else { return };
-        if matches!(ev.kind, notify::EventKind::Remove(_)) {
-            return;
-        }
+        let ev = match event {
+            Ok(ev) => ev,
+            Err(e) => {
+                log::warn!("CSS watcher error: {}", e);
+                return;
+            }
+        };
         let matches_file = ev
             .paths
             .iter()
             .any(|p| p.file_name().is_some_and(|name| name == file_name));
         if matches_file {
-            let _ = tx.send(());
+            if let Err(e) = tx.send(()) {
+                log::warn!("CSS watcher channel closed: {}", e);
+            }
         }
     }
 }
