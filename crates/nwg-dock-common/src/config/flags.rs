@@ -9,6 +9,10 @@ pub fn normalize_legacy_flags(
     legacy_flags: &'static [&'static str],
 ) -> Vec<String> {
     args.map(|arg| {
+        // Map -v to --version (Go compatibility for nwg-shell config utility)
+        if arg == "-v" {
+            return "--version".to_string();
+        }
         // Convert -flag or -flag=value to --flag or --flag=value
         if let Some(name) = arg.strip_prefix('-')
             && !name.starts_with('-')
@@ -62,8 +66,15 @@ mod tests {
 
     #[test]
     fn preserves_single_char_flags() {
-        let args = vec!["test".into(), "-d".into(), "-v".into()];
+        let args = vec!["test".into(), "-d".into()];
         let result = normalize_legacy_flags(args.into_iter(), TEST_FLAGS);
-        assert_eq!(result, vec!["test", "-d", "-v"]);
+        assert_eq!(result, vec!["test", "-d"]);
+    }
+
+    #[test]
+    fn converts_v_to_version() {
+        let args = vec!["test".into(), "-v".into()];
+        let result = normalize_legacy_flags(args.into_iter(), TEST_FLAGS);
+        assert_eq!(result, vec!["test", "--version"]);
     }
 }
