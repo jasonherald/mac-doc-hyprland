@@ -153,6 +153,9 @@ fn make_css_handler(
 }
 
 fn apply_provider(provider: &gtk4::CssProvider, priority: u32) {
-    let display = gdk::Display::default().expect("GTK display not available — is GTK initialized?");
+    let Some(display) = gdk::Display::default() else {
+        log::error!("Cannot apply CSS: GTK display not available — is GTK initialized?");
+        return;
+    };
     gtk4::style_context_add_provider_for_display(&display, provider, priority);
 }
