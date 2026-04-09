@@ -286,7 +286,7 @@ fn handle_window_command(
         WindowOp::Show => {
             // Clear search/category state so the drawer opens fresh.
             // Don't rebuild yet — that happens in complete_show after focus.
-            clear_drawer_state(search_entry, well_ctx);
+            clear_drawer_state(search_entry);
             focus_pending.set(true);
             win.set_visible(true);
             // Fallback: if is_active_notify doesn't fire within 200ms
@@ -321,14 +321,10 @@ fn complete_show(
     }
 }
 
-/// Clears search text and category state without rebuilding.
-/// Rebuild is deferred to `complete_show` after focus is confirmed.
-fn clear_drawer_state(
-    search_entry: &gtk4::SearchEntry,
-    well_ctx: &crate::ui::well_context::WellContext,
-) {
+/// Clears search text before showing. Category clearing and rebuild are
+/// deferred to `complete_show` after focus is confirmed.
+fn clear_drawer_state(search_entry: &gtk4::SearchEntry) {
     search_entry.set_text("");
-    well_ctx.state.borrow_mut().active_category.clear();
 }
 
 /// Quits the application (non-resident) or hides the window (resident).
