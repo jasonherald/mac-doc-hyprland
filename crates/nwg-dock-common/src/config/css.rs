@@ -65,11 +65,17 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     // replaced atomically via rename, which is how most editors save).
     let watch_dir = match path.parent() {
         Some(dir) => dir.to_path_buf(),
-        None => return,
+        None => {
+            log::debug!("CSS watch skipped: no parent directory for {}", path.display());
+            return;
+        }
     };
     let file_name = match path.file_name() {
         Some(name) => name.to_os_string(),
-        None => return,
+        None => {
+            log::debug!("CSS watch skipped: no filename for {}", path.display());
+            return;
+        }
     };
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
