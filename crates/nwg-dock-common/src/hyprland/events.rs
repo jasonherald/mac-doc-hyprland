@@ -80,6 +80,9 @@ fn parse_event(line: &str) -> HyprEvent {
         HyprEvent::ActiveWindowV2(addr.trim().to_string())
     } else if line.starts_with("monitoraddedv2>>") || line.starts_with("monitorremoved>>") {
         HyprEvent::MonitorChanged
+    } else if line.starts_with("dpms>>1") {
+        // DPMS resume — treat as monitor change to refresh state
+        HyprEvent::MonitorChanged
     } else {
         HyprEvent::Other(line.to_string())
     }
@@ -111,6 +114,19 @@ mod tests {
             parse_event("monitorremoved>>HDMI-A-1"),
             HyprEvent::MonitorChanged
         ));
+    }
+
+    #[test]
+    fn parse_dpms_resume_triggers_monitor_changed() {
+        assert!(matches!(
+            parse_event("dpms>>1"),
+            HyprEvent::MonitorChanged
+        ));
+    }
+
+    #[test]
+    fn parse_dpms_off_ignored() {
+        assert!(matches!(parse_event("dpms>>0"), HyprEvent::Other(_)));
     }
 
     #[test]
