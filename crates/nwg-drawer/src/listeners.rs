@@ -6,7 +6,7 @@ use gtk4::prelude::*;
 use nwg_dock_common::compositor::Compositor;
 use nwg_dock_common::pinning;
 use nwg_dock_common::signals::WindowCommand;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::mpsc;
 
@@ -88,17 +88,39 @@ pub fn setup_keyboard(
 }
 
 /// Polls compositor active window to close drawer when another window gets focus.
+///
+/// Also handles reactive focus delivery: when `focus_pending` is set (by the
+/// signal poller on show), waits for the compositor to deliver focus via
+/// `is_active_notify` before grabbing focus on the search entry. This avoids
+/// timing races with idle/timeout callbacks.
 pub fn setup_focus_detector(
     win: &gtk4::ApplicationWindow,
+    search_entry: &gtk4::SearchEntry,
+    well_ctx: &crate::ui::well_context::WellContext,
+    focus_pending: &Rc<Cell<bool>>,
     on_launch: &Rc<dyn Fn()>,
     compositor: &Rc<dyn Compositor>,
 ) {
-    // Close immediately when the GTK window loses focus (user clicked elsewhere,
-    // including empty desktop on another monitor). Works cross-compositor.
+    // React to compositor focus delivery via is_active_notify.
+    // When focus_pending is set, the drawer was just shown — grab focus on
+    // the search entry once the compositor confirms focus. Skip the close
+    // logic during the transition to avoid closing during show.
     {
         let on_launch = Rc::clone(on_launch);
         let win_ref = win.clone();
+        let entry = search_entry.clone();
+        let ctx = well_ctx.clone();
+        let pending = Rc::clone(focus_pending);
         win.connect_is_active_notify(move |_| {
+            if pending.get() {
+                if win_ref.is_active() {
+                    // Compositor delivered focus — grab it on the search entry
+                    pending.set(false);
+                    complete_show(&entry, &ctx);
+                }
+                // Still pending but not active yet — skip close logic
+                return;
+            }
             if !win_ref.is_active() {
                 on_launch();
             }
@@ -152,17 +174,19 @@ pub fn setup_signal_poller(
     win: &gtk4::ApplicationWindow,
     search_entry: &gtk4::SearchEntry,
     well_ctx: &crate::ui::well_context::WellContext,
+    focus_pending: &Rc<Cell<bool>>,
     sig_rx: &Rc<mpsc::Receiver<WindowCommand>>,
     resident: bool,
 ) {
     let win = win.clone();
     let entry = search_entry.clone();
     let ctx = well_ctx.clone();
+    let pending = Rc::clone(focus_pending);
     let rx = Rc::clone(sig_rx);
 
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
         while let Ok(cmd) = rx.try_recv() {
-            handle_window_command(&win, &entry, &ctx, cmd, resident);
+            handle_window_command(&win, &entry, &ctx, &pending, cmd, resident);
         }
         glib::ControlFlow::Continue
     });
@@ -254,19 +278,27 @@ fn handle_window_command(
     win: &gtk4::ApplicationWindow,
     search_entry: &gtk4::SearchEntry,
     well_ctx: &crate::ui::well_context::WellContext,
+    focus_pending: &Rc<Cell<bool>>,
     cmd: WindowCommand,
     resident: bool,
 ) {
     match resolve_window_op(&cmd, win.is_visible(), resident) {
         WindowOp::Show => {
-            // Reset search and category filter so the drawer opens fresh
-            reset_drawer_state(search_entry, well_ctx);
+            // Clear search/category state so the drawer opens fresh.
+            // Don't rebuild yet — that happens in complete_show after focus.
+            clear_drawer_state(search_entry, well_ctx);
+            focus_pending.set(true);
             win.set_visible(true);
-            // Defer focus grab to ensure the compositor has mapped the window
-            // and delivered keyboard focus before we attempt to grab it.
+            // Fallback: if is_active_notify doesn't fire within 200ms
+            // (e.g. --keyboard-on-demand mode), grab focus anyway.
             let entry = search_entry.clone();
-            glib::idle_add_local_once(move || {
-                entry.grab_focus();
+            let ctx = well_ctx.clone();
+            let pending = Rc::clone(focus_pending);
+            glib::timeout_add_local_once(std::time::Duration::from_millis(200), move || {
+                if pending.get() {
+                    pending.set(false);
+                    complete_show(&entry, &ctx);
+                }
             });
         }
         WindowOp::Hide => win.set_visible(false),
@@ -274,22 +306,29 @@ fn handle_window_command(
     }
 }
 
-/// Resets the drawer to its initial state (clear search, show all categories).
-fn reset_drawer_state(
+/// Called when focus is confirmed (via is_active_notify or timeout fallback).
+/// Grabs focus on the search entry and rebuilds the well if needed.
+fn complete_show(
     search_entry: &gtk4::SearchEntry,
     well_ctx: &crate::ui::well_context::WellContext,
 ) {
-    let had_search = !well_ctx.state.borrow().active_search.is_empty();
-    search_entry.set_text("");
+    search_entry.grab_focus();
+    // Rebuild after focus so the widget tree is stable
     let had_category = !well_ctx.state.borrow().active_category.is_empty();
-    // Only rebuild for category if search wasn't active — clearing search text
-    // already triggers a rebuild via the search-changed handler.
-    if had_category && !had_search {
+    if had_category {
         well_ctx.state.borrow_mut().active_category.clear();
         well_builder::rebuild_preserving_category(well_ctx);
-    } else if had_category {
-        well_ctx.state.borrow_mut().active_category.clear();
     }
+}
+
+/// Clears search text and category state without rebuilding.
+/// Rebuild is deferred to `complete_show` after focus is confirmed.
+fn clear_drawer_state(
+    search_entry: &gtk4::SearchEntry,
+    well_ctx: &crate::ui::well_context::WellContext,
+) {
+    search_entry.set_text("");
+    well_ctx.state.borrow_mut().active_category.clear();
 }
 
 /// Quits the application (non-resident) or hides the window (resident).

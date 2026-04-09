@@ -14,6 +14,7 @@ use nwg_dock_common::desktop::dirs::get_app_dirs;
 use nwg_dock_common::pinning;
 use nwg_dock_common::signals;
 use nwg_dock_common::singleton;
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -245,11 +246,28 @@ fn activate_drawer(
     }
     main_vbox.append(&status_label);
 
+    // Shared flag: set when the drawer is shown, cleared when focus is confirmed
+    let focus_pending = Rc::new(Cell::new(false));
+
     // Listeners
     listeners::setup_keyboard(&win, &search_entry, &config, &on_launch, compositor);
-    listeners::setup_focus_detector(&win, &on_launch, compositor);
+    listeners::setup_focus_detector(
+        &win,
+        &search_entry,
+        &well_ctx,
+        &focus_pending,
+        &on_launch,
+        compositor,
+    );
     listeners::setup_file_watcher(app_dirs, &well_ctx);
-    listeners::setup_signal_poller(&win, &search_entry, &well_ctx, sig_rx, config.resident);
+    listeners::setup_signal_poller(
+        &win,
+        &search_entry,
+        &well_ctx,
+        &focus_pending,
+        sig_rx,
+        config.resident,
+    );
 
     // In resident mode, start hidden — the signal poller will show the window
     // when a SIGRTMIN+1 (toggle) or SIGRTMIN+2 (show) signal is received.
