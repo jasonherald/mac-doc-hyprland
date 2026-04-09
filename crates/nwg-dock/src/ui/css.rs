@@ -43,9 +43,8 @@ window {
 /// Loads the dock's CSS file and applies GTK4 compatibility overrides.
 /// Starts a file watcher for hot-reload of the user CSS.
 pub fn load_dock_css(css_path: &Path, opacity: u8) {
-    if let Some(provider) = css::load_css(css_path) {
-        css::watch_css(css_path, &provider);
-    }
+    let user_provider = css::load_css(css_path);
+    css::watch_css(css_path, &user_provider);
     // Apply GTK4 button overrides at higher priority so they take effect
     // after the user's style.css
     css::load_css_from_data(GTK4_COMPAT_CSS);

@@ -113,9 +113,8 @@ fn activate_drawer(
     let pinned_file = Rc::clone(pinned_file);
 
     // CSS (with hot-reload for user CSS file)
-    if let Some(provider) = nwg_dock_common::config::css::load_css(css_path) {
-        nwg_dock_common::config::css::watch_css(css_path, &provider);
-    }
+    let user_provider = nwg_dock_common::config::css::load_css(css_path);
+    nwg_dock_common::config::css::watch_css(css_path, &user_provider);
     nwg_dock_common::config::css::load_css_from_data(DRAWER_CSS);
 
     // Apply user-configurable opacity (overrides the default in embedded CSS)

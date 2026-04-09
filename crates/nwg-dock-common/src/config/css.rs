@@ -1,5 +1,6 @@
 use gtk4::gdk;
 use std::path::Path;
+use std::sync::mpsc::TryRecvError;
 
 /// CSS priority: embedded defaults (base layer).
 const CSS_PRIORITY_EMBEDDED: u32 = gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION;
@@ -12,26 +13,26 @@ const CSS_PRIORITY_USER: u32 = CSS_PRIORITY_EMBEDDED + 2;
 const CSS_RELOAD_DEBOUNCE_MS: u64 = 100;
 
 /// Loads a CSS file and applies it at the highest priority (user overrides).
-/// Returns the CssProvider (for hot-reload) or None if the file doesn't exist.
+/// Always returns a CssProvider — if the file doesn't exist yet, an empty
+/// provider is installed so `watch_css` can hot-load it when created.
 ///
 /// Priority order: embedded defaults < programmatic overrides < user CSS file.
 /// This ensures user CSS always wins, including after hot-reload.
-pub fn load_css(css_path: &Path) -> Option<gtk4::CssProvider> {
+pub fn load_css(css_path: &Path) -> gtk4::CssProvider {
     let provider = gtk4::CssProvider::new();
 
     if css_path.exists() {
         provider.load_from_path(css_path);
         log::info!("Loaded CSS from {}", css_path.display());
     } else {
-        log::warn!(
-            "{} not found, using default GTK styling",
+        log::info!(
+            "{} not found — watching for creation",
             css_path.display()
         );
-        return None;
     }
 
     apply_provider(&provider, CSS_PRIORITY_USER);
-    Some(provider)
+    provider
 }
 
 /// Loads CSS from a string as embedded defaults (lowest priority).
@@ -109,8 +110,15 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
         std::time::Duration::from_millis(CSS_RELOAD_DEBOUNCE_MS),
         move || {
             let mut changed = false;
-            while rx.try_recv().is_ok() {
-                changed = true;
+            loop {
+                match rx.try_recv() {
+                    Ok(()) => changed = true,
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        log::warn!("CSS watcher disconnected; stopping hot-reload");
+                        return gtk4::glib::ControlFlow::Break;
+                    }
+                }
             }
             if changed {
                 log::info!("CSS file changed, reloading: {}", path_reload.display());
