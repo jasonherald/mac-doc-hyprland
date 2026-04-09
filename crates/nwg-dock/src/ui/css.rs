@@ -41,20 +41,21 @@ window {
 "#;
 
 /// Loads the dock's CSS file and applies GTK4 compatibility overrides.
-/// Returns true if the user's CSS was loaded successfully.
-pub fn load_dock_css(css_path: &Path, opacity: u8) -> bool {
-    let result = css::load_css(css_path);
-    // Apply GTK4 button overrides at higher priority so they take effect
-    // after the user's style.css
+/// Starts a file watcher for hot-reload of the user CSS.
+pub fn load_dock_css(css_path: &Path, opacity: u8) {
+    let user_provider = css::load_css(css_path);
+    css::watch_css(css_path, &user_provider);
+    // GTK4 button overrides as embedded defaults — user CSS can override via hot-reload
     css::load_css_from_data(GTK4_COMPAT_CSS);
 
-    // Apply user-configurable opacity (overrides both user CSS and compat CSS)
+    // Apply user-configurable opacity — overrides embedded default but
+    // user CSS file can still override this via hot-reload.
     let alpha = opacity.min(100) as f64 / 100.0;
     let opacity_css = format!(
         "window {{ background-color: rgba(54, 54, 79, {:.2}); }}",
         alpha
     );
-    css::load_css_from_data(&opacity_css);
+    css::load_css_override(&opacity_css);
 
     // Launch bounce animation (issue #38) — dimensions from ui/constants.rs
     use super::constants::{
@@ -82,6 +83,4 @@ pub fn load_dock_css(css_path: &Path, opacity: u8) -> bool {
         dur = LAUNCH_BOUNCE_DURATION_MS,
     );
     css::load_css_from_data(&bounce_css);
-
-    result
 }

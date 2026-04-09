@@ -880,6 +880,7 @@ dependencies = [
  "libc",
  "log",
  "nix",
+ "notify",
  "serde",
  "serde_json",
  "shell-words",
