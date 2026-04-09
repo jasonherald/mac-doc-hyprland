@@ -45,8 +45,7 @@ window {
 pub fn load_dock_css(css_path: &Path, opacity: u8) {
     let user_provider = css::load_css(css_path);
     css::watch_css(css_path, &user_provider);
-    // Apply GTK4 button overrides at higher priority so they take effect
-    // after the user's style.css
+    // GTK4 button overrides as embedded defaults — user CSS can override via hot-reload
     css::load_css_from_data(GTK4_COMPAT_CSS);
 
     // Apply user-configurable opacity — overrides embedded default but
