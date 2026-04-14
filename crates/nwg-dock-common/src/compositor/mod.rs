@@ -1,9 +1,11 @@
 mod hyprland;
+mod null;
 mod sway;
 pub mod traits;
 pub mod types;
 
 use crate::error::{DockError, Result};
+pub use null::NullCompositor;
 pub use traits::{Compositor, WmEventStream};
 pub use types::{WmClient, WmEvent, WmMonitor, WmWorkspace};
 
@@ -57,7 +59,7 @@ pub fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
 
 /// Detects and creates the compositor backend, exiting the process on failure.
 ///
-/// Shared by all three binaries (dock, drawer, notifications) to avoid duplication.
+/// Used by dock and notifications which require full compositor IPC.
 pub fn init_or_exit(wm_override: Option<WmOverride>) -> Box<dyn Compositor> {
     let kind = match detect(wm_override) {
         Ok(k) => k,
@@ -71,6 +73,25 @@ pub fn init_or_exit(wm_override: Option<WmOverride>) -> Box<dyn Compositor> {
         Err(e) => {
             log::error!("{}", e);
             std::process::exit(1);
+        }
+    }
+}
+
+/// Detects and creates the compositor backend, falling back to NullCompositor
+/// on failure instead of exiting. Used by nwg-drawer so it can run on any
+/// compositor (Niri, river, Openbox, etc.) with graceful feature degradation.
+pub fn init_or_null(wm_override: Option<WmOverride>) -> Box<dyn Compositor> {
+    match detect(wm_override) {
+        Ok(kind) => match create(kind) {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("Compositor backend failed: {} — using fallback", e);
+                Box::new(NullCompositor)
+            }
+        },
+        Err(_) => {
+            log::info!("No supported compositor detected — running with limited features");
+            Box::new(NullCompositor)
         }
     }
 }

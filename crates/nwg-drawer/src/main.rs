@@ -41,7 +41,7 @@ fn main() {
     handle_existing_instance(&config);
     let _lock = acquire_singleton_lock();
     let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
+        Rc::from(nwg_dock_common::compositor::init_or_null(config.wm));
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
