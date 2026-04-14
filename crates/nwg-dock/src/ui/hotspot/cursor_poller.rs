@@ -29,6 +29,7 @@ pub(super) fn start_cursor_poller(
     let docks = Rc::clone(per_monitor);
     let position = config.position;
     let hide_timeout = config.hide_timeout;
+    let suppress_on_fullscreen = !config.no_fullscreen_suppress;
     let state = Rc::clone(state);
     let compositor = Rc::clone(compositor);
     // Track when cursor last left the dock area (for hide delay)
@@ -92,18 +93,22 @@ pub(super) fn start_cursor_poller(
 
             let any_visible = docks.borrow().iter().any(|d| d.win.is_visible());
 
+            let ctx = PollContext {
+                cursor: &cursor,
+                monitors: &monitors,
+                position,
+                docks: &docks,
+                state: &state,
+                compositor: &compositor,
+                left_at: &left_at,
+                suppress_on_fullscreen,
+                hide_timeout,
+            };
+
             if !any_visible {
-                handle_hidden_dock(&cursor, &monitors, position, &docks, &left_at);
+                handle_hidden_dock(&ctx);
             } else {
-                handle_visible_dock(
-                    &cursor,
-                    &monitors,
-                    position,
-                    &docks,
-                    &state,
-                    &left_at,
-                    hide_timeout,
-                );
+                handle_visible_dock(&ctx);
             }
 
             glib::ControlFlow::Continue
@@ -111,58 +116,125 @@ pub(super) fn start_cursor_poller(
     );
 }
 
-/// Handles cursor polling when the dock is hidden: shows the dock if cursor is at edge.
-fn handle_hidden_dock(
-    cursor: &CursorPos,
-    monitors: &[WmMonitor],
+/// Bundles the references needed by the cursor poller's per-tick handlers.
+/// Keeps signatures clean as we add more per-monitor checks over time.
+struct PollContext<'a> {
+    cursor: &'a CursorPos,
+    /// Cached monitor geometry — refreshed every ~10s or on topology change.
+    /// Good enough for edge detection and bounds math, but the
+    /// `active_workspace` field can be stale. Use `compositor` for fresh
+    /// workspace-sensitive queries.
+    monitors: &'a [WmMonitor],
     position: crate::config::Position,
-    docks: &Rc<RefCell<Vec<MonitorDock>>>,
-    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
-) {
-    if is_cursor_at_edge(cursor, monitors, position)
-        && let Some(mon_name) = find_cursor_monitor_name(cursor, monitors)
-    {
-        show_on_monitor_only_by_name(docks, &mon_name);
-        *left_at.borrow_mut() = None;
+    docks: &'a Rc<RefCell<Vec<MonitorDock>>>,
+    state: &'a Rc<RefCell<DockState>>,
+    compositor: &'a Rc<dyn Compositor>,
+    left_at: &'a Rc<RefCell<Option<std::time::Instant>>>,
+    suppress_on_fullscreen: bool,
+    hide_timeout: u64,
+}
+
+/// Handles cursor polling when the dock is hidden: shows the dock if cursor is at edge.
+/// Skips showing if a fullscreen window occupies the target monitor (issue #54).
+fn handle_hidden_dock(ctx: &PollContext<'_>) {
+    if !is_cursor_at_edge(ctx.cursor, ctx.monitors, ctx.position) {
+        return;
     }
+    let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors) else {
+        return;
+    };
+    if ctx.suppress_on_fullscreen && fresh_fullscreen_check(ctx, &mon_name) {
+        return;
+    }
+    show_on_monitor_only_by_name(ctx.docks, &mon_name);
+    *ctx.left_at.borrow_mut() = None;
+}
+
+/// Fetches fresh monitor + client state from the compositor and checks for
+/// a fullscreen window on the named monitor's active workspace.
+///
+/// The cached `monitors` slice in `PollContext` can be up to ~10s stale on
+/// the `active_workspace` field, which would cause workspace-scoped
+/// suppression to make wrong decisions after a workspace switch. This
+/// function queries fresh state at the decision point.
+///
+/// Runs only when the cursor is actually at an edge (rare), so the extra
+/// IPC calls are acceptable. On query failure we return false — better to
+/// briefly flash the dock than to permanently suppress it from a stale read.
+fn fresh_fullscreen_check(ctx: &PollContext<'_>, monitor_name: &str) -> bool {
+    let fresh_monitors = match ctx.compositor.list_monitors() {
+        Ok(m) => m,
+        Err(e) => {
+            log::debug!("Fresh monitor query for fullscreen check failed: {}", e);
+            return false;
+        }
+    };
+    let fresh_clients = match ctx.compositor.list_clients() {
+        Ok(c) => c,
+        Err(e) => {
+            log::debug!("Fresh client query for fullscreen check failed: {}", e);
+            return false;
+        }
+    };
+    monitor_has_fullscreen(&fresh_clients, &fresh_monitors, monitor_name)
+}
+
+/// Returns true if any client on the named monitor's active workspace is
+/// fullscreen. Scoped to the active workspace so a fullscreen window parked
+/// on a hidden workspace doesn't suppress the dock on the visible one.
+fn monitor_has_fullscreen(
+    clients: &[nwg_dock_common::compositor::WmClient],
+    monitors: &[WmMonitor],
+    monitor_name: &str,
+) -> bool {
+    let Some(mon) = monitors.iter().find(|m| m.name == monitor_name) else {
+        return false;
+    };
+    let mon_id = mon.id;
+    let active_ws_id = mon.active_workspace.id;
+    clients.iter().any(|c| {
+        c.fullscreen && c.monitor_id == mon_id && c.workspace.id == active_ws_id
+    })
 }
 
 /// Handles cursor polling when the dock is visible: hides after timeout if cursor leaves.
-fn handle_visible_dock(
-    cursor: &CursorPos,
-    monitors: &[WmMonitor],
-    position: crate::config::Position,
-    docks: &Rc<RefCell<Vec<MonitorDock>>>,
-    state: &Rc<RefCell<DockState>>,
-    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
-    hide_timeout: u64,
-) {
-    let in_dock_area = is_cursor_in_visible_dock(cursor, docks, monitors, position);
-    let at_edge = is_cursor_at_edge(cursor, monitors, position);
+fn handle_visible_dock(ctx: &PollContext<'_>) {
+    let in_dock_area = is_cursor_in_visible_dock(ctx.cursor, ctx.docks, ctx.monitors, ctx.position);
+    let at_edge = is_cursor_at_edge(ctx.cursor, ctx.monitors, ctx.position);
 
     // Don't hide while a popover menu is open or a drag is in progress
-    let s = state.borrow();
+    let s = ctx.state.borrow();
     let dragging = s.drag_pending || s.drag_source_index.is_some();
     let keep_visible = s.popover_open || dragging;
     drop(s);
 
-    update_drag_state(state, dragging, in_dock_area, at_edge);
+    update_drag_state(ctx.state, dragging, in_dock_area, at_edge);
 
-    // Cursor is at edge of a different monitor — migrate dock there (macOS behavior)
+    // Cursor is at edge of a different monitor — migrate dock there (macOS behavior).
+    // Skip the migration if the target monitor has a fullscreen window on its
+    // active workspace; hide instead so dragging across screens doesn't flash
+    // the dock over a game (issue #54).
     if at_edge
         && !in_dock_area
         && !keep_visible
-        && let Some(mon_name) = find_cursor_monitor_name(cursor, monitors)
+        && let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors)
     {
-        show_on_monitor_only_by_name(docks, &mon_name);
-        *left_at.borrow_mut() = None;
+        if ctx.suppress_on_fullscreen && fresh_fullscreen_check(ctx, &mon_name) {
+            for dock in ctx.docks.borrow().iter() {
+                dock.win.set_visible(false);
+            }
+            *ctx.left_at.borrow_mut() = None;
+            return;
+        }
+        show_on_monitor_only_by_name(ctx.docks, &mon_name);
+        *ctx.left_at.borrow_mut() = None;
         return;
     }
 
     if in_dock_area || at_edge || keep_visible {
-        *left_at.borrow_mut() = None;
+        *ctx.left_at.borrow_mut() = None;
     } else {
-        check_hide_timer(docks, left_at, hide_timeout);
+        check_hide_timer(ctx.docks, ctx.left_at, ctx.hide_timeout);
     }
 }
 
@@ -304,11 +376,27 @@ fn is_cursor_in_visible_dock(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nwg_dock_common::compositor::WmWorkspace;
+    use nwg_dock_common::compositor::{WmClient, WmWorkspace};
 
     fn test_monitor(name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
+        test_monitor_with_id(0, name, x, y, w, h)
+    }
+
+    fn test_monitor_with_id(id: i32, name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
+        test_monitor_with_workspace(id, name, x, y, w, h, 0)
+    }
+
+    fn test_monitor_with_workspace(
+        id: i32,
+        name: &str,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        active_workspace_id: i32,
+    ) -> WmMonitor {
         WmMonitor {
-            id: 0,
+            id,
             name: name.to_string(),
             x,
             y,
@@ -316,7 +404,32 @@ mod tests {
             height: h,
             scale: 1.0,
             focused: false,
-            active_workspace: WmWorkspace::default(),
+            active_workspace: WmWorkspace {
+                id: active_workspace_id,
+                name: format!("{}", active_workspace_id),
+            },
+        }
+    }
+
+    fn test_client(monitor_id: i32, fullscreen: bool) -> WmClient {
+        // Workspace id 0 matches the default active workspace on test_monitor_with_id
+        test_client_on_workspace(monitor_id, fullscreen, 0)
+    }
+
+    fn test_client_on_workspace(monitor_id: i32, fullscreen: bool, workspace_id: i32) -> WmClient {
+        WmClient {
+            id: format!("0x{}", monitor_id),
+            class: "test".into(),
+            initial_class: "test".into(),
+            title: "test".into(),
+            pid: 1,
+            workspace: WmWorkspace {
+                id: workspace_id,
+                name: format!("{}", workspace_id),
+            },
+            floating: false,
+            monitor_id,
+            fullscreen,
         }
     }
 
@@ -443,5 +556,95 @@ mod tests {
             &monitors,
             crate::config::Position::Bottom
         ));
+    }
+
+    // Fixture constants for the fullscreen suppression tests —
+    // the specific values don't matter, but having names makes the
+    // intent obvious and avoids magic literals.
+    const DP1_ID: i32 = 0;
+    const DP1_NAME: &str = "DP-1";
+    const DP1_W: i32 = 1920;
+    const DP1_H: i32 = 1080;
+    const HDMI_ID: i32 = 1;
+    const HDMI_NAME: &str = "HDMI-A-1";
+    const HDMI_X: i32 = 1920;
+    const HDMI_W: i32 = 2560;
+    const HDMI_H: i32 = 1440;
+    const UNKNOWN_MONITOR: &str = "DP-9";
+    // Workspace ids for the workspace-scoped regression test.
+    // Values are arbitrary — only the fact that VISIBLE_WS != HIDDEN_WS matters.
+    const VISIBLE_WS: i32 = 1;
+    const HIDDEN_WS: i32 = 2;
+
+    fn dp1_monitor() -> WmMonitor {
+        test_monitor_with_id(DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H)
+    }
+
+    #[test]
+    fn fullscreen_empty_clients_not_suppressed() {
+        let monitors = vec![dp1_monitor()];
+        assert!(!monitor_has_fullscreen(&[], &monitors, DP1_NAME));
+    }
+
+    #[test]
+    fn fullscreen_non_fullscreen_client_not_suppressed() {
+        let monitors = vec![dp1_monitor()];
+        let clients = vec![test_client(DP1_ID, false)];
+        assert!(!monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
+    }
+
+    #[test]
+    fn fullscreen_matching_monitor_suppressed() {
+        let monitors = vec![dp1_monitor()];
+        let clients = vec![test_client(DP1_ID, true)];
+        assert!(monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
+    }
+
+    #[test]
+    fn fullscreen_other_monitor_not_suppressed() {
+        // Fullscreen on HDMI, but we're asking about DP-1.
+        // Must not suppress — per-monitor check means other monitors are unaffected.
+        let monitors = vec![
+            dp1_monitor(),
+            test_monitor_with_id(HDMI_ID, HDMI_NAME, HDMI_X, 0, HDMI_W, HDMI_H),
+        ];
+        let clients = vec![test_client(HDMI_ID, true)];
+        assert!(!monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
+        assert!(monitor_has_fullscreen(&clients, &monitors, HDMI_NAME));
+    }
+
+    #[test]
+    fn fullscreen_unknown_monitor_not_suppressed() {
+        let monitors = vec![dp1_monitor()];
+        let clients = vec![test_client(DP1_ID, true)];
+        // Asking about a monitor that doesn't exist — must not panic or suppress.
+        assert!(!monitor_has_fullscreen(&clients, &monitors, UNKNOWN_MONITOR));
+    }
+
+    #[test]
+    fn fullscreen_on_hidden_workspace_not_suppressed() {
+        // Regression test: a fullscreen window parked on a workspace that
+        // isn't currently visible on the monitor must NOT suppress the dock
+        // on the visible workspace. Without workspace scoping, this would
+        // incorrectly match and hide the dock.
+        let monitors = vec![test_monitor_with_workspace(
+            DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H, VISIBLE_WS,
+        )];
+        let clients = vec![test_client_on_workspace(DP1_ID, true, HIDDEN_WS)];
+        assert!(
+            !monitor_has_fullscreen(&clients, &monitors, DP1_NAME),
+            "fullscreen on hidden workspace must not suppress dock on visible one"
+        );
+    }
+
+    #[test]
+    fn fullscreen_on_active_workspace_suppressed() {
+        // Complement to the above: fullscreen on the currently active
+        // workspace must still suppress as expected.
+        let monitors = vec![test_monitor_with_workspace(
+            DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H, VISIBLE_WS,
+        )];
+        let clients = vec![test_client_on_workspace(DP1_ID, true, VISIBLE_WS)];
+        assert!(monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
     }
 }

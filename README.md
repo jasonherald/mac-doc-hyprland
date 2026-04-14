@@ -260,6 +260,79 @@ make sonar             # SonarQube scan (requires sonar-scanner + .env token)
 
 Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected instantly via inotify. Pin an app from either the dock (right-click → Pin) or the drawer (right-click any app). Drag icons in the dock to reorder; drag off to unpin.
 
+## Theming
+
+Both the dock and the drawer load CSS from user-writable config files. Changes are picked up **instantly via live file-change detection** (powered by the `notify` crate) — no restart, no signal, no reload command needed. Just save the file and the new styles apply live.
+
+### CSS file locations
+
+| Binary | Path |
+|--------|------|
+| `nwg-dock-hyprland` | `~/.config/nwg-dock-hyprland/style.css` |
+| `nwg-drawer` | `~/.config/nwg-drawer/drawer.css` |
+
+Override with `-s /path/to/custom.css` if you prefer a different location.
+
+### Priority layers
+
+Three CSS layers are stacked, highest priority last:
+
+1. **Embedded defaults** — compact button sizing, indicator spacing, etc.
+2. **Programmatic overrides** — `--opacity` and bounce animation keyframes
+3. **Your CSS file** — always wins
+
+This means your CSS file can override anything, including the `--opacity` flag. If you set `background-color` in your file, that's what you get.
+
+### Smooth transitions
+
+GTK4 supports `transition:` properties on most CSS properties. Add them to your own CSS for smooth hover effects, state changes, etc:
+
+```css
+button {
+    transition: background-color 200ms ease, opacity 200ms ease;
+}
+```
+
+### base16 themes via tinty
+
+[tinty](https://github.com/tinted-theming/tinty) is a base16 theme manager. Combined with [@BlueInGreen68's base16-nwg-dock](https://git.sr.ht/~blueingreen/base16-nwg-dock) templates, you can switch themes live across your whole system.
+
+**Setup** (one-time):
+
+```bash
+# Install tinty
+cargo install tinty
+
+# Initialize config
+tinty init
+
+# Add the base16-nwg-dock templates to ~/.config/tinted-theming/tinty/config.toml:
+```
+
+```toml
+[[items]]
+name = "base16-nwg-dock-hyprland"
+path = "https://git.sr.ht/~blueingreen/base16-nwg-dock"
+themes-dir = "themes"
+hook = "cp '%f' ~/.config/nwg-dock-hyprland/style.css"
+supported-systems = ["base16"]
+
+[[items]]
+name = "base16-nwg-drawer"
+path = "https://git.sr.ht/~blueingreen/base16-nwg-dock"
+themes-dir = "themes"
+hook = "cp '%f' ~/.config/nwg-drawer/drawer.css"
+supported-systems = ["base16"]
+```
+
+**Apply a theme**:
+
+```bash
+tinty apply base16-tokyo-night-dark
+```
+
+The dock and drawer will update **instantly** — no restart required. Pair with tinty's `apply` hook on other apps (foot, waybar, alacritty, etc.) to retheme your whole session with one command.
+
 ## Deviations from Go originals
 
 Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
