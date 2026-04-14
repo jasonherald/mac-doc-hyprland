@@ -99,6 +99,7 @@ pub(super) fn start_cursor_poller(
                 position,
                 docks: &docks,
                 state: &state,
+                compositor: &compositor,
                 left_at: &left_at,
                 suppress_on_fullscreen,
                 hide_timeout,
@@ -119,10 +120,15 @@ pub(super) fn start_cursor_poller(
 /// Keeps signatures clean as we add more per-monitor checks over time.
 struct PollContext<'a> {
     cursor: &'a CursorPos,
+    /// Cached monitor geometry — refreshed every ~10s or on topology change.
+    /// Good enough for edge detection and bounds math, but the
+    /// `active_workspace` field can be stale. Use `compositor` for fresh
+    /// workspace-sensitive queries.
     monitors: &'a [WmMonitor],
     position: crate::config::Position,
     docks: &'a Rc<RefCell<Vec<MonitorDock>>>,
     state: &'a Rc<RefCell<DockState>>,
+    compositor: &'a Rc<dyn Compositor>,
     left_at: &'a Rc<RefCell<Option<std::time::Instant>>>,
     suppress_on_fullscreen: bool,
     hide_timeout: u64,
@@ -137,14 +143,40 @@ fn handle_hidden_dock(ctx: &PollContext<'_>) {
     let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors) else {
         return;
     };
-    if ctx.suppress_on_fullscreen {
-        let s = ctx.state.borrow();
-        if monitor_has_fullscreen(&s.clients, ctx.monitors, &mon_name) {
-            return;
-        }
+    if ctx.suppress_on_fullscreen && fresh_fullscreen_check(ctx, &mon_name) {
+        return;
     }
     show_on_monitor_only_by_name(ctx.docks, &mon_name);
     *ctx.left_at.borrow_mut() = None;
+}
+
+/// Fetches fresh monitor + client state from the compositor and checks for
+/// a fullscreen window on the named monitor's active workspace.
+///
+/// The cached `monitors` slice in `PollContext` can be up to ~10s stale on
+/// the `active_workspace` field, which would cause workspace-scoped
+/// suppression to make wrong decisions after a workspace switch. This
+/// function queries fresh state at the decision point.
+///
+/// Runs only when the cursor is actually at an edge (rare), so the extra
+/// IPC calls are acceptable. On query failure we return false — better to
+/// briefly flash the dock than to permanently suppress it from a stale read.
+fn fresh_fullscreen_check(ctx: &PollContext<'_>, monitor_name: &str) -> bool {
+    let fresh_monitors = match ctx.compositor.list_monitors() {
+        Ok(m) => m,
+        Err(e) => {
+            log::debug!("Fresh monitor query for fullscreen check failed: {}", e);
+            return false;
+        }
+    };
+    let fresh_clients = match ctx.compositor.list_clients() {
+        Ok(c) => c,
+        Err(e) => {
+            log::debug!("Fresh client query for fullscreen check failed: {}", e);
+            return false;
+        }
+    };
+    monitor_has_fullscreen(&fresh_clients, &fresh_monitors, monitor_name)
 }
 
 /// Returns true if any client on the named monitor's active workspace is
@@ -179,23 +211,20 @@ fn handle_visible_dock(ctx: &PollContext<'_>) {
     update_drag_state(ctx.state, dragging, in_dock_area, at_edge);
 
     // Cursor is at edge of a different monitor — migrate dock there (macOS behavior).
-    // Skip the migration if the target monitor has a fullscreen window; hide instead
-    // so dragging across screens doesn't flash the dock over a game (issue #54).
+    // Skip the migration if the target monitor has a fullscreen window on its
+    // active workspace; hide instead so dragging across screens doesn't flash
+    // the dock over a game (issue #54).
     if at_edge
         && !in_dock_area
         && !keep_visible
         && let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors)
     {
-        if ctx.suppress_on_fullscreen {
-            let s = ctx.state.borrow();
-            if monitor_has_fullscreen(&s.clients, ctx.monitors, &mon_name) {
-                drop(s);
-                for dock in ctx.docks.borrow().iter() {
-                    dock.win.set_visible(false);
-                }
-                *ctx.left_at.borrow_mut() = None;
-                return;
+        if ctx.suppress_on_fullscreen && fresh_fullscreen_check(ctx, &mon_name) {
+            for dock in ctx.docks.borrow().iter() {
+                dock.win.set_visible(false);
             }
+            *ctx.left_at.borrow_mut() = None;
+            return;
         }
         show_on_monitor_only_by_name(ctx.docks, &mon_name);
         *ctx.left_at.borrow_mut() = None;
