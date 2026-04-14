@@ -1,5 +1,5 @@
 use super::traits::{Compositor, WmEventStream};
-use super::types::{WmClient, WmEvent, WmMonitor};
+use super::types::{WmClient, WmMonitor};
 use crate::error::{DockError, Result};
 
 /// Fallback compositor backend for environments without Hyprland or Sway IPC.
@@ -56,28 +56,24 @@ impl Compositor for NullCompositor {
 
     /// Launches the command directly via process spawn instead of compositor IPC.
     /// The drawer's launch pipeline handles quoting and field-code stripping upstream.
+    /// Rejects empty commands so the caller can distinguish success from a no-op.
     fn exec(&self, cmd: &str) -> Result<()> {
+        if cmd.trim().is_empty() {
+            return Err(DockError::NoCompositorDetected);
+        }
         crate::launch::launch_command(cmd);
         Ok(())
     }
 
+    /// NullCompositor has no compositor IPC, so there's no event stream to
+    /// subscribe to. Fail fast rather than returning a stream that blocks
+    /// forever — callers can then avoid spawning a worker thread at all.
     fn event_stream(&self) -> Result<Box<dyn WmEventStream>> {
-        Ok(Box::new(NullEventStream))
+        Err(DockError::NoCompositorDetected)
     }
 
     fn supports_cursor_position(&self) -> bool {
         false
-    }
-}
-
-/// Event stream that never emits events — used by NullCompositor.
-struct NullEventStream;
-
-impl WmEventStream for NullEventStream {
-    fn next_event(&mut self) -> std::result::Result<WmEvent, std::io::Error> {
-        // Block forever — no events will ever arrive
-        std::thread::park();
-        Err(std::io::Error::other("null event stream unparked"))
     }
 }
 
@@ -119,9 +115,10 @@ mod tests {
     }
 
     #[test]
-    fn event_stream_creates_successfully() {
-        // The stream itself will block forever on next_event — just verify creation.
-        assert!(NullCompositor.event_stream().is_ok());
+    fn event_stream_returns_error() {
+        // NullCompositor fails fast instead of returning a stream that
+        // blocks forever — prevents stranding worker threads.
+        assert!(NullCompositor.event_stream().is_err());
     }
 
     #[test]
@@ -133,8 +130,10 @@ mod tests {
     }
 
     #[test]
-    fn exec_empty_command_returns_ok() {
-        // launch_command logs an error but doesn't panic on empty input
-        assert!(NullCompositor.exec("").is_ok());
+    fn exec_empty_command_returns_error() {
+        // Reject empty/whitespace input so callers can distinguish
+        // "launched" from "nothing happened"
+        assert!(NullCompositor.exec("").is_err());
+        assert!(NullCompositor.exec("   ").is_err());
     }
 }
