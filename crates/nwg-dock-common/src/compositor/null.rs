@@ -81,19 +81,29 @@ impl Compositor for NullCompositor {
 mod tests {
     use super::*;
 
-    #[test]
-    fn list_clients_returns_error() {
-        assert!(NullCompositor.list_clients().is_err());
+    /// Helper: asserts the result is specifically Err(NoCompositorDetected),
+    /// not just any error — catches regressions to unrelated error paths.
+    fn assert_no_compositor<T: std::fmt::Debug>(result: Result<T>) {
+        assert!(
+            matches!(result, Err(DockError::NoCompositorDetected)),
+            "expected NoCompositorDetected, got {:?}",
+            result
+        );
     }
 
     #[test]
-    fn list_monitors_returns_error() {
-        assert!(NullCompositor.list_monitors().is_err());
+    fn list_clients_returns_no_compositor_error() {
+        assert_no_compositor(NullCompositor.list_clients());
     }
 
     #[test]
-    fn get_active_window_returns_error() {
-        assert!(NullCompositor.get_active_window().is_err());
+    fn list_monitors_returns_no_compositor_error() {
+        assert_no_compositor(NullCompositor.list_monitors());
+    }
+
+    #[test]
+    fn get_active_window_returns_no_compositor_error() {
+        assert_no_compositor(NullCompositor.get_active_window());
     }
 
     #[test]
@@ -103,22 +113,25 @@ mod tests {
     }
 
     #[test]
-    fn window_operations_return_errors() {
+    fn window_operations_return_no_compositor_error() {
         let c = NullCompositor;
-        assert!(c.focus_window("x").is_err());
-        assert!(c.close_window("x").is_err());
-        assert!(c.toggle_floating("x").is_err());
-        assert!(c.toggle_fullscreen("x").is_err());
-        assert!(c.move_to_workspace("x", 1).is_err());
-        assert!(c.toggle_special_workspace("x").is_err());
-        assert!(c.raise_active().is_err());
+        assert_no_compositor(c.focus_window("x"));
+        assert_no_compositor(c.close_window("x"));
+        assert_no_compositor(c.toggle_floating("x"));
+        assert_no_compositor(c.toggle_fullscreen("x"));
+        assert_no_compositor(c.move_to_workspace("x", 1));
+        assert_no_compositor(c.toggle_special_workspace("x"));
+        assert_no_compositor(c.raise_active());
     }
 
     #[test]
-    fn event_stream_returns_error() {
+    fn event_stream_returns_no_compositor_error() {
         // NullCompositor fails fast instead of returning a stream that
         // blocks forever — prevents stranding worker threads.
-        assert!(NullCompositor.event_stream().is_err());
+        assert!(matches!(
+            NullCompositor.event_stream(),
+            Err(DockError::NoCompositorDetected)
+        ));
     }
 
     #[test]
@@ -130,10 +143,10 @@ mod tests {
     }
 
     #[test]
-    fn exec_empty_command_returns_error() {
+    fn exec_empty_command_returns_no_compositor_error() {
         // Reject empty/whitespace input so callers can distinguish
         // "launched" from "nothing happened"
-        assert!(NullCompositor.exec("").is_err());
-        assert!(NullCompositor.exec("   ").is_err());
+        assert_no_compositor(NullCompositor.exec(""));
+        assert_no_compositor(NullCompositor.exec("   "));
     }
 }
