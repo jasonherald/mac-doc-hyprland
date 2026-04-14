@@ -147,24 +147,22 @@ fn handle_hidden_dock(ctx: &PollContext<'_>) {
     *ctx.left_at.borrow_mut() = None;
 }
 
-/// Returns true if any client on the named monitor is fullscreen.
-/// Matches via the compositor's monitor id (stable across hotplug on
-/// the same session) rather than the name string directly.
+/// Returns true if any client on the named monitor's active workspace is
+/// fullscreen. Scoped to the active workspace so a fullscreen window parked
+/// on a hidden workspace doesn't suppress the dock on the visible one.
 fn monitor_has_fullscreen(
     clients: &[nwg_dock_common::compositor::WmClient],
     monitors: &[WmMonitor],
     monitor_name: &str,
 ) -> bool {
-    let Some(mon_id) = monitors
-        .iter()
-        .find(|m| m.name == monitor_name)
-        .map(|m| m.id)
-    else {
+    let Some(mon) = monitors.iter().find(|m| m.name == monitor_name) else {
         return false;
     };
-    clients
-        .iter()
-        .any(|c| c.fullscreen && c.monitor_id == mon_id)
+    let mon_id = mon.id;
+    let active_ws_id = mon.active_workspace.id;
+    clients.iter().any(|c| {
+        c.fullscreen && c.monitor_id == mon_id && c.workspace.id == active_ws_id
+    })
 }
 
 /// Handles cursor polling when the dock is visible: hides after timeout if cursor leaves.
@@ -356,6 +354,18 @@ mod tests {
     }
 
     fn test_monitor_with_id(id: i32, name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
+        test_monitor_with_workspace(id, name, x, y, w, h, 0)
+    }
+
+    fn test_monitor_with_workspace(
+        id: i32,
+        name: &str,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        active_workspace_id: i32,
+    ) -> WmMonitor {
         WmMonitor {
             id,
             name: name.to_string(),
@@ -365,18 +375,29 @@ mod tests {
             height: h,
             scale: 1.0,
             focused: false,
-            active_workspace: WmWorkspace::default(),
+            active_workspace: WmWorkspace {
+                id: active_workspace_id,
+                name: format!("{}", active_workspace_id),
+            },
         }
     }
 
     fn test_client(monitor_id: i32, fullscreen: bool) -> WmClient {
+        // Workspace id 0 matches the default active workspace on test_monitor_with_id
+        test_client_on_workspace(monitor_id, fullscreen, 0)
+    }
+
+    fn test_client_on_workspace(monitor_id: i32, fullscreen: bool, workspace_id: i32) -> WmClient {
         WmClient {
             id: format!("0x{}", monitor_id),
             class: "test".into(),
             initial_class: "test".into(),
             title: "test".into(),
             pid: 1,
-            workspace: WmWorkspace::default(),
+            workspace: WmWorkspace {
+                id: workspace_id,
+                name: format!("{}", workspace_id),
+            },
             floating: false,
             monitor_id,
             fullscreen,
@@ -521,6 +542,10 @@ mod tests {
     const HDMI_W: i32 = 2560;
     const HDMI_H: i32 = 1440;
     const UNKNOWN_MONITOR: &str = "DP-9";
+    // Workspace ids for the workspace-scoped regression test.
+    // Values are arbitrary — only the fact that VISIBLE_WS != HIDDEN_WS matters.
+    const VISIBLE_WS: i32 = 1;
+    const HIDDEN_WS: i32 = 2;
 
     fn dp1_monitor() -> WmMonitor {
         test_monitor_with_id(DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H)
@@ -565,5 +590,32 @@ mod tests {
         let clients = vec![test_client(DP1_ID, true)];
         // Asking about a monitor that doesn't exist — must not panic or suppress.
         assert!(!monitor_has_fullscreen(&clients, &monitors, UNKNOWN_MONITOR));
+    }
+
+    #[test]
+    fn fullscreen_on_hidden_workspace_not_suppressed() {
+        // Regression test: a fullscreen window parked on a workspace that
+        // isn't currently visible on the monitor must NOT suppress the dock
+        // on the visible workspace. Without workspace scoping, this would
+        // incorrectly match and hide the dock.
+        let monitors = vec![test_monitor_with_workspace(
+            DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H, VISIBLE_WS,
+        )];
+        let clients = vec![test_client_on_workspace(DP1_ID, true, HIDDEN_WS)];
+        assert!(
+            !monitor_has_fullscreen(&clients, &monitors, DP1_NAME),
+            "fullscreen on hidden workspace must not suppress dock on visible one"
+        );
+    }
+
+    #[test]
+    fn fullscreen_on_active_workspace_suppressed() {
+        // Complement to the above: fullscreen on the currently active
+        // workspace must still suppress as expected.
+        let monitors = vec![test_monitor_with_workspace(
+            DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H, VISIBLE_WS,
+        )];
+        let clients = vec![test_client_on_workspace(DP1_ID, true, VISIBLE_WS)];
+        assert!(monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
     }
 }
