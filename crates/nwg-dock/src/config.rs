@@ -163,6 +163,10 @@ pub struct DockConfig {
     #[arg(long)]
     pub launch_animation: bool,
 
+    /// Keep the dock hidden on monitors with a fullscreen window
+    #[arg(long)]
+    pub no_fullscreen_suppress: bool,
+
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
     pub wm: Option<nwg_dock_common::compositor::WmOverride>,
@@ -317,6 +321,19 @@ mod tests {
     fn launch_animation_flag() {
         let config = DockConfig::parse_from(["test", "--launch-animation"]);
         assert!(config.launch_animation);
+    }
+
+    #[test]
+    fn fullscreen_suppress_default_on() {
+        // Default behavior: suppress on fullscreen (flag is opt-out)
+        let config = DockConfig::parse_from(["test"]);
+        assert!(!config.no_fullscreen_suppress);
+    }
+
+    #[test]
+    fn fullscreen_suppress_flag() {
+        let config = DockConfig::parse_from(["test", "--no-fullscreen-suppress"]);
+        assert!(config.no_fullscreen_suppress);
     }
 
     #[test]

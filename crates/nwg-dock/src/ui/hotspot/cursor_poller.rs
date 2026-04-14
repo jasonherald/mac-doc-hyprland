@@ -29,6 +29,7 @@ pub(super) fn start_cursor_poller(
     let docks = Rc::clone(per_monitor);
     let position = config.position;
     let hide_timeout = config.hide_timeout;
+    let suppress_on_fullscreen = !config.no_fullscreen_suppress;
     let state = Rc::clone(state);
     let compositor = Rc::clone(compositor);
     // Track when cursor last left the dock area (for hide delay)
@@ -93,7 +94,15 @@ pub(super) fn start_cursor_poller(
             let any_visible = docks.borrow().iter().any(|d| d.win.is_visible());
 
             if !any_visible {
-                handle_hidden_dock(&cursor, &monitors, position, &docks, &left_at);
+                handle_hidden_dock(
+                    &cursor,
+                    &monitors,
+                    position,
+                    &docks,
+                    &state,
+                    suppress_on_fullscreen,
+                    &left_at,
+                );
             } else {
                 handle_visible_dock(
                     &cursor,
@@ -112,19 +121,50 @@ pub(super) fn start_cursor_poller(
 }
 
 /// Handles cursor polling when the dock is hidden: shows the dock if cursor is at edge.
+/// Skips showing if a fullscreen window occupies the target monitor (issue #54).
 fn handle_hidden_dock(
     cursor: &CursorPos,
     monitors: &[WmMonitor],
     position: crate::config::Position,
     docks: &Rc<RefCell<Vec<MonitorDock>>>,
+    state: &Rc<RefCell<DockState>>,
+    suppress_on_fullscreen: bool,
     left_at: &Rc<RefCell<Option<std::time::Instant>>>,
 ) {
-    if is_cursor_at_edge(cursor, monitors, position)
-        && let Some(mon_name) = find_cursor_monitor_name(cursor, monitors)
-    {
-        show_on_monitor_only_by_name(docks, &mon_name);
-        *left_at.borrow_mut() = None;
+    if !is_cursor_at_edge(cursor, monitors, position) {
+        return;
     }
+    let Some(mon_name) = find_cursor_monitor_name(cursor, monitors) else {
+        return;
+    };
+    if suppress_on_fullscreen {
+        let s = state.borrow();
+        if monitor_has_fullscreen(&s.clients, monitors, &mon_name) {
+            return;
+        }
+    }
+    show_on_monitor_only_by_name(docks, &mon_name);
+    *left_at.borrow_mut() = None;
+}
+
+/// Returns true if any client on the named monitor is fullscreen.
+/// Matches via the compositor's monitor id (stable across hotplug on
+/// the same session) rather than the name string directly.
+fn monitor_has_fullscreen(
+    clients: &[nwg_dock_common::compositor::WmClient],
+    monitors: &[WmMonitor],
+    monitor_name: &str,
+) -> bool {
+    let Some(mon_id) = monitors
+        .iter()
+        .find(|m| m.name == monitor_name)
+        .map(|m| m.id)
+    else {
+        return false;
+    };
+    clients
+        .iter()
+        .any(|c| c.fullscreen && c.monitor_id == mon_id)
 }
 
 /// Handles cursor polling when the dock is visible: hides after timeout if cursor leaves.
@@ -304,11 +344,15 @@ fn is_cursor_in_visible_dock(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nwg_dock_common::compositor::WmWorkspace;
+    use nwg_dock_common::compositor::{WmClient, WmWorkspace};
 
     fn test_monitor(name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
+        test_monitor_with_id(0, name, x, y, w, h)
+    }
+
+    fn test_monitor_with_id(id: i32, name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
         WmMonitor {
-            id: 0,
+            id,
             name: name.to_string(),
             x,
             y,
@@ -317,6 +361,20 @@ mod tests {
             scale: 1.0,
             focused: false,
             active_workspace: WmWorkspace::default(),
+        }
+    }
+
+    fn test_client(monitor_id: i32, fullscreen: bool) -> WmClient {
+        WmClient {
+            id: format!("0x{}", monitor_id),
+            class: "test".into(),
+            initial_class: "test".into(),
+            title: "test".into(),
+            pid: 1,
+            workspace: WmWorkspace::default(),
+            floating: false,
+            monitor_id,
+            fullscreen,
         }
     }
 
@@ -443,5 +501,46 @@ mod tests {
             &monitors,
             crate::config::Position::Bottom
         ));
+    }
+
+    #[test]
+    fn fullscreen_empty_clients_not_suppressed() {
+        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
+        assert!(!monitor_has_fullscreen(&[], &monitors, "DP-1"));
+    }
+
+    #[test]
+    fn fullscreen_non_fullscreen_client_not_suppressed() {
+        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
+        let clients = vec![test_client(0, false)];
+        assert!(!monitor_has_fullscreen(&clients, &monitors, "DP-1"));
+    }
+
+    #[test]
+    fn fullscreen_matching_monitor_suppressed() {
+        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
+        let clients = vec![test_client(0, true)];
+        assert!(monitor_has_fullscreen(&clients, &monitors, "DP-1"));
+    }
+
+    #[test]
+    fn fullscreen_other_monitor_not_suppressed() {
+        // Fullscreen on monitor 1, but we're asking about monitor 0 (DP-1).
+        // Must not suppress — per-monitor check means other monitors are unaffected.
+        let monitors = vec![
+            test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080),
+            test_monitor_with_id(1, "HDMI-A-1", 1920, 0, 2560, 1440),
+        ];
+        let clients = vec![test_client(1, true)]; // fullscreen on HDMI-A-1
+        assert!(!monitor_has_fullscreen(&clients, &monitors, "DP-1"));
+        assert!(monitor_has_fullscreen(&clients, &monitors, "HDMI-A-1"));
+    }
+
+    #[test]
+    fn fullscreen_unknown_monitor_not_suppressed() {
+        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
+        let clients = vec![test_client(0, true)];
+        // Asking about a monitor that doesn't exist — must not panic or suppress.
+        assert!(!monitor_has_fullscreen(&clients, &monitors, "DP-9"));
     }
 }
