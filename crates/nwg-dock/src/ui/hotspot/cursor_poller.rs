@@ -180,12 +180,25 @@ fn handle_visible_dock(ctx: &PollContext<'_>) {
 
     update_drag_state(ctx.state, dragging, in_dock_area, at_edge);
 
-    // Cursor is at edge of a different monitor — migrate dock there (macOS behavior)
+    // Cursor is at edge of a different monitor — migrate dock there (macOS behavior).
+    // Skip the migration if the target monitor has a fullscreen window; hide instead
+    // so dragging across screens doesn't flash the dock over a game (issue #54).
     if at_edge
         && !in_dock_area
         && !keep_visible
         && let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors)
     {
+        if ctx.suppress_on_fullscreen {
+            let s = ctx.state.borrow();
+            if monitor_has_fullscreen(&s.clients, ctx.monitors, &mon_name) {
+                drop(s);
+                for dock in ctx.docks.borrow().iter() {
+                    dock.win.set_visible(false);
+                }
+                *ctx.left_at.borrow_mut() = None;
+                return;
+            }
+        }
         show_on_monitor_only_by_name(ctx.docks, &mon_name);
         *ctx.left_at.borrow_mut() = None;
         return;
