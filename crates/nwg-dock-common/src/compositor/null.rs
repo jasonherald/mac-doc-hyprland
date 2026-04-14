@@ -112,6 +112,10 @@ mod tests {
         assert_eq!(NullCompositor.get_cursor_position(), None);
     }
 
+    /// Arbitrary workspace id for testing — the NullCompositor rejects
+    /// any value, so the specific number is irrelevant.
+    const TEST_WORKSPACE: i32 = 1;
+
     #[test]
     fn window_operations_return_no_compositor_error() {
         let c = NullCompositor;
@@ -119,7 +123,7 @@ mod tests {
         assert_no_compositor(c.close_window("x"));
         assert_no_compositor(c.toggle_floating("x"));
         assert_no_compositor(c.toggle_fullscreen("x"));
-        assert_no_compositor(c.move_to_workspace("x", 1));
+        assert_no_compositor(c.move_to_workspace("x", TEST_WORKSPACE));
         assert_no_compositor(c.toggle_special_workspace("x"));
         assert_no_compositor(c.raise_active());
     }
