@@ -93,26 +93,21 @@ pub(super) fn start_cursor_poller(
 
             let any_visible = docks.borrow().iter().any(|d| d.win.is_visible());
 
+            let ctx = PollContext {
+                cursor: &cursor,
+                monitors: &monitors,
+                position,
+                docks: &docks,
+                state: &state,
+                left_at: &left_at,
+                suppress_on_fullscreen,
+                hide_timeout,
+            };
+
             if !any_visible {
-                handle_hidden_dock(
-                    &cursor,
-                    &monitors,
-                    position,
-                    &docks,
-                    &state,
-                    suppress_on_fullscreen,
-                    &left_at,
-                );
+                handle_hidden_dock(&ctx);
             } else {
-                handle_visible_dock(
-                    &cursor,
-                    &monitors,
-                    position,
-                    &docks,
-                    &state,
-                    &left_at,
-                    hide_timeout,
-                );
+                handle_visible_dock(&ctx);
             }
 
             glib::ControlFlow::Continue
@@ -120,31 +115,36 @@ pub(super) fn start_cursor_poller(
     );
 }
 
+/// Bundles the references needed by the cursor poller's per-tick handlers.
+/// Keeps signatures clean as we add more per-monitor checks over time.
+struct PollContext<'a> {
+    cursor: &'a CursorPos,
+    monitors: &'a [WmMonitor],
+    position: crate::config::Position,
+    docks: &'a Rc<RefCell<Vec<MonitorDock>>>,
+    state: &'a Rc<RefCell<DockState>>,
+    left_at: &'a Rc<RefCell<Option<std::time::Instant>>>,
+    suppress_on_fullscreen: bool,
+    hide_timeout: u64,
+}
+
 /// Handles cursor polling when the dock is hidden: shows the dock if cursor is at edge.
 /// Skips showing if a fullscreen window occupies the target monitor (issue #54).
-fn handle_hidden_dock(
-    cursor: &CursorPos,
-    monitors: &[WmMonitor],
-    position: crate::config::Position,
-    docks: &Rc<RefCell<Vec<MonitorDock>>>,
-    state: &Rc<RefCell<DockState>>,
-    suppress_on_fullscreen: bool,
-    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
-) {
-    if !is_cursor_at_edge(cursor, monitors, position) {
+fn handle_hidden_dock(ctx: &PollContext<'_>) {
+    if !is_cursor_at_edge(ctx.cursor, ctx.monitors, ctx.position) {
         return;
     }
-    let Some(mon_name) = find_cursor_monitor_name(cursor, monitors) else {
+    let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors) else {
         return;
     };
-    if suppress_on_fullscreen {
-        let s = state.borrow();
-        if monitor_has_fullscreen(&s.clients, monitors, &mon_name) {
+    if ctx.suppress_on_fullscreen {
+        let s = ctx.state.borrow();
+        if monitor_has_fullscreen(&s.clients, ctx.monitors, &mon_name) {
             return;
         }
     }
-    show_on_monitor_only_by_name(docks, &mon_name);
-    *left_at.borrow_mut() = None;
+    show_on_monitor_only_by_name(ctx.docks, &mon_name);
+    *ctx.left_at.borrow_mut() = None;
 }
 
 /// Returns true if any client on the named monitor is fullscreen.
@@ -168,41 +168,33 @@ fn monitor_has_fullscreen(
 }
 
 /// Handles cursor polling when the dock is visible: hides after timeout if cursor leaves.
-fn handle_visible_dock(
-    cursor: &CursorPos,
-    monitors: &[WmMonitor],
-    position: crate::config::Position,
-    docks: &Rc<RefCell<Vec<MonitorDock>>>,
-    state: &Rc<RefCell<DockState>>,
-    left_at: &Rc<RefCell<Option<std::time::Instant>>>,
-    hide_timeout: u64,
-) {
-    let in_dock_area = is_cursor_in_visible_dock(cursor, docks, monitors, position);
-    let at_edge = is_cursor_at_edge(cursor, monitors, position);
+fn handle_visible_dock(ctx: &PollContext<'_>) {
+    let in_dock_area = is_cursor_in_visible_dock(ctx.cursor, ctx.docks, ctx.monitors, ctx.position);
+    let at_edge = is_cursor_at_edge(ctx.cursor, ctx.monitors, ctx.position);
 
     // Don't hide while a popover menu is open or a drag is in progress
-    let s = state.borrow();
+    let s = ctx.state.borrow();
     let dragging = s.drag_pending || s.drag_source_index.is_some();
     let keep_visible = s.popover_open || dragging;
     drop(s);
 
-    update_drag_state(state, dragging, in_dock_area, at_edge);
+    update_drag_state(ctx.state, dragging, in_dock_area, at_edge);
 
     // Cursor is at edge of a different monitor — migrate dock there (macOS behavior)
     if at_edge
         && !in_dock_area
         && !keep_visible
-        && let Some(mon_name) = find_cursor_monitor_name(cursor, monitors)
+        && let Some(mon_name) = find_cursor_monitor_name(ctx.cursor, ctx.monitors)
     {
-        show_on_monitor_only_by_name(docks, &mon_name);
-        *left_at.borrow_mut() = None;
+        show_on_monitor_only_by_name(ctx.docks, &mon_name);
+        *ctx.left_at.borrow_mut() = None;
         return;
     }
 
     if in_dock_area || at_edge || keep_visible {
-        *left_at.borrow_mut() = None;
+        *ctx.left_at.borrow_mut() = None;
     } else {
-        check_hide_timer(docks, left_at, hide_timeout);
+        check_hide_timer(ctx.docks, ctx.left_at, ctx.hide_timeout);
     }
 }
 
@@ -503,44 +495,62 @@ mod tests {
         ));
     }
 
+    // Fixture constants for the fullscreen suppression tests —
+    // the specific values don't matter, but having names makes the
+    // intent obvious and avoids magic literals.
+    const DP1_ID: i32 = 0;
+    const DP1_NAME: &str = "DP-1";
+    const DP1_W: i32 = 1920;
+    const DP1_H: i32 = 1080;
+    const HDMI_ID: i32 = 1;
+    const HDMI_NAME: &str = "HDMI-A-1";
+    const HDMI_X: i32 = 1920;
+    const HDMI_W: i32 = 2560;
+    const HDMI_H: i32 = 1440;
+    const UNKNOWN_MONITOR: &str = "DP-9";
+
+    fn dp1_monitor() -> WmMonitor {
+        test_monitor_with_id(DP1_ID, DP1_NAME, 0, 0, DP1_W, DP1_H)
+    }
+
     #[test]
     fn fullscreen_empty_clients_not_suppressed() {
-        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
-        assert!(!monitor_has_fullscreen(&[], &monitors, "DP-1"));
+        let monitors = vec![dp1_monitor()];
+        assert!(!monitor_has_fullscreen(&[], &monitors, DP1_NAME));
     }
 
     #[test]
     fn fullscreen_non_fullscreen_client_not_suppressed() {
-        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
-        let clients = vec![test_client(0, false)];
-        assert!(!monitor_has_fullscreen(&clients, &monitors, "DP-1"));
+        let monitors = vec![dp1_monitor()];
+        let clients = vec![test_client(DP1_ID, false)];
+        assert!(!monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
     }
 
     #[test]
     fn fullscreen_matching_monitor_suppressed() {
-        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
-        let clients = vec![test_client(0, true)];
-        assert!(monitor_has_fullscreen(&clients, &monitors, "DP-1"));
+        let monitors = vec![dp1_monitor()];
+        let clients = vec![test_client(DP1_ID, true)];
+        assert!(monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
     }
 
     #[test]
     fn fullscreen_other_monitor_not_suppressed() {
-        // Fullscreen on monitor 1, but we're asking about monitor 0 (DP-1).
+        // Fullscreen on HDMI, but we're asking about DP-1.
         // Must not suppress — per-monitor check means other monitors are unaffected.
         let monitors = vec![
-            test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080),
-            test_monitor_with_id(1, "HDMI-A-1", 1920, 0, 2560, 1440),
+            dp1_monitor(),
+            test_monitor_with_id(HDMI_ID, HDMI_NAME, HDMI_X, 0, HDMI_W, HDMI_H),
         ];
-        let clients = vec![test_client(1, true)]; // fullscreen on HDMI-A-1
-        assert!(!monitor_has_fullscreen(&clients, &monitors, "DP-1"));
-        assert!(monitor_has_fullscreen(&clients, &monitors, "HDMI-A-1"));
+        let clients = vec![test_client(HDMI_ID, true)];
+        assert!(!monitor_has_fullscreen(&clients, &monitors, DP1_NAME));
+        assert!(monitor_has_fullscreen(&clients, &monitors, HDMI_NAME));
     }
 
     #[test]
     fn fullscreen_unknown_monitor_not_suppressed() {
-        let monitors = vec![test_monitor_with_id(0, "DP-1", 0, 0, 1920, 1080)];
-        let clients = vec![test_client(0, true)];
+        let monitors = vec![dp1_monitor()];
+        let clients = vec![test_client(DP1_ID, true)];
         // Asking about a monitor that doesn't exist — must not panic or suppress.
-        assert!(!monitor_has_fullscreen(&clients, &monitors, "DP-9"));
+        assert!(!monitor_has_fullscreen(&clients, &monitors, UNKNOWN_MONITOR));
     }
 }

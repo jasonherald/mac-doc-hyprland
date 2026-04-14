@@ -262,7 +262,7 @@ Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected
 
 ## Theming
 
-Both the dock and the drawer load CSS from user-writable config files. Changes are picked up **instantly via inotify** — no restart, no signal, no reload command needed. Just save the file and the new styles apply live.
+Both the dock and the drawer load CSS from user-writable config files. Changes are picked up **instantly via live file-change detection** (powered by the `notify` crate) — no restart, no signal, no reload command needed. Just save the file and the new styles apply live.
 
 ### CSS file locations
 

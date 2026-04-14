@@ -163,7 +163,7 @@ pub struct DockConfig {
     #[arg(long)]
     pub launch_animation: bool,
 
-    /// Keep the dock hidden on monitors with a fullscreen window
+    /// Disable fullscreen suppression (allow dock hotspot on fullscreen monitors)
     #[arg(long)]
     pub no_fullscreen_suppress: bool,
 
