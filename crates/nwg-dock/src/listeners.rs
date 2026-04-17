@@ -318,7 +318,10 @@ pub fn setup_liveness_tick(
 /// raw GDK monitor list — otherwise a single-monitor-targeted dock would
 /// perpetually "drift" against a multi-monitor GDK state.
 fn needs_reconcile(per_monitor: &Rc<RefCell<Vec<MonitorDock>>>, config: &DockConfig) -> bool {
-    let expected_names: Vec<String> = monitor::resolve_monitors(config)
+    // Quiet variant: avoid spamming the "Target output not found" warning
+    // every 2 seconds if the user's --output is mistyped. The loud variant
+    // in reconcile_monitors and startup still surfaces it.
+    let expected_names: Vec<String> = monitor::resolve_monitors_quiet(config)
         .into_iter()
         .map(|(name, _)| name)
         .collect();
