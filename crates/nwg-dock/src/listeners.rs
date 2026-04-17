@@ -23,6 +23,16 @@ const AUTOHIDE_INITIAL_DELAY: Duration = Duration::from_millis(500);
 /// reconciliation only fires when state actually diverges.
 const LIVENESS_TICK_INTERVAL: Duration = Duration::from_secs(2);
 
+/// Bundles the dependencies needed by the monitor watcher and liveness tick
+/// paths so entrypoint signatures stay short and consistent.
+pub struct ReconcileContext {
+    pub app: gtk4::Application,
+    pub per_monitor: Rc<RefCell<Vec<MonitorDock>>>,
+    pub config: Rc<DockConfig>,
+    pub rebuild_fn: Rc<dyn Fn()>,
+    pub hotspot_ctx: Option<Rc<crate::ui::hotspot::HotspotContext>>,
+}
+
 /// Sets up an inotify-based pin file watcher that triggers a rebuild
 /// when the pin file is modified (e.g. by the drawer).
 pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
@@ -131,13 +141,7 @@ pub fn setup_autohide(
 /// Uses the `items-changed` signal on `Display::monitors()` to detect
 /// monitor hotplug events. Debounced via idle callback to coalesce
 /// rapid events (e.g., unplug + replug).
-pub fn setup_monitor_watcher(
-    app: &gtk4::Application,
-    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
-    config: &Rc<DockConfig>,
-    rebuild_fn: &Rc<dyn Fn()>,
-    hotspot_ctx: Option<Rc<crate::ui::hotspot::HotspotContext>>,
-) {
+pub fn setup_monitor_watcher(ctx: Rc<ReconcileContext>) {
     let Some(display) = gtk4::gdk::Display::default() else {
         log::error!("No default GDK display for monitor watcher");
         return;
@@ -145,10 +149,6 @@ pub fn setup_monitor_watcher(
 
     let model = display.monitors();
     let pending = Rc::new(Cell::new(false));
-    let app = app.clone();
-    let per_monitor = Rc::clone(per_monitor);
-    let config = Rc::clone(config);
-    let rebuild_fn = Rc::clone(rebuild_fn);
 
     model.connect_items_changed(move |_, _, _, _| {
         if pending.get() {
@@ -157,22 +157,12 @@ pub fn setup_monitor_watcher(
         pending.set(true);
 
         let pending = Rc::clone(&pending);
-        let app = app.clone();
-        let per_monitor = Rc::clone(&per_monitor);
-        let config = Rc::clone(&config);
-        let rebuild_fn = Rc::clone(&rebuild_fn);
-        let hotspot_ctx = hotspot_ctx.clone();
+        let ctx = Rc::clone(&ctx);
 
         glib::idle_add_local_once(move || {
             pending.set(false);
             log::info!("Monitor topology changed, reconciling dock windows");
-            reconcile_monitors(
-                &app,
-                &per_monitor,
-                &config,
-                &rebuild_fn,
-                hotspot_ctx.as_deref(),
-            );
+            reconcile_monitors(&ctx);
         });
     });
 }
@@ -180,49 +170,68 @@ pub fn setup_monitor_watcher(
 /// Reconciles dock windows with current monitor topology.
 /// Creates windows for new monitors, destroys windows for removed monitors,
 /// and rebuilds zombie windows (`surface().is_none()` — DPMS/lock cycles).
-fn reconcile_monitors(
-    app: &gtk4::Application,
-    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
-    config: &DockConfig,
-    rebuild_fn: &Rc<dyn Fn()>,
-    hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
-) {
-    let current_monitors = monitor::resolve_monitors(config);
+///
+/// Zombie rebuilds and physical disconnects are handled on separate branches
+/// so log messages can clearly distinguish "compositor destroyed our surface"
+/// (a recovery) from "user unplugged a monitor" (a topology change).
+fn reconcile_monitors(ctx: &ReconcileContext) {
+    let hotspot_ctx = ctx.hotspot_ctx.as_deref();
+    let current_monitors = monitor::resolve_monitors(&ctx.config);
     let monitor_map: std::collections::HashMap<String, gtk4::gdk::Monitor> =
         current_monitors.into_iter().collect();
     let current_names: Vec<String> = monitor_map.keys().cloned().collect();
-    let existing_names: Vec<String> = per_monitor
+    let existing_names: Vec<String> = ctx
+        .per_monitor
         .borrow()
         .iter()
         .map(|d| d.output_name.clone())
         .collect();
 
-    let (mut to_add, mut to_remove) =
-        dock_windows::compute_monitor_diff(&existing_names, &current_names);
+    let (to_add, to_remove) = dock_windows::compute_monitor_diff(&existing_names, &current_names);
 
     // Always refresh GDK monitor references — a reconnected monitor with the same
     // connector name produces a new gdk::Monitor object, and the old one is stale.
-    refresh_monitor_refs(per_monitor, &monitor_map, hotspot_ctx);
+    refresh_monitor_refs(&ctx.per_monitor, &monitor_map, hotspot_ctx);
 
-    // Detect zombie windows: for monitors present in both sets, check if the
-    // dock's layer-shell surface is still valid. If not, force remove+re-add.
-    let zombies = find_zombie_docks(per_monitor, &current_names);
-    for name in &zombies {
-        log::warn!(
-            "Zombie dock detected for '{}' (surface is None), rebuilding",
-            name
-        );
-    }
-    merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
+    // Zombie windows: monitor still present, but layer-shell surface is gone.
+    // Kept in a separate list (not merged into to_remove) so logs can
+    // distinguish a DPMS/lock recovery from a real disconnect.
+    let zombies = find_zombie_docks(&ctx.per_monitor, &current_names);
 
-    if to_add.is_empty() && to_remove.is_empty() {
+    if to_add.is_empty() && to_remove.is_empty() && zombies.is_empty() {
         log::debug!("Monitor topology unchanged after debounce");
         return;
     }
 
-    remove_orphaned_docks(per_monitor, &to_remove, hotspot_ctx);
-    add_new_docks(app, per_monitor, &to_add, &monitor_map, config, hotspot_ctx);
-    rebuild_fn();
+    remove_zombie_docks(&ctx.per_monitor, &zombies, hotspot_ctx);
+    remove_orphaned_docks(&ctx.per_monitor, &to_remove, hotspot_ctx);
+
+    // Combine physical-add and zombie-rebuild names for the add path.
+    // Both need a fresh window with the same creation logic; only the
+    // removal logging differs.
+    let to_create = combine_add_lists(&to_add, &zombies);
+    add_new_docks(
+        &ctx.app,
+        &ctx.per_monitor,
+        &to_create,
+        &monitor_map,
+        &ctx.config,
+        hotspot_ctx,
+    );
+    (ctx.rebuild_fn)();
+}
+
+/// Returns a single deduplicated list combining physical-add and zombie
+/// rebuild names. Both go through the same `add_new_docks` creation path —
+/// they only differ in why they're being added.
+fn combine_add_lists(to_add: &[String], zombies: &[String]) -> Vec<String> {
+    let mut combined = to_add.to_vec();
+    for name in zombies {
+        if !combined.contains(name) {
+            combined.push(name.clone());
+        }
+    }
+    combined
 }
 
 /// Returns the output names of dock windows whose layer-shell surface is
@@ -258,21 +267,30 @@ fn zombie_names(
         .collect()
 }
 
-/// Merges zombie names into the to_add/to_remove lists from `compute_monitor_diff`
-/// so reconciliation destroys and re-creates each zombie's window. Dedupes
-/// against existing entries so we don't remove or add a name twice.
-fn merge_zombies_into_diff(
-    to_add: &mut Vec<String>,
-    to_remove: &mut Vec<String>,
+/// Removes dock windows flagged as zombies (surface is None) so they can be
+/// rebuilt. Logs with "rebuild" wording to distinguish this from physical
+/// disconnects handled by `remove_orphaned_docks`.
+fn remove_zombie_docks(
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
     zombies: &[String],
+    hotspot_ctx: Option<&crate::ui::hotspot::HotspotContext>,
 ) {
     for name in zombies {
-        if !to_remove.contains(name) {
-            to_remove.push(name.clone());
+        if let Some(ctx) = hotspot_ctx {
+            ctx.remove_hotspot_for_output(name);
         }
-        if !to_add.contains(name) {
-            to_add.push(name.clone());
-        }
+        per_monitor.borrow_mut().retain(|dock| {
+            if &dock.output_name == name {
+                log::warn!(
+                    "Rebuilding zombie dock for '{}' (layer-shell surface was destroyed)",
+                    name
+                );
+                dock.win.close();
+                false
+            } else {
+                true
+            }
+        });
     }
 }
 
@@ -283,28 +301,11 @@ fn merge_zombies_into_diff(
 /// checks — no IPC, no allocations of any real cost. Reconciliation is only
 /// triggered when state actually diverges from expectations, so the hot path
 /// runs about as often as real monitor state changes (rare).
-pub fn setup_liveness_tick(
-    app: &gtk4::Application,
-    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
-    config: &Rc<DockConfig>,
-    rebuild_fn: &Rc<dyn Fn()>,
-    hotspot_ctx: Option<Rc<crate::ui::hotspot::HotspotContext>>,
-) {
-    let app = app.clone();
-    let per_monitor = Rc::clone(per_monitor);
-    let config = Rc::clone(config);
-    let rebuild_fn = Rc::clone(rebuild_fn);
-
+pub fn setup_liveness_tick(ctx: Rc<ReconcileContext>) {
     glib::timeout_add_local(LIVENESS_TICK_INTERVAL, move || {
-        if needs_reconcile(&per_monitor, &config) {
+        if needs_reconcile(&ctx.per_monitor, &ctx.config) {
             log::info!("Liveness tick detected state drift, reconciling");
-            reconcile_monitors(
-                &app,
-                &per_monitor,
-                &config,
-                &rebuild_fn,
-                hotspot_ctx.as_deref(),
-            );
+            reconcile_monitors(&ctx);
         }
         glib::ControlFlow::Continue
     });
@@ -452,7 +453,7 @@ fn add_new_docks(
 
 #[cfg(test)]
 mod tests {
-    use super::{decide_reconcile, merge_zombies_into_diff, zombie_names};
+    use super::{combine_add_lists, decide_reconcile, zombie_names};
 
     fn names(s: &[&str]) -> Vec<String> {
         s.iter().map(|x| (*x).to_string()).collect()
@@ -684,71 +685,51 @@ mod tests {
         assert!(zombie_names(&[], &[], &names(&["DP-1"])).is_empty());
     }
 
-    // ─── merge_zombies_into_diff: the bridge between diff and zombie handling ──
+    // ─── combine_add_lists: dedup physical adds with zombie rebuilds ───────────
 
     #[test]
-    fn merge_zombies_adds_to_both_lists_when_absent() {
-        let mut to_add: Vec<String> = vec![];
-        let mut to_remove: Vec<String> = vec![];
+    fn combine_add_lists_empty_inputs_produces_empty() {
+        assert!(combine_add_lists(&[], &[]).is_empty());
+    }
+
+    #[test]
+    fn combine_add_lists_only_new_monitors() {
+        let to_add = names(&["DP-1", "HDMI-A-1"]);
+        let zombies: Vec<String> = vec![];
+        assert_eq!(combine_add_lists(&to_add, &zombies), to_add);
+    }
+
+    #[test]
+    fn combine_add_lists_only_zombies() {
+        let to_add: Vec<String> = vec![];
         let zombies = names(&["DP-1"]);
-        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
-        assert_eq!(to_add, names(&["DP-1"]));
-        assert_eq!(to_remove, names(&["DP-1"]));
+        assert_eq!(combine_add_lists(&to_add, &zombies), names(&["DP-1"]));
     }
 
     #[test]
-    fn merge_zombies_is_noop_when_already_queued() {
-        // Zombie is also in to_add/to_remove from some other path — don't duplicate
-        let mut to_add = names(&["DP-1"]);
-        let mut to_remove = names(&["DP-1"]);
+    fn combine_add_lists_distinct_sets_concatenated() {
+        let to_add = names(&["DP-2"]);
         let zombies = names(&["DP-1"]);
-        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
-        assert_eq!(to_add, names(&["DP-1"]));
-        assert_eq!(to_remove, names(&["DP-1"]));
+        let combined = combine_add_lists(&to_add, &zombies);
+        assert!(combined.contains(&"DP-1".to_string()));
+        assert!(combined.contains(&"DP-2".to_string()));
+        assert_eq!(combined.len(), 2);
     }
 
     #[test]
-    fn merge_zombies_preserves_existing_entries() {
-        // Existing hotplug-diff entries must not be clobbered
-        let mut to_add = names(&["HDMI-A-1"]);
-        let mut to_remove = names(&["DP-2"]);
+    fn combine_add_lists_deduplicates_overlap() {
+        // Pathological but defensive: if the same name appears in both lists
+        // (e.g. a monitor was simultaneously classified as new and zombie),
+        // we should only create one window.
+        let to_add = names(&["DP-1"]);
         let zombies = names(&["DP-1"]);
-        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
-        assert!(to_add.contains(&"HDMI-A-1".to_string()));
-        assert!(to_add.contains(&"DP-1".to_string()));
-        assert!(to_remove.contains(&"DP-2".to_string()));
-        assert!(to_remove.contains(&"DP-1".to_string()));
+        assert_eq!(combine_add_lists(&to_add, &zombies), names(&["DP-1"]));
     }
 
     #[test]
-    fn merge_zombies_empty_list_is_noop() {
-        let mut to_add = names(&["HDMI-A-1"]);
-        let mut to_remove = names(&["DP-2"]);
-        merge_zombies_into_diff(&mut to_add, &mut to_remove, &[]);
-        assert_eq!(to_add, names(&["HDMI-A-1"]));
-        assert_eq!(to_remove, names(&["DP-2"]));
-    }
-
-    #[test]
-    fn merge_zombies_deduplicates_repeated_zombies_in_input() {
-        // Defensive: zombies list shouldn't have duplicates in practice,
-        // but if it does, merge should still produce a deduped result
-        let mut to_add: Vec<String> = vec![];
-        let mut to_remove: Vec<String> = vec![];
+    fn combine_add_lists_deduplicates_repeated_zombies() {
+        let to_add: Vec<String> = vec![];
         let zombies = names(&["DP-1", "DP-1"]);
-        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
-        assert_eq!(to_add, names(&["DP-1"]));
-        assert_eq!(to_remove, names(&["DP-1"]));
-    }
-
-    #[test]
-    fn merge_zombies_mixed_new_and_existing() {
-        // One zombie is already in to_remove but not to_add — half-handled
-        let mut to_add: Vec<String> = vec![];
-        let mut to_remove = names(&["DP-1"]);
-        let zombies = names(&["DP-1", "HDMI-A-1"]);
-        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
-        assert_eq!(to_add, names(&["DP-1", "HDMI-A-1"]));
-        assert_eq!(to_remove, names(&["DP-1", "HDMI-A-1"]));
+        assert_eq!(combine_add_lists(&to_add, &zombies), names(&["DP-1"]));
     }
 }
