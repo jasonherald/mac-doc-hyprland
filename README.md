@@ -295,7 +295,7 @@ button {
 
 ### base16 themes via tinty
 
-[tinty](https://github.com/tinted-theming/tinty) is a base16 theme manager. Combined with [@BlueInGreen68's tintend-nwg-dock](https://github.com/tinted-theming/tinted-nwg-dock) templates, you can switch themes live across your whole system.
+[tinty](https://github.com/tinted-theming/tinty) is a base16 theme manager. Combined with [tintend-nwg-dock](https://github.com/tinted-theming/tinted-nwg-dock) templates, you can switch themes live across your whole system.
 
 **Setup** (one-time):
 
@@ -306,7 +306,7 @@ cargo install tinty
 # Initialize config
 tinty init
 
-# Add the base16-nwg-dock templates to ~/.config/tinted-theming/tinty/config.toml:
+# Add the tinted-nwg-dock templates to ~/.config/tinted-theming/tinty/config.toml:
 ```
 
 ```toml
