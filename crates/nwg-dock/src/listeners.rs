@@ -339,6 +339,20 @@ fn decide_reconcile(
     dock_names: &[String],
     dock_has_surface: &[bool],
 ) -> bool {
+    // Cardinality guard: catches duplicate dock entries (same monitor mapped to
+    // multiple windows) and parallel-array invariant violations. Simple
+    // membership checks below miss the duplicate case when the extra entry
+    // also has a GDK monitor match.
+    if gdk_names.len() != dock_names.len() || dock_names.len() != dock_has_surface.len() {
+        log::debug!(
+            "Liveness: cardinality mismatch (gdk={}, docks={}, surfaces={})",
+            gdk_names.len(),
+            dock_names.len(),
+            dock_has_surface.len()
+        );
+        return true;
+    }
+
     // Missing monitor: GDK has a connector we don't have a dock for
     for name in gdk_names {
         if !dock_names.contains(name) {
@@ -583,6 +597,29 @@ mod tests {
         let docks = names(&["DP-1"]);
         let surfaces = vec![true];
         assert!(!decide_reconcile(&expected, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_duplicate_dock_for_same_monitor() {
+        // Defensive: if reconciliation ever produced two docks for the same
+        // monitor (startup race, double hotplug event, etc.), membership
+        // checks alone wouldn't catch it. Cardinality guard triggers a heal.
+        let gdk = names(&["DP-1"]);
+        let docks = names(&["DP-1", "DP-1"]);
+        let surfaces = vec![true, true];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_parallel_array_invariant_violation() {
+        // Defensive: dock_names and dock_has_surface are parallel arrays
+        // populated from the same Vec iteration. If they ever get out of
+        // sync (caller bug), we must flag drift rather than silently
+        // walking off the end via zip truncation.
+        let gdk = names(&["DP-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![true, true]; // extra surface bool with no matching name
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
     }
 
     #[test]
