@@ -296,7 +296,7 @@ pub fn setup_liveness_tick(
     let rebuild_fn = Rc::clone(rebuild_fn);
 
     glib::timeout_add_local(LIVENESS_TICK_INTERVAL, move || {
-        if needs_reconcile(&per_monitor) {
+        if needs_reconcile(&per_monitor, &config) {
             log::info!("Liveness tick detected state drift, reconciling");
             reconcile_monitors(
                 &app,
@@ -310,32 +310,25 @@ pub fn setup_liveness_tick(
     });
 }
 
-/// Returns true if the dock's per-monitor state diverges from GDK's current
-/// monitor list, or if any existing dock has a zombie surface.
+/// Returns true if the dock's per-monitor state diverges from the monitor
+/// set this config would select, or if any existing dock has a zombie surface.
 /// Pure read-only checks — no IPC, no side effects.
-fn needs_reconcile(per_monitor: &Rc<RefCell<Vec<MonitorDock>>>) -> bool {
-    let Some(display) = gtk4::gdk::Display::default() else {
-        return false;
-    };
-    let model = display.monitors();
-
-    // Collect current GDK connector names (stable identifiers)
-    let mut current: Vec<String> = Vec::with_capacity(model.n_items() as usize);
-    for i in 0..model.n_items() {
-        if let Some(item) = model.item(i)
-            && let Ok(mon) = item.downcast::<gtk4::gdk::Monitor>()
-            && let Some(connector) = mon.connector()
-        {
-            current.push(connector.to_string());
-        }
-    }
+///
+/// Uses `monitor::resolve_monitors` (which honors `--output`) rather than the
+/// raw GDK monitor list — otherwise a single-monitor-targeted dock would
+/// perpetually "drift" against a multi-monitor GDK state.
+fn needs_reconcile(per_monitor: &Rc<RefCell<Vec<MonitorDock>>>, config: &DockConfig) -> bool {
+    let expected_names: Vec<String> = monitor::resolve_monitors(config)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
 
     let docks = per_monitor.borrow();
     let dock_names: Vec<String> = docks.iter().map(|d| d.output_name.clone()).collect();
     let dock_has_surface: Vec<bool> = docks.iter().map(|d| d.win.surface().is_some()).collect();
     drop(docks);
 
-    decide_reconcile(&current, &dock_names, &dock_has_surface)
+    decide_reconcile(&expected_names, &dock_names, &dock_has_surface)
 }
 
 /// Pure decision logic for `needs_reconcile`. Testable without GTK —
@@ -579,6 +572,17 @@ mod tests {
         let docks = names(&["DP-1", "HDMI-A-1"]);
         let surfaces = vec![true, true];
         assert!(!decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_respects_config_output_filter() {
+        // When --output DP-1 is set, the caller passes only the config-selected
+        // monitor as `expected` — even though GDK has other monitors. A dock
+        // matching that single expected monitor must not trigger drift.
+        let expected = names(&["DP-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![true];
+        assert!(!decide_reconcile(&expected, &docks, &surfaces));
     }
 
     #[test]
