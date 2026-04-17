@@ -17,6 +17,12 @@ use std::time::Duration;
 /// Delay before hiding dock windows after initial present (allows GTK to render).
 const AUTOHIDE_INITIAL_DELAY: Duration = Duration::from_millis(500);
 
+/// Interval for the dock liveness tick — detects missed monitor hotplug events,
+/// zombie layer-shell surfaces (DPMS/lock cycles), and drift between expected
+/// and actual dock windows. In-process pointer checks only in the cold path,
+/// reconciliation only fires when state actually diverges.
+const LIVENESS_TICK_INTERVAL: Duration = Duration::from_secs(2);
+
 /// Sets up an inotify-based pin file watcher that triggers a rebuild
 /// when the pin file is modified (e.g. by the drawer).
 pub fn setup_pin_watcher(pinned_file: &Path, rebuild: &Rc<dyn Fn()>) {
@@ -172,7 +178,8 @@ pub fn setup_monitor_watcher(
 }
 
 /// Reconciles dock windows with current monitor topology.
-/// Creates windows for new monitors, destroys windows for removed monitors.
+/// Creates windows for new monitors, destroys windows for removed monitors,
+/// and rebuilds zombie windows (`surface().is_none()` — DPMS/lock cycles).
 fn reconcile_monitors(
     app: &gtk4::Application,
     per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
@@ -190,11 +197,23 @@ fn reconcile_monitors(
         .map(|d| d.output_name.clone())
         .collect();
 
-    let (to_add, to_remove) = dock_windows::compute_monitor_diff(&existing_names, &current_names);
+    let (mut to_add, mut to_remove) =
+        dock_windows::compute_monitor_diff(&existing_names, &current_names);
 
     // Always refresh GDK monitor references — a reconnected monitor with the same
     // connector name produces a new gdk::Monitor object, and the old one is stale.
     refresh_monitor_refs(per_monitor, &monitor_map, hotspot_ctx);
+
+    // Detect zombie windows: for monitors present in both sets, check if the
+    // dock's layer-shell surface is still valid. If not, force remove+re-add.
+    let zombies = find_zombie_docks(per_monitor, &current_names);
+    for name in &zombies {
+        log::warn!(
+            "Zombie dock detected for '{}' (surface is None), rebuilding",
+            name
+        );
+    }
+    merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
 
     if to_add.is_empty() && to_remove.is_empty() {
         log::debug!("Monitor topology unchanged after debounce");
@@ -204,6 +223,154 @@ fn reconcile_monitors(
     remove_orphaned_docks(per_monitor, &to_remove, hotspot_ctx);
     add_new_docks(app, per_monitor, &to_add, &monitor_map, config, hotspot_ctx);
     rebuild_fn();
+}
+
+/// Returns the output names of dock windows whose layer-shell surface is
+/// missing (zombie state). A zombie window has an `ApplicationWindow` object
+/// in our `per_monitor` Vec but `surface()` returns None — the compositor
+/// has destroyed the underlying surface and the window is unrecoverable
+/// without being re-created.
+fn find_zombie_docks(
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    present_names: &[String],
+) -> Vec<String> {
+    let docks = per_monitor.borrow();
+    let names: Vec<String> = docks.iter().map(|d| d.output_name.clone()).collect();
+    let has_surface: Vec<bool> = docks.iter().map(|d| d.win.surface().is_some()).collect();
+    drop(docks);
+    zombie_names(&names, &has_surface, present_names)
+}
+
+/// Pure selection logic for `find_zombie_docks`. Given the dock list (names +
+/// per-dock surface validity) and the names of monitors currently known by
+/// GDK, returns the names of docks that are zombies — i.e. their monitor
+/// still exists but their surface is gone.
+fn zombie_names(
+    dock_names: &[String],
+    dock_has_surface: &[bool],
+    present_names: &[String],
+) -> Vec<String> {
+    dock_names
+        .iter()
+        .zip(dock_has_surface.iter())
+        .filter(|(name, has_surface)| !**has_surface && present_names.contains(name))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+/// Merges zombie names into the to_add/to_remove lists from `compute_monitor_diff`
+/// so reconciliation destroys and re-creates each zombie's window. Dedupes
+/// against existing entries so we don't remove or add a name twice.
+fn merge_zombies_into_diff(
+    to_add: &mut Vec<String>,
+    to_remove: &mut Vec<String>,
+    zombies: &[String],
+) {
+    for name in zombies {
+        if !to_remove.contains(name) {
+            to_remove.push(name.clone());
+        }
+        if !to_add.contains(name) {
+            to_add.push(name.clone());
+        }
+    }
+}
+
+/// Starts a periodic liveness tick that catches missed hotplug events and
+/// zombie layer-shell surfaces. Fires every `LIVENESS_TICK_INTERVAL`.
+///
+/// In the cold path (nothing wrong), each tick does only in-process pointer
+/// checks — no IPC, no allocations of any real cost. Reconciliation is only
+/// triggered when state actually diverges from expectations, so the hot path
+/// runs about as often as real monitor state changes (rare).
+pub fn setup_liveness_tick(
+    app: &gtk4::Application,
+    per_monitor: &Rc<RefCell<Vec<MonitorDock>>>,
+    config: &Rc<DockConfig>,
+    rebuild_fn: &Rc<dyn Fn()>,
+    hotspot_ctx: Option<Rc<crate::ui::hotspot::HotspotContext>>,
+) {
+    let app = app.clone();
+    let per_monitor = Rc::clone(per_monitor);
+    let config = Rc::clone(config);
+    let rebuild_fn = Rc::clone(rebuild_fn);
+
+    glib::timeout_add_local(LIVENESS_TICK_INTERVAL, move || {
+        if needs_reconcile(&per_monitor) {
+            log::info!("Liveness tick detected state drift, reconciling");
+            reconcile_monitors(
+                &app,
+                &per_monitor,
+                &config,
+                &rebuild_fn,
+                hotspot_ctx.as_deref(),
+            );
+        }
+        glib::ControlFlow::Continue
+    });
+}
+
+/// Returns true if the dock's per-monitor state diverges from GDK's current
+/// monitor list, or if any existing dock has a zombie surface.
+/// Pure read-only checks — no IPC, no side effects.
+fn needs_reconcile(per_monitor: &Rc<RefCell<Vec<MonitorDock>>>) -> bool {
+    let Some(display) = gtk4::gdk::Display::default() else {
+        return false;
+    };
+    let model = display.monitors();
+
+    // Collect current GDK connector names (stable identifiers)
+    let mut current: Vec<String> = Vec::with_capacity(model.n_items() as usize);
+    for i in 0..model.n_items() {
+        if let Some(item) = model.item(i)
+            && let Ok(mon) = item.downcast::<gtk4::gdk::Monitor>()
+            && let Some(connector) = mon.connector()
+        {
+            current.push(connector.to_string());
+        }
+    }
+
+    let docks = per_monitor.borrow();
+    let dock_names: Vec<String> = docks.iter().map(|d| d.output_name.clone()).collect();
+    let dock_has_surface: Vec<bool> = docks.iter().map(|d| d.win.surface().is_some()).collect();
+    drop(docks);
+
+    decide_reconcile(&current, &dock_names, &dock_has_surface)
+}
+
+/// Pure decision logic for `needs_reconcile`. Testable without GTK —
+/// given the current GDK monitor names and the dock's state (names +
+/// per-dock surface validity), decides whether reconciliation is needed.
+fn decide_reconcile(
+    gdk_names: &[String],
+    dock_names: &[String],
+    dock_has_surface: &[bool],
+) -> bool {
+    // Missing monitor: GDK has a connector we don't have a dock for
+    for name in gdk_names {
+        if !dock_names.contains(name) {
+            log::debug!("Liveness: missing dock for '{}'", name);
+            return true;
+        }
+    }
+
+    // Stale dock: we have a dock for a connector GDK doesn't report anymore
+    for name in dock_names {
+        if !gdk_names.contains(name) {
+            log::debug!("Liveness: stale dock for '{}'", name);
+            return true;
+        }
+    }
+
+    // Zombie surface: dock object exists but layer-shell surface is gone
+    for (name, has_surface) in dock_names.iter().zip(dock_has_surface.iter()) {
+        if !has_surface {
+            log::debug!("Liveness: zombie surface for '{}'", name);
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Refreshes GDK monitor references on existing dock and hotspot windows.
@@ -270,5 +437,274 @@ fn add_new_docks(
             ctx.add_hotspot_for_dock(&dock);
         }
         per_monitor.borrow_mut().push(dock);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{decide_reconcile, merge_zombies_into_diff, zombie_names};
+
+    fn names(s: &[&str]) -> Vec<String> {
+        s.iter().map(|x| (*x).to_string()).collect()
+    }
+
+    // ─── decide_reconcile: steady-state and basic cases ────────────────────────
+
+    #[test]
+    fn decide_reconcile_steady_state_returns_false() {
+        let gdk = names(&["DP-1", "HDMI-A-1"]);
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, true];
+        assert!(!decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_empty_state_stable() {
+        // No monitors, no docks — nothing to reconcile
+        assert!(!decide_reconcile(&[], &[], &[]));
+    }
+
+    #[test]
+    fn decide_reconcile_single_monitor_stable() {
+        let gdk = names(&["DP-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![true];
+        assert!(!decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_three_monitors_all_healthy() {
+        let gdk = names(&["DP-1", "DP-2", "HDMI-A-1"]);
+        let docks = names(&["DP-1", "DP-2", "HDMI-A-1"]);
+        let surfaces = vec![true, true, true];
+        assert!(!decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    // ─── decide_reconcile: missing dock (hotplug arrival) ──────────────────────
+
+    #[test]
+    fn decide_reconcile_detects_missing_dock_for_new_monitor() {
+        let gdk = names(&["DP-1", "HDMI-A-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![true];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_all_monitors_missing_at_startup_race() {
+        // Worst case: GDK knows monitors but we haven't built any docks yet.
+        // Should still flag reconcile — otherwise we'd be permanently empty.
+        let gdk = names(&["DP-1"]);
+        assert!(decide_reconcile(&gdk, &[], &[]));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_third_monitor_missing() {
+        let gdk = names(&["DP-1", "DP-2", "HDMI-A-1"]);
+        let docks = names(&["DP-1", "DP-2"]);
+        let surfaces = vec![true, true];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    // ─── decide_reconcile: stale dock (unplug missed) ──────────────────────────
+
+    #[test]
+    fn decide_reconcile_detects_stale_dock_after_unplug() {
+        let gdk = names(&["DP-1"]);
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, true];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_all_monitors_gone() {
+        // Extreme case: every monitor unplugged but our docks linger
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, true];
+        assert!(decide_reconcile(&[], &docks, &surfaces));
+    }
+
+    // ─── decide_reconcile: zombie surfaces (DPMS/lock) ─────────────────────────
+
+    #[test]
+    fn decide_reconcile_detects_zombie_surface() {
+        let gdk = names(&["DP-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![false];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_zombie_among_healthy() {
+        let gdk = names(&["DP-1", "HDMI-A-1"]);
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, false];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_detects_all_zombies() {
+        // Nightmare case: every dock went zombie (full DPMS wipe)
+        let gdk = names(&["DP-1", "HDMI-A-1"]);
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![false, false];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    // ─── decide_reconcile: combined divergences ────────────────────────────────
+
+    #[test]
+    fn decide_reconcile_missing_and_stale_together() {
+        // DP-1 removed, HDMI-A-1 added — full swap
+        let gdk = names(&["HDMI-A-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![true];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_missing_and_zombie_together() {
+        // A monitor was added, and an existing one's surface died
+        let gdk = names(&["DP-1", "HDMI-A-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![false];
+        assert!(decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    // ─── decide_reconcile: ordering and duplicates ─────────────────────────────
+
+    #[test]
+    fn decide_reconcile_handles_reordered_names() {
+        let gdk = names(&["HDMI-A-1", "DP-1"]);
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, true];
+        assert!(!decide_reconcile(&gdk, &docks, &surfaces));
+    }
+
+    #[test]
+    fn decide_reconcile_idempotent_on_repeat_calls() {
+        // Same input → same result, no hidden state
+        let gdk = names(&["DP-1"]);
+        let docks = names(&["DP-1"]);
+        let surfaces = vec![true];
+        let first = decide_reconcile(&gdk, &docks, &surfaces);
+        let second = decide_reconcile(&gdk, &docks, &surfaces);
+        assert_eq!(first, second);
+        assert!(!first);
+    }
+
+    // ─── zombie_names: pure selection of broken docks ──────────────────────────
+
+    #[test]
+    fn zombie_names_empty_when_all_healthy() {
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, true];
+        let present = names(&["DP-1", "HDMI-A-1"]);
+        assert!(zombie_names(&docks, &surfaces, &present).is_empty());
+    }
+
+    #[test]
+    fn zombie_names_identifies_single_zombie() {
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, false];
+        let present = names(&["DP-1", "HDMI-A-1"]);
+        assert_eq!(
+            zombie_names(&docks, &surfaces, &present),
+            names(&["HDMI-A-1"])
+        );
+    }
+
+    #[test]
+    fn zombie_names_identifies_multiple_zombies() {
+        let docks = names(&["DP-1", "DP-2", "HDMI-A-1"]);
+        let surfaces = vec![false, true, false];
+        let present = names(&["DP-1", "DP-2", "HDMI-A-1"]);
+        assert_eq!(
+            zombie_names(&docks, &surfaces, &present),
+            names(&["DP-1", "HDMI-A-1"])
+        );
+    }
+
+    #[test]
+    fn zombie_names_excludes_docks_for_removed_monitors() {
+        // If a monitor is physically gone, its dock isn't a "zombie" — it's
+        // stale and will be removed via the normal diff path. Don't double-count.
+        let docks = names(&["DP-1", "HDMI-A-1"]);
+        let surfaces = vec![true, false];
+        let present = names(&["DP-1"]); // HDMI-A-1 is physically gone
+        assert!(zombie_names(&docks, &surfaces, &present).is_empty());
+    }
+
+    #[test]
+    fn zombie_names_empty_docks_produces_empty() {
+        assert!(zombie_names(&[], &[], &names(&["DP-1"])).is_empty());
+    }
+
+    // ─── merge_zombies_into_diff: the bridge between diff and zombie handling ──
+
+    #[test]
+    fn merge_zombies_adds_to_both_lists_when_absent() {
+        let mut to_add: Vec<String> = vec![];
+        let mut to_remove: Vec<String> = vec![];
+        let zombies = names(&["DP-1"]);
+        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
+        assert_eq!(to_add, names(&["DP-1"]));
+        assert_eq!(to_remove, names(&["DP-1"]));
+    }
+
+    #[test]
+    fn merge_zombies_is_noop_when_already_queued() {
+        // Zombie is also in to_add/to_remove from some other path — don't duplicate
+        let mut to_add = names(&["DP-1"]);
+        let mut to_remove = names(&["DP-1"]);
+        let zombies = names(&["DP-1"]);
+        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
+        assert_eq!(to_add, names(&["DP-1"]));
+        assert_eq!(to_remove, names(&["DP-1"]));
+    }
+
+    #[test]
+    fn merge_zombies_preserves_existing_entries() {
+        // Existing hotplug-diff entries must not be clobbered
+        let mut to_add = names(&["HDMI-A-1"]);
+        let mut to_remove = names(&["DP-2"]);
+        let zombies = names(&["DP-1"]);
+        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
+        assert!(to_add.contains(&"HDMI-A-1".to_string()));
+        assert!(to_add.contains(&"DP-1".to_string()));
+        assert!(to_remove.contains(&"DP-2".to_string()));
+        assert!(to_remove.contains(&"DP-1".to_string()));
+    }
+
+    #[test]
+    fn merge_zombies_empty_list_is_noop() {
+        let mut to_add = names(&["HDMI-A-1"]);
+        let mut to_remove = names(&["DP-2"]);
+        merge_zombies_into_diff(&mut to_add, &mut to_remove, &[]);
+        assert_eq!(to_add, names(&["HDMI-A-1"]));
+        assert_eq!(to_remove, names(&["DP-2"]));
+    }
+
+    #[test]
+    fn merge_zombies_deduplicates_repeated_zombies_in_input() {
+        // Defensive: zombies list shouldn't have duplicates in practice,
+        // but if it does, merge should still produce a deduped result
+        let mut to_add: Vec<String> = vec![];
+        let mut to_remove: Vec<String> = vec![];
+        let zombies = names(&["DP-1", "DP-1"]);
+        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
+        assert_eq!(to_add, names(&["DP-1"]));
+        assert_eq!(to_remove, names(&["DP-1"]));
+    }
+
+    #[test]
+    fn merge_zombies_mixed_new_and_existing() {
+        // One zombie is already in to_remove but not to_add — half-handled
+        let mut to_add: Vec<String> = vec![];
+        let mut to_remove = names(&["DP-1"]);
+        let zombies = names(&["DP-1", "HDMI-A-1"]);
+        merge_zombies_into_diff(&mut to_add, &mut to_remove, &zombies);
+        assert_eq!(to_add, names(&["DP-1", "HDMI-A-1"]));
+        assert_eq!(to_remove, names(&["DP-1", "HDMI-A-1"]));
     }
 }
