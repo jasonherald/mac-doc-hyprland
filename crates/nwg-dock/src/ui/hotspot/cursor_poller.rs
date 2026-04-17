@@ -192,9 +192,9 @@ fn monitor_has_fullscreen(
     };
     let mon_id = mon.id;
     let active_ws_id = mon.active_workspace.id;
-    clients.iter().any(|c| {
-        c.fullscreen && c.monitor_id == mon_id && c.workspace.id == active_ws_id
-    })
+    clients
+        .iter()
+        .any(|c| c.fullscreen && c.monitor_id == mon_id && c.workspace.id == active_ws_id)
 }
 
 /// Handles cursor polling when the dock is visible: hides after timeout if cursor leaves.
@@ -618,7 +618,11 @@ mod tests {
         let monitors = vec![dp1_monitor()];
         let clients = vec![test_client(DP1_ID, true)];
         // Asking about a monitor that doesn't exist — must not panic or suppress.
-        assert!(!monitor_has_fullscreen(&clients, &monitors, UNKNOWN_MONITOR));
+        assert!(!monitor_has_fullscreen(
+            &clients,
+            &monitors,
+            UNKNOWN_MONITOR
+        ));
     }
 
     #[test]
