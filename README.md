@@ -64,6 +64,12 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 
 ## Installation
 
+### Requirements
+
+- **Rust 1.95** or later (pinned in `rust-toolchain.toml` — `rustup` picks it up automatically)
+- **GTK4** and **gtk4-layer-shell** system libraries (see below)
+- A Wayland compositor: **Hyprland** or **Sway** (dock & notifications); the drawer also runs on Niri, river, Openbox, etc. via a fallback path
+
 ### Quick install
 
 ```bash
