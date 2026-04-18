@@ -107,7 +107,22 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     };
     let canonical_path = main_dir.join(file_name);
 
-    let imports = discover_watched_imports(&canonical_path);
+    // Two root forms are threaded through the whole watcher flow:
+    //
+    // - `path` (as-referenced) is what we hand back to GTK via
+    //   `load_from_path` at reload time AND what drives
+    //   `discover_watched_imports`' first-hop resolution. GTK
+    //   resolves relative `@import` paths against the directory of
+    //   the path it was given; our discovery has to use the same
+    //   base so the two stay in sync for symlinked stylesheet trees.
+    // - `canonical_path` feeds the watched set and the notify match,
+    //   because that's what inotify reports back in events.
+    //
+    // Mixing them (e.g. using canonical for discovery) would silently
+    // watch a different set of files than GTK actually loads when the
+    // config path is reached via a symlinked parent — the exact bug
+    // CodeRabbit caught on #79.
+    let imports = discover_watched_imports(&path);
     if !imports.is_empty() {
         log::info!(
             "Watching {} CSS @import target{} for hot-reload",
@@ -120,7 +135,7 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     let Some(initial) = build_watch_state(&canonical_path, &imports, tx.clone()) else {
         return;
     };
-    install_reload_timer(canonical_path, provider.clone(), rx, tx, initial);
+    install_reload_timer(path, canonical_path, provider.clone(), rx, tx, initial);
 }
 
 /// Everything required to keep the `notify` watcher alive and to know
@@ -226,7 +241,8 @@ fn compute_watched_dirs(main_css: &Path, imports: &[PathBuf]) -> HashSet<PathBuf
 /// where both watchers may fire for the same event. The debounce in
 /// `drain_events` folds duplicates, so the extra event is harmless.
 fn install_reload_timer(
-    path: std::path::PathBuf,
+    as_referenced: std::path::PathBuf,
+    canonical: std::path::PathBuf,
     provider: gtk4::CssProvider,
     rx: std::sync::mpsc::Receiver<()>,
     tx: std::sync::mpsc::Sender<()>,
@@ -237,8 +253,8 @@ fn install_reload_timer(
         std::time::Duration::from_millis(CSS_RELOAD_DEBOUNCE_MS),
         move || match drain_events(&rx) {
             DrainResult::Changed => {
-                reload_provider(&provider, &path);
-                maybe_rebuild_watcher(&path, &tx, &mut state);
+                reload_provider(&provider, &as_referenced);
+                maybe_rebuild_watcher(&as_referenced, &canonical, &tx, &mut state);
                 gtk4::glib::ControlFlow::Continue
             }
             DrainResult::Empty => gtk4::glib::ControlFlow::Continue,
@@ -254,13 +270,20 @@ fn install_reload_timer(
 /// from what the current watcher is tracking, replaces the watcher.
 /// No-op (and fast) in the common case where the user changed a file
 /// we already watch without touching any `@import` lines.
+///
+/// The two-path invariant matters here too: we walk the graph from
+/// the *as-referenced* root (so relative imports resolve the same way
+/// GTK's `load_from_path` will), but the `watched` set and every
+/// `build_watch_state` call keys on the *canonical* root so notify
+/// event paths match the stored keys.
 fn maybe_rebuild_watcher(
-    main_css: &Path,
+    as_referenced: &Path,
+    canonical: &Path,
     tx: &std::sync::mpsc::Sender<()>,
     state: &mut WatchState,
 ) {
-    let new_imports = discover_watched_imports(main_css);
-    let new_watched = compute_watched_set(main_css, &new_imports);
+    let new_imports = discover_watched_imports(as_referenced);
+    let new_watched = compute_watched_set(canonical, &new_imports);
     if new_watched == state.watched {
         return;
     }
@@ -273,7 +296,7 @@ fn maybe_rebuild_watcher(
     // Build the new state BEFORE dropping the old one so we don't have
     // a window where nothing is watching. The old `state.watcher` is
     // dropped at the assignment below, which stops its worker thread.
-    if let Some(new_state) = build_watch_state(main_css, &new_imports, tx.clone()) {
+    if let Some(new_state) = build_watch_state(canonical, &new_imports, tx.clone()) {
         *state = new_state;
     } else {
         log::warn!("Failed to rebuild CSS watcher; keeping previous watch set");
