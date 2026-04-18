@@ -154,10 +154,25 @@ fn build_watch_state(
             return None;
         }
     };
+    // If any `watch(...)` call fails, the returned `WatchState` would
+    // claim files in `watched` whose parent dir we're not actually
+    // subscribed to. `maybe_rebuild_watcher` compares the old and new
+    // watched sets to decide whether to rebuild — if the claim is
+    // inaccurate, edits to an un-subscribed file won't fire events,
+    // which won't trigger a reload, which won't re-attempt the watch.
+    // The mis-subscription persists until the user changes their
+    // `@import` set or restarts. Failing fast here lets the outer
+    // reload-loop (or the startup path) surface the issue instead of
+    // silently degrading. CodeRabbit catch on #76.
+    let mut watch_failed = false;
     for dir in &dirs {
         if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
             log::warn!("Failed to watch CSS directory '{}': {}", dir.display(), e);
+            watch_failed = true;
         }
+    }
+    if watch_failed {
+        return None;
     }
     Some(WatchState {
         _watcher: watcher,
