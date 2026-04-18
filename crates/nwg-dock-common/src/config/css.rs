@@ -1,7 +1,13 @@
 use gtk4::gdk;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
+
+/// Upper bound on how many `@import` targets `discover_watched_imports`
+/// will follow in a single pass. Guards against pathologically deep (or
+/// malformed-but-non-cyclical) chains. 32 is well above any reasonable
+/// real-world theme tree; most setups have 1–5.
+const MAX_IMPORT_GRAPH_SIZE: usize = 32;
 
 /// CSS priority: embedded defaults (base layer).
 const CSS_PRIORITY_EMBEDDED: u32 = gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION;
@@ -101,7 +107,22 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     };
     let canonical_path = main_dir.join(file_name);
 
-    let imports = discover_watched_imports(&canonical_path);
+    // Two root forms are threaded through the whole watcher flow:
+    //
+    // - `path` (as-referenced) is what we hand back to GTK via
+    //   `load_from_path` at reload time AND what drives
+    //   `discover_watched_imports`' first-hop resolution. GTK
+    //   resolves relative `@import` paths against the directory of
+    //   the path it was given; our discovery has to use the same
+    //   base so the two stay in sync for symlinked stylesheet trees.
+    // - `canonical_path` feeds the watched set and the notify match,
+    //   because that's what inotify reports back in events.
+    //
+    // Mixing them (e.g. using canonical for discovery) would silently
+    // watch a different set of files than GTK actually loads when the
+    // config path is reached via a symlinked parent — the exact bug
+    // CodeRabbit caught on #79.
+    let imports = discover_watched_imports(&path);
     if !imports.is_empty() {
         log::info!(
             "Watching {} CSS @import target{} for hot-reload",
@@ -114,7 +135,7 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     let Some(initial) = build_watch_state(&canonical_path, &imports, tx.clone()) else {
         return;
     };
-    install_reload_timer(canonical_path, provider.clone(), rx, tx, initial);
+    install_reload_timer(path, canonical_path, provider.clone(), rx, tx, initial);
 }
 
 /// Everything required to keep the `notify` watcher alive and to know
@@ -220,7 +241,8 @@ fn compute_watched_dirs(main_css: &Path, imports: &[PathBuf]) -> HashSet<PathBuf
 /// where both watchers may fire for the same event. The debounce in
 /// `drain_events` folds duplicates, so the extra event is harmless.
 fn install_reload_timer(
-    path: std::path::PathBuf,
+    as_referenced: std::path::PathBuf,
+    canonical: std::path::PathBuf,
     provider: gtk4::CssProvider,
     rx: std::sync::mpsc::Receiver<()>,
     tx: std::sync::mpsc::Sender<()>,
@@ -231,8 +253,8 @@ fn install_reload_timer(
         std::time::Duration::from_millis(CSS_RELOAD_DEBOUNCE_MS),
         move || match drain_events(&rx) {
             DrainResult::Changed => {
-                reload_provider(&provider, &path);
-                maybe_rebuild_watcher(&path, &tx, &mut state);
+                reload_provider(&provider, &as_referenced);
+                maybe_rebuild_watcher(&as_referenced, &canonical, &tx, &mut state);
                 gtk4::glib::ControlFlow::Continue
             }
             DrainResult::Empty => gtk4::glib::ControlFlow::Continue,
@@ -248,13 +270,20 @@ fn install_reload_timer(
 /// from what the current watcher is tracking, replaces the watcher.
 /// No-op (and fast) in the common case where the user changed a file
 /// we already watch without touching any `@import` lines.
+///
+/// The two-path invariant matters here too: we walk the graph from
+/// the *as-referenced* root (so relative imports resolve the same way
+/// GTK's `load_from_path` will), but the `watched` set and every
+/// `build_watch_state` call keys on the *canonical* root so notify
+/// event paths match the stored keys.
 fn maybe_rebuild_watcher(
-    main_css: &Path,
+    as_referenced: &Path,
+    canonical: &Path,
     tx: &std::sync::mpsc::Sender<()>,
     state: &mut WatchState,
 ) {
-    let new_imports = discover_watched_imports(main_css);
-    let new_watched = compute_watched_set(main_css, &new_imports);
+    let new_imports = discover_watched_imports(as_referenced);
+    let new_watched = compute_watched_set(canonical, &new_imports);
     if new_watched == state.watched {
         return;
     }
@@ -267,7 +296,7 @@ fn maybe_rebuild_watcher(
     // Build the new state BEFORE dropping the old one so we don't have
     // a window where nothing is watching. The old `state.watcher` is
     // dropped at the assignment below, which stops its worker thread.
-    if let Some(new_state) = build_watch_state(main_css, &new_imports, tx.clone()) {
+    if let Some(new_state) = build_watch_state(canonical, &new_imports, tx.clone()) {
         *state = new_state;
     } else {
         log::warn!("Failed to rebuild CSS watcher; keeping previous watch set");
@@ -379,23 +408,95 @@ fn apply_provider(provider: &gtk4::CssProvider, priority: u32) {
 // CSS evaluation is still done by GTK via `load_from_path`; we only
 // peek at the file to find out what else to watch.
 
-/// Reads the main CSS file and returns the absolute paths of every
-/// `@import` target that currently exists on disk. Safe against read
-/// failure (returns empty) — the caller still watches the main path,
-/// so the user can create or repair the file to recover.
+/// Walks the `@import` graph rooted at the main CSS and returns the
+/// canonical paths of every reachable file that currently exists on
+/// disk. Safe against read failure at any node (skip-and-continue),
+/// and terminates cleanly on cycles (each canonical path is visited
+/// at most once) and on pathologically deep chains
+/// (capped at `MAX_IMPORT_GRAPH_SIZE` nodes with a warning).
+///
+/// The main CSS itself is not in the returned vec — the caller
+/// (`watch_css`) already tracks it separately as the root.
+///
+/// Canonical paths are used for dedup (`visited`) and for the returned
+/// set (so the notify event match — which reports canonical paths —
+/// works), but the *as-referenced* form of each file is what drives
+/// the next hop's relative-import resolution. GTK4 resolves relative
+/// `@import` paths against the directory of the path it was *given*,
+/// not the symlink-resolved target, so our discovery must do the same
+/// to stay in sync. Without this a symlinked stylesheet tree could
+/// make us watch different files than GTK actually loads (CodeRabbit
+/// catch on #79).
 fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
-    let Some(base_dir) = main_css.parent() else {
-        return Vec::new();
-    };
-    let content = match std::fs::read_to_string(main_css) {
+    let main_canonical = match main_css.canonicalize() {
         Ok(c) => c,
         Err(e) => {
             log::debug!(
-                "CSS @import discovery: can't read {} ({}); continuing without imports",
+                "CSS @import discovery: can't canonicalize {} ({}); continuing without imports",
                 main_css.display(),
                 e
             );
             return Vec::new();
+        }
+    };
+
+    // `visited` tracks every canonical path we've seen (including the
+    // main file) so we don't re-process a node reached via two paths
+    // (diamond graph) or loop on a cycle. `queue` holds the
+    // *as-referenced* paths to process — each file's own
+    // `@import` resolution uses that path's parent as `base_dir`,
+    // matching GTK's behavior. `out` collects the discovered imports
+    // in BFS order, excluding the main file.
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    visited.insert(main_canonical);
+    let mut queue: VecDeque<PathBuf> = VecDeque::new();
+    queue.push_back(main_css.to_path_buf());
+    let mut out: Vec<PathBuf> = Vec::new();
+
+    while let Some(current) = queue.pop_front() {
+        if let Some(imports) = read_direct_imports(&current) {
+            for (import_ref, import_canonical) in imports {
+                if out.len() >= MAX_IMPORT_GRAPH_SIZE {
+                    log::warn!(
+                        "CSS @import graph reached the {}-file cap; not discovering further targets",
+                        MAX_IMPORT_GRAPH_SIZE
+                    );
+                    return out;
+                }
+                if visited.insert(import_canonical.clone()) {
+                    out.push(import_canonical);
+                    // Queue the AS-REFERENCED form so its own
+                    // relative @imports resolve against the same
+                    // base_dir GTK will use at load time.
+                    queue.push_back(import_ref);
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Reads a single CSS file and returns its directly-referenced
+/// `@import` targets as `(as_referenced, canonical)` pairs.
+/// `as_referenced` is the resolved path using the file's parent as
+/// base_dir — used for the next hop's relative-import resolution.
+/// `canonical` is `as_referenced.canonicalize()` — used for dedup and
+/// the final watched set. Unresolvable entries (missing files,
+/// unsupported URL schemes, unparseable directives) are skipped.
+/// Returns `None` if the file itself can't be read — callers treat
+/// that as "no imports" and continue.
+fn read_direct_imports(css_file: &Path) -> Option<Vec<(PathBuf, PathBuf)>> {
+    let base_dir = css_file.parent()?;
+    let content = match std::fs::read_to_string(css_file) {
+        Ok(c) => c,
+        Err(e) => {
+            log::debug!(
+                "CSS @import discovery: can't read {} ({}); skipping",
+                css_file.display(),
+                e
+            );
+            return None;
         }
     };
     let mut out = Vec::new();
@@ -403,13 +504,8 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
         let Some(resolved) = resolve_import_path(&raw, base_dir) else {
             continue;
         };
-        // Canonicalize for the same reason as `watch_css` does for the
-        // main path — notify events arrive with canonical paths, so the
-        // comparison set must store canonical paths to match. This also
-        // doubles as the existence check (canonicalize errors if the
-        // target is missing), replacing the earlier `exists()` guard.
         match resolved.canonicalize() {
-            Ok(canonical) => out.push(canonical),
+            Ok(canonical) => out.push((resolved, canonical)),
             Err(e) => {
                 log::debug!(
                     "CSS @import target not accessible ({}): {}",
@@ -419,7 +515,7 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
             }
         }
     }
-    out
+    Some(out)
 }
 
 /// Extracts the raw path string from every `@import` directive in the
@@ -1298,12 +1394,11 @@ mod tests {
         cleanup_test_dir(&tmp);
     }
 
-    /// A chain `main → a.css → b.css` only watches `{main, a.css}`.
-    /// This is a deliberate, documented limitation — not a bug — and
-    /// this test pins the behavior so a future "let's recurse" change
-    /// consciously updates it.
+    /// #77: a nested chain `main → a.css → b.css` now tracks every
+    /// level. Changes to `b.css` fire a reload even though `main` only
+    /// imports `a.css` directly.
     #[test]
-    fn nested_imports_are_not_recursively_discovered() {
+    fn nested_imports_are_recursively_discovered() {
         let tmp = make_test_dir("nested-imports");
         let main = tmp.join("style.css");
         let a = tmp.join("a.css");
@@ -1315,11 +1410,312 @@ mod tests {
         let imports = discover_watched_imports(&main);
         let watched = compute_watched_set(&main, &imports);
 
-        // main + a.css = 2. b.css is reachable through a.css but we
-        // don't recurse, so it's not in the watched set.
-        assert_eq!(watched.len(), 2);
+        let canonical_a = a.canonicalize().expect("canonicalize a.css");
         let canonical_b = b.canonicalize().expect("canonicalize b.css");
-        assert!(!watched.contains(&canonical_b));
+        assert_eq!(
+            watched.len(),
+            3,
+            "expected {{main, a.css, b.css}} but got {:?}",
+            watched
+        );
+        assert!(watched.contains(&canonical_a));
+        assert!(watched.contains(&canonical_b));
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: deep chain `main → a → b → c → d` — the transitive closure.
+    #[test]
+    fn deep_import_chain_fully_discovered() {
+        let tmp = make_test_dir("deep-chain");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        let c = tmp.join("c.css");
+        let d = tmp.join("d.css");
+        std::fs::write(&d, "").expect("write d.css");
+        std::fs::write(&c, format!("@import \"{}\";", d.display())).expect("write c.css");
+        std::fs::write(&b, format!("@import \"{}\";", c.display())).expect("write b.css");
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        assert_eq!(
+            watched.len(),
+            5,
+            "expected main + a + b + c + d, got {:?}",
+            watched
+        );
+        for file in [&a, &b, &c, &d] {
+            let canonical = file.canonicalize().expect("canonicalize");
+            assert!(
+                watched.contains(&canonical),
+                "{} missing from watched set",
+                file.display()
+            );
+        }
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: diamond graph `main → a, main → b, a → c, b → c` — `c` is
+    /// reachable two ways but must only appear once in the output
+    /// (no duplicate work, no duplicate watch).
+    #[test]
+    fn diamond_import_graph_visits_shared_node_once() {
+        let tmp = make_test_dir("diamond-import");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        let c = tmp.join("c.css");
+        std::fs::write(&c, "").expect("write c.css");
+        std::fs::write(&a, format!("@import \"{}\";", c.display())).expect("write a.css");
+        std::fs::write(&b, format!("@import \"{}\";", c.display())).expect("write b.css");
+        std::fs::write(
+            &main,
+            format!("@import \"{}\";\n@import \"{}\";", a.display(), b.display()),
+        )
+        .expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        // main + a + b + c = 4. c appears in imports at most once.
+        assert_eq!(watched.len(), 4, "{:?}", watched);
+        let canonical_c = c.canonicalize().expect("canonicalize c.css");
+        assert_eq!(
+            imports.iter().filter(|p| **p == canonical_c).count(),
+            1,
+            "c.css must appear exactly once in discovery output"
+        );
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: cycles across the graph (not just self-import) terminate.
+    /// Chain `main → a → b → a` — `a` is revisited via `b` but already
+    /// in the visited set, so the walk terminates.
+    #[test]
+    fn multi_hop_cycle_terminates() {
+        let tmp = make_test_dir("multihop-cycle");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        // a imports b, b imports a (cycle starts at a, back via b).
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&b, format!("@import \"{}\";", a.display())).expect("write b.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        // main + a + b = 3. The back-edge b → a is detected as a cycle.
+        assert_eq!(watched.len(), 3, "{:?}", watched);
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: depth cap — a longer-than-`MAX_IMPORT_GRAPH_SIZE` linear
+    /// chain stops at the cap with a warning instead of following
+    /// forever. We build `MAX_IMPORT_GRAPH_SIZE + 5` files so the cap
+    /// actually bites.
+    #[test]
+    fn import_graph_size_is_capped() {
+        let tmp = make_test_dir("depth-cap");
+        let chain_len = MAX_IMPORT_GRAPH_SIZE + 5;
+        let files: Vec<PathBuf> = (0..chain_len)
+            .map(|i| tmp.join(format!("f{}.css", i)))
+            .collect();
+        // Build in reverse so each file's import target already exists.
+        std::fs::write(files.last().unwrap(), "").expect("write tail");
+        for pair in files.windows(2).rev() {
+            let (from, to) = (&pair[0], &pair[1]);
+            std::fs::write(from, format!("@import \"{}\";", to.display()))
+                .expect("write chain link");
+        }
+        let main = tmp.join("style.css");
+        std::fs::write(&main, format!("@import \"{}\";", files[0].display())).expect("write main");
+
+        let imports = discover_watched_imports(&main);
+        // Linear, duplicate-free chain → discovery should reach the
+        // boundary exactly. A regression that stops the walk earlier
+        // (e.g., off-by-one in the cap check) would be hidden by a
+        // loose `<=` assertion; pin the exact value instead.
+        assert_eq!(
+            imports.len(),
+            MAX_IMPORT_GRAPH_SIZE,
+            "linear chain should discover exactly up to the cap (got {})",
+            imports.len()
+        );
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// Non-UTF-8 content in the main CSS is treated the same as an
+    /// unreadable file: `read_to_string` returns an `InvalidData` error,
+    /// `read_direct_imports` logs at debug and returns `None`, and
+    /// discovery produces an empty result without panicking. GTK will
+    /// fail to load the file with its own warning at reload time — we
+    /// just need to stay out of the way.
+    #[test]
+    fn discover_non_utf8_main_returns_empty_without_panic() {
+        let tmp = make_test_dir("non-utf8-main");
+        let main = tmp.join("style.css");
+        // 0xFF 0xFE is a BOM-like byte sequence that is NOT valid UTF-8
+        // when standalone. read_to_string rejects the whole file on
+        // the first invalid byte.
+        std::fs::write(&main, [0xFFu8, 0xFE, 0x80, 0x81, 0x82, 0xFF])
+            .expect("write non-utf8 bytes");
+
+        let imports = discover_watched_imports(&main);
+        assert!(
+            imports.is_empty(),
+            "non-utf8 file should yield no imports; got {:?}",
+            imports
+        );
+        cleanup_test_dir(&tmp);
+    }
+
+    /// The parser only cares about `@import` directives — anything else
+    /// in the file is skipped. This test pins the "garbage surrounded"
+    /// case: junk tokens, half-formed rules, and mismatched braces
+    /// around a legitimate `@import` line, all in one file. Discovery
+    /// must still extract the valid target without tripping over the
+    /// surrounding mess.
+    #[test]
+    fn discover_extracts_valid_import_from_garbage_content() {
+        let tmp = make_test_dir("garbage-plus-valid");
+        let main = tmp.join("style.css");
+        let theme = tmp.join("theme.css");
+        std::fs::write(&theme, "").expect("write theme.css");
+        // Mix of nonsense that GTK will reject plus one real @import.
+        // The parser scans for the `@import` substring, extracts the
+        // quoted path, and leaves the rest to GTK's own parse-warning
+        // reporting.
+        let content = format!(
+            "{{ unclosed brace\n\
+             nonsense garbage  ::: nope\n\
+             @import \"{}\";\n\
+             @;;; @@ garbage\n\
+             window {{ not really css",
+            theme.display()
+        );
+        std::fs::write(&main, content).expect("write garbage main");
+
+        let imports = discover_watched_imports(&main);
+        let canonical_theme = theme.canonicalize().expect("canonicalize theme.css");
+        assert_eq!(
+            imports,
+            vec![canonical_theme],
+            "valid @import inside garbage should still be discovered"
+        );
+        cleanup_test_dir(&tmp);
+    }
+
+    /// When a node in the `@import` graph is unreadable (permission
+    /// denied), the walk should:
+    ///   - keep the file itself in the discovered set (its parent
+    ///     already canonicalized + queued it, and the watcher can
+    ///     still react to future content changes or a chmod that
+    ///     restores readability),
+    ///   - skip its children silently — `read_direct_imports` logs
+    ///     at debug level and returns `None`,
+    ///   - NOT panic, NOT propagate the failure upward.
+    ///
+    /// The self-heal path: when perms are fixed, a subsequent
+    /// chmod/save on the file fires a `Modify` event that passes our
+    /// content-change filter, triggering `maybe_rebuild_watcher` →
+    /// rescan → discovery completes the chain.
+    #[cfg(unix)]
+    #[test]
+    fn unreadable_node_skips_children_without_panic() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = make_test_dir("unreadable-node");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        std::fs::write(&b, "").expect("write b.css");
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        // Strip read perms from a.css so its content (and therefore
+        // its `@import b.css`) is invisible to discovery.
+        std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o000))
+            .expect("chmod a.css to 000");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        let canonical_a = a.canonicalize().expect("canonicalize a.css");
+        let canonical_b = b.canonicalize().expect("canonicalize b.css");
+
+        // a.css is still in the watched set — we canonicalize via
+        // stat, which doesn't need read perms on the file — so
+        // content changes fire events and the watcher will
+        // self-heal once perms are fixed.
+        assert!(
+            watched.contains(&canonical_a),
+            "unreadable a.css should still be watched (for self-heal on chmod); got {:?}",
+            watched
+        );
+        // b.css is reachable through a.css but we couldn't read a
+        // to find it, so it's not in the set.
+        assert!(
+            !watched.contains(&canonical_b),
+            "b.css should not be discovered when a.css is unreadable; got {:?}",
+            watched
+        );
+
+        // Restore perms so cleanup_test_dir's remove_dir_all doesn't
+        // trip on the locked-down file.
+        std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o644))
+            .expect("restore a.css perms");
+        cleanup_test_dir(&tmp);
+    }
+
+    /// Regression for the CodeRabbit catch on #79: when the main CSS
+    /// is reached via a symlinked directory, relative `@import` paths
+    /// must resolve against the **as-referenced** parent (the symlink
+    /// path the user handed to GTK), not the canonical target. GTK4
+    /// uses the as-given base for its own `@import` resolution, so
+    /// discovery must agree — otherwise we'd watch a different set of
+    /// files than GTK actually loads, and edits to the real targets
+    /// wouldn't hot-reload.
+    ///
+    /// Fixture:
+    ///   /tmp/<test>/real/style.css   (contains `@import "theme.css"`)
+    ///   /tmp/<test>/real/theme.css   — exists via the alias path
+    ///   /tmp/<test>/alias            → symlink to `real`
+    ///
+    /// Discovery is invoked via the alias path. We verify the output
+    /// contains the canonical form of `theme.css` so the notify match
+    /// set lines up with event paths (which are canonical).
+    #[cfg(unix)]
+    #[test]
+    fn discovery_uses_as_referenced_base_dir_for_symlinked_parent() {
+        let tmp = make_test_dir("symlink-parent");
+        let real = tmp.join("real");
+        std::fs::create_dir_all(&real).expect("create real dir");
+        let real_style = real.join("style.css");
+        let real_theme = real.join("theme.css");
+        std::fs::write(&real_theme, "").expect("write theme.css");
+        std::fs::write(&real_style, "@import \"theme.css\";").expect("write style.css");
+
+        let alias = tmp.join("alias");
+        std::os::unix::fs::symlink(&real, &alias).expect("create symlink alias→real");
+        let alias_style = alias.join("style.css");
+
+        let imports = discover_watched_imports(&alias_style);
+        let canonical_theme = real_theme.canonicalize().expect("canonicalize theme.css");
+
+        assert_eq!(imports.len(), 1, "expected one import, got {:?}", imports);
+        assert_eq!(
+            imports[0], canonical_theme,
+            "discovery must canonicalize the import target so notify match works"
+        );
 
         cleanup_test_dir(&tmp);
     }

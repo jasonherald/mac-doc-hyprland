@@ -270,6 +270,10 @@ Both dock and drawer read/write `~/.cache/mac-dock-pinned`. Changes are detected
 
 Both the dock and the drawer load CSS from user-writable config files. Changes are picked up **instantly via live file-change detection** (powered by the `notify` crate) — no restart, no signal, no reload command needed. Just save the file and the new styles apply live.
 
+Hot-reload follows the full `@import` graph, so theme managers that chain stylesheets (tinty, stylix, etc.) work out of the box — editing any file in the chain triggers a reload.
+
+**Depth cap:** the `@import` walker stops after 32 reachable files to guard against pathologically deep or broken configs. Real-world theme trees have 1–5 levels, so this only trips on accidental cycles (which are also detected and terminated independently) or a config gone very wrong. When the cap is hit the daemon logs a warning and continues with what it has.
+
 ### CSS file locations
 
 | Binary | Path |
