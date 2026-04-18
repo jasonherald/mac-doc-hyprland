@@ -57,17 +57,6 @@ pub fn setup_popup_window(win: &gtk4::ApplicationWindow, position: PopupPosition
     win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
 }
 
-/// Configures a full-screen transparent backdrop for click-outside-to-close.
-///
-/// Shared by panel and DND menu — anchors all 4 edges, overlay layer, no keyboard.
-pub fn setup_fullscreen_backdrop(win: &gtk4::ApplicationWindow, namespace: &str) {
-    win.init_layer_shell();
-    win.set_namespace(Some(namespace));
-    win.set_layer(gtk4_layer_shell::Layer::Overlay);
-    win.set_exclusive_zone(-1);
-    win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
-    win.set_anchor(gtk4_layer_shell::Edge::Top, true);
-    win.set_anchor(gtk4_layer_shell::Edge::Right, true);
-    win.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
-    win.set_anchor(gtk4_layer_shell::Edge::Left, true);
-}
+// Backdrop helpers live in `nwg_dock_common::layer_shell`; the panel and
+// DND menu re-export-by-using them with their own CSS class so the
+// stylesheet for each gets the right opacity.
