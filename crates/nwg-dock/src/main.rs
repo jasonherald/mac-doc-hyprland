@@ -149,7 +149,16 @@ fn activate_dock(
     );
     listeners::setup_pin_watcher(pinned_file, &rebuild);
     listeners::setup_signal_poller(app, &per_monitor, sig_rx);
-    listeners::setup_monitor_watcher(app, &per_monitor, config, &rebuild, hotspot_ctx);
+
+    let reconcile_ctx = Rc::new(listeners::ReconcileContext {
+        app: app.clone(),
+        per_monitor: Rc::clone(&per_monitor),
+        config: Rc::clone(config),
+        rebuild_fn: Rc::clone(&rebuild),
+        hotspot_ctx,
+    });
+    listeners::setup_monitor_watcher(Rc::clone(&reconcile_ctx));
+    listeners::setup_liveness_tick(reconcile_ctx);
 }
 
 /// Auto-detect launcher: hide button if command not found on PATH.
