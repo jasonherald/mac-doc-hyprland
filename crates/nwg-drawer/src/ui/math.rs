@@ -25,9 +25,9 @@ pub enum MathResult {
 ///   as log-base-10. `ln` stays available for natural log.
 ///
 /// `%` priority matches exmex's `/` (prio 3), which is higher than `*`
-/// (prio 2). Within a single priority class exmex resolves
-/// right-associatively, so picking `/`'s priority keeps `10 % 3 * 2`
-/// evaluating as `(10 % 3) * 2 = 2` rather than `10 % (3 * 2) = 4`.
+/// (prio 2), so `10 % 3 * 2` evaluates as `(10 % 3) * 2 = 2`. Chained
+/// with `/` at the same priority, exmex evaluates left-to-right:
+/// `19 % 5 / 2 = (19 % 5) / 2 = 2`.
 #[derive(Clone, Debug)]
 struct DrawerOpsFactory;
 impl MakeOperators<f64> for DrawerOpsFactory {
@@ -443,13 +443,15 @@ mod tests {
 
     #[test]
     fn modulo_in_basic_and_compound_expressions() {
-        // exmex doesn't register `%` by default. Our factory adds it with
-        // priority 2, matching `*` and `/` so precedence behaves as expected.
+        // exmex doesn't register `%` by default. Our factory adds it at
+        // priority 3, matching `/` and above `*` (prio 2).
         assert_eq!(eval_val("10 % 3"), 1.0);
         assert_eq!(eval_val("17 % 5"), 2.0);
-        // Precedence sanity: `%` and `*` share priority → left-to-right
+        // `%` (prio 3) binds tighter than `*` (prio 2) → `(10 % 3) * 2`
         assert_eq!(eval_val("10 % 3 * 2"), 2.0);
-        // `%` after `+` → `+` should happen first since `+` is lower prio
+        // Same-priority chaining with `/` → left-to-right: `(19 % 5) / 2`
+        assert_eq!(eval_val("19 % 5 / 2"), 2.0);
+        // `%` after `+` → `+` should happen second since `+` is lower prio
         assert_eq!(eval_val("7 + 10 % 3"), 8.0);
     }
 
