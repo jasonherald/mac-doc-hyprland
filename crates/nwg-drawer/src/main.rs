@@ -174,6 +174,45 @@ fn activate_drawer(
         })
     };
 
+    // Multi-monitor click-catcher backdrops. The drawer is a layer-shell
+    // surface pinned to a single output, so clicks on other monitors
+    // never reach it and the existing focus-loss + active-window-poll
+    // close paths sometimes miss them (issue #55). One backdrop per
+    // *other* monitor — the drawer's own monitor is excluded so the
+    // backdrop doesn't race the drawer for click delivery there.
+    let drawer_monitor_name = drawer_monitor_connector(&config, compositor, &target_monitor);
+    let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
+        app,
+        "nwg-drawer-backdrop",
+        "drawer-backdrop",
+        drawer_monitor_name.as_deref(),
+    );
+    for backdrop in &backdrops {
+        let click = gtk4::GestureClick::new();
+        let on_launch_bd = Rc::clone(&on_launch);
+        click.connect_released(move |gesture, _, _, _| {
+            gesture.set_state(gtk4::EventSequenceState::Claimed);
+            on_launch_bd();
+        });
+        backdrop.add_controller(click);
+        backdrop.present();
+        backdrop.set_visible(false);
+    }
+    // Sync backdrop visibility with the drawer window. Using
+    // `connect_visible_notify` means every code path that toggles the
+    // drawer's visibility (signal poller, focus-loss, escape, close
+    // button, right-click on background) automatically toggles the
+    // backdrops too — no need to thread the Vec through every site.
+    {
+        let backdrops_sync = backdrops.clone();
+        win.connect_visible_notify(move |w| {
+            let visible = w.is_visible();
+            for b in &backdrops_sync {
+                b.set_visible(visible);
+            }
+        });
+    }
+
     // Pinned items (above scroll, fixed — never scrolls out of view)
     let pinned_box = gtk4::Box::new(gtk4::Orientation::Vertical, 0);
     pinned_box.set_halign(gtk4::Align::Center);
@@ -325,6 +364,39 @@ fn load_preferred_apps(state: &mut DrawerState) {
         log::info!("Found {} custom file associations", pa.len());
         state.preferred_apps = pa;
     }
+}
+
+/// Returns the connector name (e.g. "DP-1") of the monitor the drawer
+/// will appear on, used to exclude that monitor from the click-catcher
+/// backdrop set.
+///
+/// Resolution order:
+/// 1. The GDK monitor returned by `resolve_target_monitor` (set when
+///    the user passed `--output`).
+/// 2. The compositor's currently-focused monitor — this is where
+///    Hyprland places a layer-shell surface that didn't pin an output.
+///
+/// Returns `None` if neither resolves; callers cover all monitors and
+/// accept that the drawer's monitor will get a no-op backdrop racing
+/// with its own surface (the existing right-click-to-close fallback
+/// still works on the drawer itself).
+fn drawer_monitor_connector(
+    config: &DrawerConfig,
+    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    target_monitor: &Option<gtk4::gdk::Monitor>,
+) -> Option<String> {
+    if let Some(mon) = target_monitor {
+        return mon.connector().map(|c| c.to_string());
+    }
+    if !config.output.is_empty() {
+        return Some(config.output.clone());
+    }
+    compositor
+        .list_monitors()
+        .ok()?
+        .into_iter()
+        .find(|m| m.focused)
+        .map(|m| m.name)
 }
 
 fn resolve_target_monitor(

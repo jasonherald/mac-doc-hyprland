@@ -3,6 +3,20 @@ window {
     color: #e8e8e8;
 }
 
+/* Multi-monitor click-catcher backdrop. One of these is created per
+ * non-drawer monitor (issue #55); clicking any closes the drawer.
+ * The slight black tint matches the macOS Launchpad behavior of
+ * dimming the entire desktop while the launcher is open, and gives
+ * the user a visual cue that "drawer is active" across all monitors.
+ *
+ * Note: pointer events only reach this surface when the drawer is
+ * launched with `-k` (OnDemand keyboard mode). With Exclusive
+ * keyboard (the default) Hyprland routes all input to the drawer's
+ * own surface and clicks on other monitors are dropped. */
+window.drawer-backdrop {
+    background-color: rgba(0, 0, 0, 0.15);
+}
+
 /* Search entry — large, rounded, centered */
 .drawer-search {
     font-size: 18px;
