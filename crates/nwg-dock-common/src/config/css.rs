@@ -55,14 +55,17 @@ pub fn load_css_override(css: &str) -> gtk4::CssProvider {
 
 /// Watches a CSS file for changes and reloads the provider automatically.
 /// Uses inotify (Linux) via the `notify` crate — no polling.
-/// The watcher thread runs until the provider is dropped.
+/// The watcher lives on the GLib main loop for the lifetime of the
+/// owning application.
 ///
 /// Also watches files referenced via `@import` directives in the main
 /// CSS, so theme managers like `tinty` that update imported files
 /// (rather than the main CSS directly) trigger hot-reload too
-/// (issue #73). Imports are discovered at startup; adding or removing
-/// an `@import` line mid-session currently requires a restart — that
-/// improvement is tracked in #74.
+/// (issue #73). On every main-CSS reload, the `@import` set is
+/// re-scanned and the underlying `notify` watcher is rebuilt if the
+/// set of watched files actually changed (issue #74). Adding or
+/// removing an `@import` line while the dock is running now picks
+/// up the new target on the next save, without a restart.
 pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     let path = css_path.to_path_buf();
     let Some(parent) = path.parent() else {
@@ -108,69 +111,113 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     }
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
-    spawn_watcher_thread(main_dir, canonical_path.clone(), imports, tx);
-    install_reload_timer(canonical_path, provider.clone(), rx);
+    let Some(initial) = build_watch_state(&canonical_path, &imports, tx.clone()) else {
+        return;
+    };
+    install_reload_timer(canonical_path, provider.clone(), rx, tx, initial);
 }
 
-/// Spawns the notify watcher on a background thread. Watches the main
-/// CSS file's parent directory plus the parent directory of every
-/// imported file that exists on disk. Events are filtered to the set of
-/// absolute paths we care about before signaling a reload.
-///
-/// The thread runs until the process exits — there's no cleanup path,
-/// which is fine for a daemon.
-fn spawn_watcher_thread(
-    main_dir: PathBuf,
-    main_css: PathBuf,
-    imports: Vec<PathBuf>,
+/// Everything required to keep the `notify` watcher alive and to know
+/// which files are currently tracked, so we can diff against a
+/// re-scanned set on each reload.
+struct WatchState {
+    /// Owns the notify worker thread — dropped means "stop watching".
+    /// The leading underscore tells both the compiler and future
+    /// readers that this field is intentionally never read: its entire
+    /// purpose is RAII lifetime management. When a new `WatchState`
+    /// replaces this one, dropping the old field stops its worker.
+    _watcher: notify::RecommendedWatcher,
+    /// Absolute paths we signal reloads for. Compared structurally
+    /// to detect `@import` set changes across reloads.
+    watched: HashSet<PathBuf>,
+}
+
+/// Builds a fresh `WatchState` for the given main CSS path plus the
+/// current set of imported files. Subscribes the watcher to the
+/// parent directory of the main CSS AND the parent directory of each
+/// import (the same dir if they share a parent). Returns `None` if
+/// the watcher itself can't be created — callers log-and-continue.
+fn build_watch_state(
+    main_css: &Path,
+    imports: &[PathBuf],
     tx: std::sync::mpsc::Sender<()>,
-) {
-    std::thread::spawn(move || {
-        use notify::{RecursiveMode, Watcher};
+) -> Option<WatchState> {
+    use notify::{RecursiveMode, Watcher};
 
-        let mut dirs: HashSet<PathBuf> = HashSet::new();
-        dirs.insert(main_dir);
-        for imp in &imports {
-            if let Some(parent) = imp.parent() {
-                dirs.insert(parent.to_path_buf());
-            }
-        }
+    let watched = compute_watched_set(main_css, imports);
+    let dirs = compute_watched_dirs(main_css, imports);
 
-        let mut watched: HashSet<PathBuf> = HashSet::new();
-        watched.insert(main_css);
-        for imp in imports {
-            watched.insert(imp);
+    let mut watcher = match notify::recommended_watcher(make_css_handler(watched.clone(), tx)) {
+        Ok(w) => w,
+        Err(e) => {
+            log::warn!("Failed to create CSS watcher: {}", e);
+            return None;
         }
-
-        let Ok(mut watcher) = notify::recommended_watcher(make_css_handler(watched, tx))
-            .inspect_err(|e| log::warn!("Failed to create CSS watcher: {}", e))
-        else {
-            return;
-        };
-        for dir in &dirs {
-            if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
-                log::warn!("Failed to watch CSS directory '{}': {}", dir.display(), e);
-            }
+    };
+    for dir in &dirs {
+        if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
+            log::warn!("Failed to watch CSS directory '{}': {}", dir.display(), e);
         }
-        // Block forever — watcher stops if thread exits
-        loop {
-            std::thread::park();
-        }
-    });
+    }
+    Some(WatchState {
+        _watcher: watcher,
+        watched,
+    })
 }
 
-/// Installs a debounced GLib timer that reloads the provider when
-/// the watcher signals a file change. Stops the source on disconnect.
+/// Computes the full set of absolute paths we want to fire reloads for:
+/// the main CSS and every currently-discovered `@import` target.
+/// Pure; testable without notify or the filesystem.
+fn compute_watched_set(main_css: &Path, imports: &[PathBuf]) -> HashSet<PathBuf> {
+    let mut out = HashSet::with_capacity(imports.len() + 1);
+    out.insert(main_css.to_path_buf());
+    for imp in imports {
+        out.insert(imp.clone());
+    }
+    out
+}
+
+/// Computes the set of parent directories that notify needs to subscribe
+/// to in order to observe every watched file. One notify watch per
+/// directory suffices — events are then matched against the absolute
+/// path set built by `compute_watched_set`.
+fn compute_watched_dirs(main_css: &Path, imports: &[PathBuf]) -> HashSet<PathBuf> {
+    let mut dirs: HashSet<PathBuf> = HashSet::new();
+    if let Some(parent) = main_css.parent() {
+        dirs.insert(parent.to_path_buf());
+    }
+    for imp in imports {
+        if let Some(parent) = imp.parent() {
+            dirs.insert(parent.to_path_buf());
+        }
+    }
+    dirs
+}
+
+/// Installs a debounced GLib timer that reloads the provider on file
+/// change and rebuilds the underlying watcher if the `@import` set
+/// has shifted since the last reload. The timer closure owns the
+/// active `WatchState` so the watcher's worker thread stays alive for
+/// the lifetime of the GLib main loop.
+///
+/// Rebuilding the watcher is opt-in: we construct the new state first
+/// and only then drop the old one, which creates a brief overlap
+/// where both watchers may fire for the same event. The debounce in
+/// `drain_events` folds duplicates, so the extra event is harmless.
 fn install_reload_timer(
     path: std::path::PathBuf,
     provider: gtk4::CssProvider,
     rx: std::sync::mpsc::Receiver<()>,
+    tx: std::sync::mpsc::Sender<()>,
+    initial: WatchState,
 ) {
+    let mut state = initial;
     gtk4::glib::timeout_add_local(
         std::time::Duration::from_millis(CSS_RELOAD_DEBOUNCE_MS),
         move || match drain_events(&rx) {
             DrainResult::Changed => {
                 reload_provider(&provider, &path);
+                maybe_rebuild_watcher(&path, &tx, &mut state);
                 gtk4::glib::ControlFlow::Continue
             }
             DrainResult::Empty => gtk4::glib::ControlFlow::Continue,
@@ -180,6 +227,36 @@ fn install_reload_timer(
             }
         },
     );
+}
+
+/// Re-discovers the `@import` set from the main CSS and, if it differs
+/// from what the current watcher is tracking, replaces the watcher.
+/// No-op (and fast) in the common case where the user changed a file
+/// we already watch without touching any `@import` lines.
+fn maybe_rebuild_watcher(
+    main_css: &Path,
+    tx: &std::sync::mpsc::Sender<()>,
+    state: &mut WatchState,
+) {
+    let new_imports = discover_watched_imports(main_css);
+    let new_watched = compute_watched_set(main_css, &new_imports);
+    if new_watched == state.watched {
+        return;
+    }
+    log::info!(
+        "CSS @import set changed ({} → {} tracked file{}); rebuilding watcher",
+        state.watched.len(),
+        new_watched.len(),
+        if new_watched.len() == 1 { "" } else { "s" }
+    );
+    // Build the new state BEFORE dropping the old one so we don't have
+    // a window where nothing is watching. The old `state.watcher` is
+    // dropped at the assignment below, which stops its worker thread.
+    if let Some(new_state) = build_watch_state(main_css, &new_imports, tx.clone()) {
+        *state = new_state;
+    } else {
+        log::warn!("Failed to rebuild CSS watcher; keeping previous watch set");
+    }
 }
 
 enum DrainResult {
@@ -234,11 +311,32 @@ fn make_css_handler(
                 return;
             }
         };
+        if !is_content_change(&ev.kind) {
+            return;
+        }
         let matches = ev.paths.iter().any(|p| watched.contains(p));
         if matches && let Err(e) = tx.send(()) {
             log::warn!("CSS watcher channel closed: {}", e);
         }
     }
+}
+
+/// Filters notify event kinds to just the ones that indicate the file's
+/// *content* changed (or the file was created/removed). Access events
+/// (`Open`, `Close(Read)`, etc.) fire when *any* reader opens the
+/// file — including our own `load_from_path` / `read_to_string` calls
+/// in the reload path. Treating those as change signals creates an
+/// infinite feedback loop: reload opens file → Access event fires →
+/// reload opens file → … The `notify` crate's default inotify filter
+/// includes Access events on some backends, so this kind-based guard
+/// is required even though the path-set filter normally constrains
+/// which files we react to.
+fn is_content_change(kind: &notify::EventKind) -> bool {
+    use notify::EventKind;
+    matches!(
+        kind,
+        EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+    )
 }
 
 fn apply_provider(provider: &gtk4::CssProvider, priority: u32) {
@@ -810,6 +908,311 @@ mod tests {
         std::fs::write(&css, "@import \"https://example.com/theme.css\";")
             .expect("write style.css");
         assert!(discover_watched_imports(&css).is_empty());
+        cleanup_test_dir(&tmp);
+    }
+
+    // ─── is_content_change (feedback-loop guard) ─────────────────────────
+    //
+    // Regression test for the loop that showed up during #74 smoke
+    // testing: GTK's `load_from_path` and our own `read_to_string`
+    // both fire `Access(Open)` inotify events on the CSS file they
+    // read, which used to match the watched set and trigger a reload,
+    // which opened the file again. `is_content_change` narrows the
+    // handler to create/modify/remove kinds so self-reads don't
+    // re-enter the reload path.
+
+    #[test]
+    fn is_content_change_accepts_create_modify_remove() {
+        use notify::EventKind;
+        use notify::event::{CreateKind, ModifyKind, RemoveKind};
+        assert!(is_content_change(&EventKind::Create(CreateKind::File)));
+        assert!(is_content_change(&EventKind::Modify(ModifyKind::Data(
+            notify::event::DataChange::Any
+        ))));
+        assert!(is_content_change(&EventKind::Remove(RemoveKind::File)));
+    }
+
+    #[test]
+    fn is_content_change_rejects_access_events() {
+        use notify::EventKind;
+        use notify::event::{AccessKind, AccessMode};
+        // These are the kinds our own reload cycle generates when we
+        // open the CSS file to reload it. They must NOT count as
+        // content changes, otherwise we self-trigger a reload loop.
+        assert!(!is_content_change(&EventKind::Access(AccessKind::Open(
+            AccessMode::Any
+        ))));
+        assert!(!is_content_change(&EventKind::Access(AccessKind::Close(
+            AccessMode::Read
+        ))));
+        assert!(!is_content_change(&EventKind::Access(AccessKind::Read)));
+    }
+
+    #[test]
+    fn is_content_change_rejects_any_and_other() {
+        use notify::EventKind;
+        assert!(!is_content_change(&EventKind::Any));
+        assert!(!is_content_change(&EventKind::Other));
+    }
+
+    // ─── make_css_handler (end-to-end event routing) ─────────────────────
+    //
+    // Exercises the full handler contract — content-change kind check
+    // AND watched-path match AND channel send — by feeding synthetic
+    // `notify::Event` values into the closure and reading from the
+    // receiver. This is the layer where we missed the feedback-loop
+    // bug during #74 smoke testing; the tests below pin down every
+    // combination that should / shouldn't send.
+
+    fn modify_event(path: &Path) -> Result<notify::Event, notify::Error> {
+        use notify::event::{DataChange, ModifyKind};
+        use notify::{Event, EventKind};
+        Ok(
+            Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Any)))
+                .add_path(path.to_path_buf()),
+        )
+    }
+
+    fn access_event(path: &Path) -> Result<notify::Event, notify::Error> {
+        use notify::event::{AccessKind, AccessMode};
+        use notify::{Event, EventKind};
+        Ok(
+            Event::new(EventKind::Access(AccessKind::Open(AccessMode::Any)))
+                .add_path(path.to_path_buf()),
+        )
+    }
+
+    fn create_event(path: &Path) -> Result<notify::Event, notify::Error> {
+        use notify::event::CreateKind;
+        use notify::{Event, EventKind};
+        Ok(Event::new(EventKind::Create(CreateKind::File)).add_path(path.to_path_buf()))
+    }
+
+    fn remove_event(path: &Path) -> Result<notify::Event, notify::Error> {
+        use notify::event::RemoveKind;
+        use notify::{Event, EventKind};
+        Ok(Event::new(EventKind::Remove(RemoveKind::File)).add_path(path.to_path_buf()))
+    }
+
+    #[test]
+    fn handler_sends_on_modify_to_watched_path() {
+        let watched_path = PathBuf::from("/tmp/style.css");
+        let mut watched = HashSet::new();
+        watched.insert(watched_path.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut handler = make_css_handler(watched, tx);
+        handler(modify_event(&watched_path));
+        assert!(rx.try_recv().is_ok(), "Modify on watched path must send");
+    }
+
+    #[test]
+    fn handler_sends_on_create_and_remove_of_watched_path() {
+        let watched_path = PathBuf::from("/tmp/style.css");
+        let mut watched = HashSet::new();
+        watched.insert(watched_path.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut handler = make_css_handler(watched, tx);
+        handler(create_event(&watched_path));
+        handler(remove_event(&watched_path));
+        // Two events → two sends (debounce happens downstream in
+        // `drain_events`, not in the handler).
+        assert!(rx.try_recv().is_ok());
+        assert!(rx.try_recv().is_ok());
+    }
+
+    /// Regression for the #74 smoke-test bug: Access events on watched
+    /// paths were firing reloads, which re-opened the file via
+    /// `load_from_path`, which generated more Access events, which
+    /// triggered more reloads. The handler must drop Access events
+    /// on the floor even when the path matches.
+    #[test]
+    fn handler_ignores_access_events_on_watched_path() {
+        let watched_path = PathBuf::from("/tmp/style.css");
+        let mut watched = HashSet::new();
+        watched.insert(watched_path.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut handler = make_css_handler(watched, tx);
+        // Fire a bunch of Access events — none should reach the channel.
+        for _ in 0..5 {
+            handler(access_event(&watched_path));
+        }
+        assert!(
+            rx.try_recv().is_err(),
+            "Access events must not send — they're our own reload's self-feedback"
+        );
+    }
+
+    #[test]
+    fn handler_ignores_modify_on_unwatched_path() {
+        let watched_path = PathBuf::from("/tmp/style.css");
+        let unrelated = PathBuf::from("/tmp/gdk-pixbuf-glycin-tmp.XYZ");
+        let mut watched = HashSet::new();
+        watched.insert(watched_path);
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut handler = make_css_handler(watched, tx);
+        // Glycin constantly churns temp files in /tmp; those must not
+        // trigger reloads even though their parent dir is watched.
+        handler(modify_event(&unrelated));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn handler_sends_when_any_event_path_matches() {
+        // Some notify events carry multiple paths (e.g. rename). If any
+        // one matches the watched set, the event still counts.
+        use notify::event::{DataChange, ModifyKind};
+        use notify::{Event, EventKind};
+        let watched_path = PathBuf::from("/tmp/style.css");
+        let unrelated = PathBuf::from("/tmp/unrelated.tmp");
+        let mut watched = HashSet::new();
+        watched.insert(watched_path.clone());
+        let (tx, rx) = std::sync::mpsc::channel::<()>();
+        let mut handler = make_css_handler(watched, tx);
+        let ev = Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Any)))
+            .add_path(unrelated)
+            .add_path(watched_path);
+        handler(Ok(ev));
+        assert!(rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn handler_does_not_panic_on_error_event() {
+        let mut watched = HashSet::new();
+        watched.insert(PathBuf::from("/tmp/style.css"));
+        let (tx, _rx) = std::sync::mpsc::channel::<()>();
+        let mut handler = make_css_handler(watched, tx);
+        // `notify::Error` isn't easy to construct directly; use the
+        // generic io-error path. This proves the handler's match arm
+        // for `Err` is reachable and doesn't panic.
+        let err = notify::Error::io(std::io::Error::other("synthetic test error"));
+        handler(Err(err));
+        // No assertion on channel — just prove the call returned cleanly.
+    }
+
+    // ─── compute_watched_set / compute_watched_dirs (issue #74) ────────────
+    //
+    // Pure helpers used by `maybe_rebuild_watcher` to diff old-vs-new
+    // `@import` sets across reloads. Tested without notify or GTK so we
+    // can assert the equality semantics that decide whether to rebuild.
+
+    #[test]
+    fn watched_set_contains_main_css_when_no_imports() {
+        let main = PathBuf::from("/home/user/.config/dock/style.css");
+        let set = compute_watched_set(&main, &[]);
+        assert_eq!(set.len(), 1);
+        assert!(set.contains(&main));
+    }
+
+    #[test]
+    fn watched_set_contains_main_and_all_imports() {
+        let main = PathBuf::from("/home/user/.config/dock/style.css");
+        let imports = vec![
+            PathBuf::from("/home/user/.local/share/theme/base16.css"),
+            PathBuf::from("/home/user/.config/dock/extras.css"),
+        ];
+        let set = compute_watched_set(&main, &imports);
+        assert_eq!(set.len(), 3);
+        assert!(set.contains(&main));
+        for imp in &imports {
+            assert!(set.contains(imp));
+        }
+    }
+
+    /// Regression for the #74 rebuild decision: the equality check
+    /// between old and new sets must treat "same imports" as "no
+    /// rebuild needed", even if the order in which imports were
+    /// passed to `compute_watched_set` differs.
+    #[test]
+    fn watched_set_equality_is_order_independent() {
+        let main = PathBuf::from("/style.css");
+        let a = PathBuf::from("/a.css");
+        let b = PathBuf::from("/b.css");
+        let set1 = compute_watched_set(&main, &[a.clone(), b.clone()]);
+        let set2 = compute_watched_set(&main, &[b.clone(), a.clone()]);
+        assert_eq!(set1, set2);
+    }
+
+    #[test]
+    fn watched_set_differs_when_import_added_or_removed() {
+        let main = PathBuf::from("/style.css");
+        let a = PathBuf::from("/a.css");
+        let b = PathBuf::from("/b.css");
+        let before = compute_watched_set(&main, std::slice::from_ref(&a));
+        let after_added = compute_watched_set(&main, &[a.clone(), b.clone()]);
+        let after_removed = compute_watched_set(&main, &[]);
+        assert_ne!(before, after_added);
+        assert_ne!(before, after_removed);
+        assert_ne!(after_added, after_removed);
+    }
+
+    #[test]
+    fn watched_dirs_collapses_shared_parent() {
+        // Two imports under the same directory should produce one
+        // notify watch, not two — notify subscribes to a dir, not a
+        // file, and double-watching the same dir wastes file handles.
+        let main = PathBuf::from("/home/user/style.css");
+        let imports = vec![
+            PathBuf::from("/home/user/a.css"),
+            PathBuf::from("/home/user/b.css"),
+        ];
+        let dirs = compute_watched_dirs(&main, &imports);
+        assert_eq!(dirs.len(), 1);
+        assert!(dirs.contains(Path::new("/home/user")));
+    }
+
+    #[test]
+    fn watched_dirs_includes_all_distinct_parents() {
+        let main = PathBuf::from("/home/user/.config/dock/style.css");
+        let imports = vec![
+            PathBuf::from("/home/user/.local/share/theme/base16.css"),
+            PathBuf::from("/home/user/.cache/dock/colors.css"),
+        ];
+        let dirs = compute_watched_dirs(&main, &imports);
+        assert_eq!(dirs.len(), 3);
+        assert!(dirs.contains(Path::new("/home/user/.config/dock")));
+        assert!(dirs.contains(Path::new("/home/user/.local/share/theme")));
+        assert!(dirs.contains(Path::new("/home/user/.cache/dock")));
+    }
+
+    /// End-to-end regression for #74: the sequence of user actions
+    /// (save main CSS with one set of imports, then save with a
+    /// different set) must produce different watched sets so
+    /// `maybe_rebuild_watcher` triggers a rebuild.
+    #[test]
+    fn discover_tracks_changing_import_set_across_rewrites() {
+        let tmp = make_test_dir("dynamic-rescan");
+        let css = tmp.join("style.css");
+        let theme_a = tmp.join("theme-a.css");
+        let theme_b = tmp.join("theme-b.css");
+        std::fs::write(&theme_a, "").expect("write theme-a.css");
+        std::fs::write(&theme_b, "").expect("write theme-b.css");
+
+        // Initial state: imports theme-a.
+        std::fs::write(&css, "@import \"theme-a.css\";").expect("write style.css");
+        let set_a = compute_watched_set(&css, &discover_watched_imports(&css));
+
+        // User edits main CSS to import theme-b instead.
+        std::fs::write(&css, "@import \"theme-b.css\";").expect("rewrite style.css");
+        let set_b = compute_watched_set(&css, &discover_watched_imports(&css));
+
+        // User edits main CSS to import both.
+        std::fs::write(&css, "@import \"theme-a.css\"; @import \"theme-b.css\";")
+            .expect("rewrite style.css");
+        let set_both = compute_watched_set(&css, &discover_watched_imports(&css));
+
+        // User edits main CSS to drop all imports.
+        std::fs::write(&css, "window { color: red; }").expect("rewrite style.css");
+        let set_none = compute_watched_set(&css, &discover_watched_imports(&css));
+
+        // Every transition must surface as a set change so the
+        // rebuild guard fires.
+        assert_ne!(set_a, set_b);
+        assert_ne!(set_a, set_both);
+        assert_ne!(set_a, set_none);
+        assert_ne!(set_b, set_both);
+        assert_ne!(set_b, set_none);
+        assert_ne!(set_both, set_none);
+
         cleanup_test_dir(&tmp);
     }
 }
