@@ -1,7 +1,13 @@
 use gtk4::gdk;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
+
+/// Upper bound on how many `@import` targets `discover_watched_imports`
+/// will follow in a single pass. Guards against pathologically deep (or
+/// malformed-but-non-cyclical) chains. 32 is well above any reasonable
+/// real-world theme tree; most setups have 1–5.
+const MAX_IMPORT_GRAPH_SIZE: usize = 32;
 
 /// CSS priority: embedded defaults (base layer).
 const CSS_PRIORITY_EMBEDDED: u32 = gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION;
@@ -379,23 +385,86 @@ fn apply_provider(provider: &gtk4::CssProvider, priority: u32) {
 // CSS evaluation is still done by GTK via `load_from_path`; we only
 // peek at the file to find out what else to watch.
 
-/// Reads the main CSS file and returns the absolute paths of every
-/// `@import` target that currently exists on disk. Safe against read
-/// failure (returns empty) — the caller still watches the main path,
-/// so the user can create or repair the file to recover.
+/// Walks the `@import` graph rooted at the main CSS and returns the
+/// canonical paths of every reachable file that currently exists on
+/// disk. Safe against read failure at any node (skip-and-continue),
+/// and terminates cleanly on cycles (each canonical path is visited
+/// at most once) and on pathologically deep chains
+/// (capped at `MAX_IMPORT_GRAPH_SIZE` nodes with a warning).
+///
+/// The main CSS itself is not in the returned vec — the caller
+/// (`watch_css`) already tracks it separately as the root.
+///
+/// Canonicalization matters twice here:
+/// 1. The stored paths must match what `notify` later reports
+///    (dot segments resolved, symlinks followed) so the watched-set
+///    lookup actually matches event paths (issue #75).
+/// 2. Cycle detection via `HashSet<PathBuf>` only works if the same
+///    file always compares equal regardless of how it was referenced.
+///    Without canonicalization `a.css → b.css → ./a.css` would cycle
+///    forever because the lexical forms differ.
 fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
-    let Some(base_dir) = main_css.parent() else {
-        return Vec::new();
-    };
-    let content = match std::fs::read_to_string(main_css) {
+    let main_canonical = match main_css.canonicalize() {
         Ok(c) => c,
         Err(e) => {
             log::debug!(
-                "CSS @import discovery: can't read {} ({}); continuing without imports",
+                "CSS @import discovery: can't canonicalize {} ({}); continuing without imports",
                 main_css.display(),
                 e
             );
             return Vec::new();
+        }
+    };
+
+    // `visited` tracks every canonical path we've seen (including the
+    // main file) so we don't re-process a node reached via two paths
+    // (diamond graph) or loop on a cycle. `queue` is the BFS frontier.
+    // `out` collects the discovered imports in BFS order, excluding
+    // the main file (seeded into `visited` so back-references to it
+    // from deeper nodes are treated as cycles, not re-discovered).
+    let mut visited: HashSet<PathBuf> = HashSet::new();
+    visited.insert(main_canonical.clone());
+    let mut queue: VecDeque<PathBuf> = VecDeque::new();
+    queue.push_back(main_canonical);
+    let mut out: Vec<PathBuf> = Vec::new();
+
+    while let Some(current) = queue.pop_front() {
+        if let Some(imports) = read_direct_imports(&current) {
+            for imp in imports {
+                if out.len() >= MAX_IMPORT_GRAPH_SIZE {
+                    log::warn!(
+                        "CSS @import graph reached the {}-file cap; not discovering further targets",
+                        MAX_IMPORT_GRAPH_SIZE
+                    );
+                    return out;
+                }
+                if visited.insert(imp.clone()) {
+                    out.push(imp.clone());
+                    queue.push_back(imp);
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Reads a single CSS file and returns its directly-referenced
+/// `@import` targets as canonical absolute paths. Unresolvable entries
+/// (missing files, unsupported URL schemes, unparseable directives) are
+/// skipped. Returns `None` if the file itself can't be read — callers
+/// treat that as "no imports" and continue.
+fn read_direct_imports(css_file: &Path) -> Option<Vec<PathBuf>> {
+    let base_dir = css_file.parent()?;
+    let content = match std::fs::read_to_string(css_file) {
+        Ok(c) => c,
+        Err(e) => {
+            log::debug!(
+                "CSS @import discovery: can't read {} ({}); skipping",
+                css_file.display(),
+                e
+            );
+            return None;
         }
     };
     let mut out = Vec::new();
@@ -403,11 +472,6 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
         let Some(resolved) = resolve_import_path(&raw, base_dir) else {
             continue;
         };
-        // Canonicalize for the same reason as `watch_css` does for the
-        // main path — notify events arrive with canonical paths, so the
-        // comparison set must store canonical paths to match. This also
-        // doubles as the existence check (canonicalize errors if the
-        // target is missing), replacing the earlier `exists()` guard.
         match resolved.canonicalize() {
             Ok(canonical) => out.push(canonical),
             Err(e) => {
@@ -419,7 +483,7 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
             }
         }
     }
-    out
+    Some(out)
 }
 
 /// Extracts the raw path string from every `@import` directive in the
@@ -1298,12 +1362,11 @@ mod tests {
         cleanup_test_dir(&tmp);
     }
 
-    /// A chain `main → a.css → b.css` only watches `{main, a.css}`.
-    /// This is a deliberate, documented limitation — not a bug — and
-    /// this test pins the behavior so a future "let's recurse" change
-    /// consciously updates it.
+    /// #77: a nested chain `main → a.css → b.css` now tracks every
+    /// level. Changes to `b.css` fire a reload even though `main` only
+    /// imports `a.css` directly.
     #[test]
-    fn nested_imports_are_not_recursively_discovered() {
+    fn nested_imports_are_recursively_discovered() {
         let tmp = make_test_dir("nested-imports");
         let main = tmp.join("style.css");
         let a = tmp.join("a.css");
@@ -1315,11 +1378,141 @@ mod tests {
         let imports = discover_watched_imports(&main);
         let watched = compute_watched_set(&main, &imports);
 
-        // main + a.css = 2. b.css is reachable through a.css but we
-        // don't recurse, so it's not in the watched set.
-        assert_eq!(watched.len(), 2);
+        let canonical_a = a.canonicalize().expect("canonicalize a.css");
         let canonical_b = b.canonicalize().expect("canonicalize b.css");
-        assert!(!watched.contains(&canonical_b));
+        assert_eq!(
+            watched.len(),
+            3,
+            "expected {{main, a.css, b.css}} but got {:?}",
+            watched
+        );
+        assert!(watched.contains(&canonical_a));
+        assert!(watched.contains(&canonical_b));
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: deep chain `main → a → b → c → d` — the transitive closure.
+    #[test]
+    fn deep_import_chain_fully_discovered() {
+        let tmp = make_test_dir("deep-chain");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        let c = tmp.join("c.css");
+        let d = tmp.join("d.css");
+        std::fs::write(&d, "").expect("write d.css");
+        std::fs::write(&c, format!("@import \"{}\";", d.display())).expect("write c.css");
+        std::fs::write(&b, format!("@import \"{}\";", c.display())).expect("write b.css");
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        assert_eq!(
+            watched.len(),
+            5,
+            "expected main + a + b + c + d, got {:?}",
+            watched
+        );
+        for file in [&a, &b, &c, &d] {
+            let canonical = file.canonicalize().expect("canonicalize");
+            assert!(
+                watched.contains(&canonical),
+                "{} missing from watched set",
+                file.display()
+            );
+        }
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: diamond graph `main → a, main → b, a → c, b → c` — `c` is
+    /// reachable two ways but must only appear once in the output
+    /// (no duplicate work, no duplicate watch).
+    #[test]
+    fn diamond_import_graph_visits_shared_node_once() {
+        let tmp = make_test_dir("diamond-import");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        let c = tmp.join("c.css");
+        std::fs::write(&c, "").expect("write c.css");
+        std::fs::write(&a, format!("@import \"{}\";", c.display())).expect("write a.css");
+        std::fs::write(&b, format!("@import \"{}\";", c.display())).expect("write b.css");
+        std::fs::write(
+            &main,
+            format!("@import \"{}\";\n@import \"{}\";", a.display(), b.display()),
+        )
+        .expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        // main + a + b + c = 4. c appears in imports at most once.
+        assert_eq!(watched.len(), 4, "{:?}", watched);
+        let canonical_c = c.canonicalize().expect("canonicalize c.css");
+        assert_eq!(
+            imports.iter().filter(|p| **p == canonical_c).count(),
+            1,
+            "c.css must appear exactly once in discovery output"
+        );
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: cycles across the graph (not just self-import) terminate.
+    /// Chain `main → a → b → a` — `a` is revisited via `b` but already
+    /// in the visited set, so the walk terminates.
+    #[test]
+    fn multi_hop_cycle_terminates() {
+        let tmp = make_test_dir("multihop-cycle");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        // a imports b, b imports a (cycle starts at a, back via b).
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&b, format!("@import \"{}\";", a.display())).expect("write b.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        // main + a + b = 3. The back-edge b → a is detected as a cycle.
+        assert_eq!(watched.len(), 3, "{:?}", watched);
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// #77: depth cap — a longer-than-`MAX_IMPORT_GRAPH_SIZE` linear
+    /// chain stops at the cap with a warning instead of following
+    /// forever. We build `MAX_IMPORT_GRAPH_SIZE + 5` files so the cap
+    /// actually bites.
+    #[test]
+    fn import_graph_size_is_capped() {
+        let tmp = make_test_dir("depth-cap");
+        let chain_len = MAX_IMPORT_GRAPH_SIZE + 5;
+        let files: Vec<PathBuf> = (0..chain_len)
+            .map(|i| tmp.join(format!("f{}.css", i)))
+            .collect();
+        // Build in reverse so each file's import target already exists.
+        std::fs::write(files.last().unwrap(), "").expect("write tail");
+        for pair in files.windows(2).rev() {
+            let (from, to) = (&pair[0], &pair[1]);
+            std::fs::write(from, format!("@import \"{}\";", to.display()))
+                .expect("write chain link");
+        }
+        let main = tmp.join("style.css");
+        std::fs::write(&main, format!("@import \"{}\";", files[0].display())).expect("write main");
+
+        let imports = discover_watched_imports(&main);
+        assert!(
+            imports.len() <= MAX_IMPORT_GRAPH_SIZE,
+            "discovery exceeded cap: got {} imports (cap {})",
+            imports.len(),
+            MAX_IMPORT_GRAPH_SIZE
+        );
 
         cleanup_test_dir(&tmp);
     }
