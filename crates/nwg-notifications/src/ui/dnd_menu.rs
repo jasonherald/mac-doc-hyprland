@@ -14,7 +14,10 @@ const TIMED_OPTIONS: &[(u64, &str)] = &[
 /// A small popup menu for DND options, triggered by right-clicking the waybar bell.
 pub struct DndMenu {
     win: gtk4::ApplicationWindow,
-    backdrop: gtk4::ApplicationWindow,
+    /// One transparent backdrop layer-shell surface per monitor. Same
+    /// rationale as `NotificationPanel::backdrops` — a single layer-shell
+    /// surface can't cover more than one output (issue #55).
+    backdrops: Vec<gtk4::ApplicationWindow>,
     state: Rc<RefCell<NotificationState>>,
     on_state_change: Rc<dyn Fn()>,
 }
@@ -25,34 +28,39 @@ impl DndMenu {
         state: &Rc<RefCell<NotificationState>>,
         on_state_change: Rc<dyn Fn()>,
     ) -> Self {
-        // Transparent backdrop for click-outside-to-close
-        let backdrop = gtk4::ApplicationWindow::new(app);
-        backdrop.add_css_class("dnd-menu-backdrop");
-        setup_backdrop_window(&backdrop);
+        // One transparent backdrop per connected monitor for click-outside-to-close
+        let backdrops =
+            super::window::create_fullscreen_backdrops(app, "mac-notification-dnd-backdrop");
 
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("dnd-menu-window");
         setup_menu_window(&win);
 
-        // Backdrop click → close menu
-        let click = gtk4::GestureClick::new();
-        let win_bd = win.clone();
-        let backdrop_bd = backdrop.clone();
-        click.connect_released(move |gesture, _, _, _| {
-            gesture.set_state(gtk4::EventSequenceState::Claimed);
-            win_bd.set_visible(false);
-            backdrop_bd.set_visible(false);
-        });
-        backdrop.add_controller(click);
+        // Backdrop click (on any monitor) → close menu
+        for backdrop in &backdrops {
+            let click = gtk4::GestureClick::new();
+            let win_bd = win.clone();
+            let backdrops_bd = backdrops.clone();
+            click.connect_released(move |gesture, _, _, _| {
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
+                win_bd.set_visible(false);
+                for b in &backdrops_bd {
+                    b.set_visible(false);
+                }
+            });
+            backdrop.add_controller(click);
+        }
 
         // Escape key → close menu
         let key_ctrl = gtk4::EventControllerKey::new();
         let win_esc = win.clone();
-        let backdrop_esc = backdrop.clone();
+        let backdrops_esc = backdrops.clone();
         key_ctrl.connect_key_pressed(move |_, key, _, _| {
             if key == gtk4::gdk::Key::Escape {
                 win_esc.set_visible(false);
-                backdrop_esc.set_visible(false);
+                for b in &backdrops_esc {
+                    b.set_visible(false);
+                }
                 gtk4::glib::Propagation::Stop
             } else {
                 gtk4::glib::Propagation::Proceed
@@ -60,14 +68,16 @@ impl DndMenu {
         });
         win.add_controller(key_ctrl);
 
-        backdrop.present();
-        backdrop.set_visible(false);
+        for backdrop in &backdrops {
+            backdrop.present();
+            backdrop.set_visible(false);
+        }
         win.present();
         win.set_visible(false);
 
         Self {
             win,
-            backdrop,
+            backdrops,
             state: Rc::clone(state),
             on_state_change,
         }
@@ -76,10 +86,14 @@ impl DndMenu {
     pub fn toggle(&self) {
         if self.win.is_visible() {
             self.win.set_visible(false);
-            self.backdrop.set_visible(false);
+            for backdrop in &self.backdrops {
+                backdrop.set_visible(false);
+            }
         } else {
             self.rebuild();
-            self.backdrop.set_visible(true);
+            for backdrop in &self.backdrops {
+                backdrop.set_visible(true);
+            }
             self.win.set_visible(true);
         }
     }
@@ -106,7 +120,7 @@ impl DndMenu {
         let state_toggle = Rc::clone(&self.state);
         let on_change_toggle = Rc::clone(&self.on_state_change);
         let win_toggle = self.win.clone();
-        let bd_toggle = self.backdrop.clone();
+        let backdrops_toggle = self.backdrops.clone();
         toggle_btn.connect_clicked(move |_| {
             let new_dnd = !state_toggle.borrow().dnd;
             state_toggle.borrow_mut().dnd = new_dnd;
@@ -114,7 +128,9 @@ impl DndMenu {
             log::info!("DND {}", if new_dnd { "enabled" } else { "disabled" });
             on_change_toggle();
             win_toggle.set_visible(false);
-            bd_toggle.set_visible(false);
+            for b in &backdrops_toggle {
+                b.set_visible(false);
+            }
         });
         vbox.append(&toggle_btn);
 
@@ -148,7 +164,7 @@ impl DndMenu {
                     &self.state,
                     &self.on_state_change,
                     &self.win,
-                    &self.backdrop,
+                    &self.backdrops,
                 );
                 vbox.append(&btn);
             }
@@ -157,10 +173,6 @@ impl DndMenu {
         self.win.set_child(Some(&vbox));
         self.win.set_default_size(-1, -1);
     }
-}
-
-fn setup_backdrop_window(win: &gtk4::ApplicationWindow) {
-    super::window::setup_fullscreen_backdrop(win, "mac-notification-dnd-backdrop");
 }
 
 fn setup_menu_window(win: &gtk4::ApplicationWindow) {
@@ -183,7 +195,7 @@ fn build_timed_dnd_button(
     state: &Rc<RefCell<NotificationState>>,
     on_state_change: &Rc<dyn Fn()>,
     win: &gtk4::ApplicationWindow,
-    backdrop: &gtk4::ApplicationWindow,
+    backdrops: &[gtk4::ApplicationWindow],
 ) -> gtk4::Button {
     let btn = gtk4::Button::with_label(label);
     btn.add_css_class("dnd-menu-item");
@@ -192,7 +204,7 @@ fn build_timed_dnd_button(
     let state_btn = Rc::clone(state);
     let on_change = Rc::clone(on_state_change);
     let win_btn = win.clone();
-    let bd_btn = backdrop.clone();
+    let backdrops_btn: Vec<_> = backdrops.to_vec();
     btn.connect_clicked(move |_| {
         state_btn.borrow_mut().dnd = true;
         let expiry = std::time::SystemTime::now() + std::time::Duration::from_secs(minutes * 60);
@@ -215,7 +227,9 @@ fn build_timed_dnd_button(
 
         on_change();
         win_btn.set_visible(false);
-        bd_btn.set_visible(false);
+        for b in &backdrops_btn {
+            b.set_visible(false);
+        }
     });
 
     btn
