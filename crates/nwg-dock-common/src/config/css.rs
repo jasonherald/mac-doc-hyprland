@@ -1530,6 +1530,67 @@ mod tests {
         cleanup_test_dir(&tmp);
     }
 
+    /// Non-UTF-8 content in the main CSS is treated the same as an
+    /// unreadable file: `read_to_string` returns an `InvalidData` error,
+    /// `read_direct_imports` logs at debug and returns `None`, and
+    /// discovery produces an empty result without panicking. GTK will
+    /// fail to load the file with its own warning at reload time — we
+    /// just need to stay out of the way.
+    #[test]
+    fn discover_non_utf8_main_returns_empty_without_panic() {
+        let tmp = make_test_dir("non-utf8-main");
+        let main = tmp.join("style.css");
+        // 0xFF 0xFE is a BOM-like byte sequence that is NOT valid UTF-8
+        // when standalone. read_to_string rejects the whole file on
+        // the first invalid byte.
+        std::fs::write(&main, [0xFFu8, 0xFE, 0x80, 0x81, 0x82, 0xFF])
+            .expect("write non-utf8 bytes");
+
+        let imports = discover_watched_imports(&main);
+        assert!(
+            imports.is_empty(),
+            "non-utf8 file should yield no imports; got {:?}",
+            imports
+        );
+        cleanup_test_dir(&tmp);
+    }
+
+    /// The parser only cares about `@import` directives — anything else
+    /// in the file is skipped. This test pins the "garbage surrounded"
+    /// case: junk tokens, half-formed rules, and mismatched braces
+    /// around a legitimate `@import` line, all in one file. Discovery
+    /// must still extract the valid target without tripping over the
+    /// surrounding mess.
+    #[test]
+    fn discover_extracts_valid_import_from_garbage_content() {
+        let tmp = make_test_dir("garbage-plus-valid");
+        let main = tmp.join("style.css");
+        let theme = tmp.join("theme.css");
+        std::fs::write(&theme, "").expect("write theme.css");
+        // Mix of nonsense that GTK will reject plus one real @import.
+        // The parser scans for the `@import` substring, extracts the
+        // quoted path, and leaves the rest to GTK's own parse-warning
+        // reporting.
+        let content = format!(
+            "{{ unclosed brace\n\
+             nonsense garbage  ::: nope\n\
+             @import \"{}\";\n\
+             @;;; @@ garbage\n\
+             window {{ not really css",
+            theme.display()
+        );
+        std::fs::write(&main, content).expect("write garbage main");
+
+        let imports = discover_watched_imports(&main);
+        let canonical_theme = theme.canonicalize().expect("canonicalize theme.css");
+        assert_eq!(
+            imports,
+            vec![canonical_theme],
+            "valid @import inside garbage should still be discovered"
+        );
+        cleanup_test_dir(&tmp);
+    }
+
     /// When a node in the `@import` graph is unreadable (permission
     /// denied), the walk should:
     ///   - keep the file itself in the discovered set (its parent
