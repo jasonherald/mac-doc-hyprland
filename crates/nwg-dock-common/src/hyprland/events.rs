@@ -6,7 +6,15 @@ use std::os::unix::net::UnixStream;
 /// Events emitted by the Hyprland event stream.
 #[derive(Debug, Clone)]
 pub enum HyprEvent {
-    /// Active window changed. Contains the window address.
+    /// A client changed in a way that may affect the visible client list:
+    /// focus moved, a window opened/closed, or a window moved across
+    /// workspaces. Carries the address from the originating event so
+    /// downstream dedup against the last-seen address still works.
+    ///
+    /// Folded together so the dock has a single "rebuild may be needed"
+    /// signal — `needs_rebuild` does the actual class-list diff and
+    /// short-circuits if nothing changed. This mirrors what the Sway
+    /// backend already does (`new`/`close`/`focus` → ActiveWindowChanged).
     ActiveWindowV2(String),
     /// Monitor added or removed.
     MonitorChanged,
@@ -78,6 +86,15 @@ impl EventStream {
 fn parse_event(line: &str) -> HyprEvent {
     if let Some(addr) = line.strip_prefix("activewindowv2>>") {
         HyprEvent::ActiveWindowV2(addr.trim().to_string())
+    } else if let Some(rest) = line
+        .strip_prefix("openwindow>>")
+        .or_else(|| line.strip_prefix("closewindow>>"))
+        .or_else(|| line.strip_prefix("movewindowv2>>"))
+        .or_else(|| line.strip_prefix("movewindow>>"))
+    {
+        // First comma-delimited field is the window address for all four events.
+        let addr = rest.split(',').next().unwrap_or("").trim().to_string();
+        HyprEvent::ActiveWindowV2(addr)
     } else if line.starts_with("monitoraddedv2>>") || line.starts_with("monitorremoved>>") {
         HyprEvent::MonitorChanged
     } else {
@@ -116,5 +133,43 @@ mod tests {
     #[test]
     fn parse_other_event() {
         assert!(matches!(parse_event("workspace>>2"), HyprEvent::Other(_)));
+    }
+
+    /// Regression: closing a non-focused window must propagate as a window-change
+    /// signal, not get swallowed as `Other`. Without this the dock keeps showing
+    /// a button for an app that is no longer running.
+    #[test]
+    fn parse_close_window_yields_address() {
+        match parse_event("closewindow>>0xdeadbeef") {
+            HyprEvent::ActiveWindowV2(addr) => assert_eq!(addr, "0xdeadbeef"),
+            other => panic!("expected ActiveWindowV2, got {:?}", other),
+        }
+    }
+
+    /// Companion to the close case — a new window must trigger the same signal.
+    #[test]
+    fn parse_open_window_extracts_first_field() {
+        match parse_event("openwindow>>0xabc123,1,Alacritty,Terminal") {
+            HyprEvent::ActiveWindowV2(addr) => assert_eq!(addr, "0xabc123"),
+            other => panic!("expected ActiveWindowV2, got {:?}", other),
+        }
+    }
+
+    /// movewindow events change which workspace a client is on, which can
+    /// affect which clients should appear in the dock under workspace filters.
+    #[test]
+    fn parse_move_window_extracts_address() {
+        match parse_event("movewindow>>0xfeed,2") {
+            HyprEvent::ActiveWindowV2(addr) => assert_eq!(addr, "0xfeed"),
+            other => panic!("expected ActiveWindowV2, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_movewindow_v2_extracts_address() {
+        match parse_event("movewindowv2>>0xfeed,3,workspace-3") {
+            HyprEvent::ActiveWindowV2(addr) => assert_eq!(addr, "0xfeed"),
+            other => panic!("expected ActiveWindowV2, got {:?}", other),
+        }
     }
 }

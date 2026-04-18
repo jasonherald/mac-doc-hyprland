@@ -109,14 +109,7 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
     let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
-    let image = icons::create_image(app_id, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = ctx
-            .data_home
-            .join("nwg-dock-hyprland/images/icon-missing.svg");
-        icons::pixbuf_from_file(&path, img_size, img_size)
-            .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
-            .unwrap_or_default()
-    });
+    let image = icons::create_image(app_id, img_size, &app_dirs).unwrap_or_else(missing_icon);
     image.set_pixel_size(img_size);
     button.set_child(Some(&image));
     button.add_css_class("dock-button");
@@ -182,14 +175,8 @@ pub fn task_button(client: &WmClient, instances: &[WmClient], ctx: &DockContext)
     let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
-    let image = icons::create_image(&client.class, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = ctx
-            .data_home
-            .join("nwg-dock-hyprland/images/icon-missing.svg");
-        icons::pixbuf_from_file(&path, img_size, img_size)
-            .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
-            .unwrap_or_default()
-    });
+    let image =
+        icons::create_image(&client.class, img_size, &app_dirs).unwrap_or_else(missing_icon);
     image.set_pixel_size(img_size);
     button.set_child(Some(&image));
     button.add_css_class("dock-button");
@@ -311,4 +298,12 @@ pub fn launcher_button(ctx: &DockContext, win: &gtk4::ApplicationWindow) -> Opti
         ctx.config.position,
         ctx.config.is_vertical(),
     ))
+}
+
+/// Placeholder image used when an app's icon can't be resolved. Goes through
+/// GTK4's icon theme rather than gdk-pixbuf so it renders even on systems
+/// where the gdk-pixbuf SVG loader module is missing (modern librsvg).
+/// Centralized so both pinned and task buttons stay in sync.
+fn missing_icon() -> gtk4::Image {
+    gtk4::Image::from_icon_name("image-missing")
 }

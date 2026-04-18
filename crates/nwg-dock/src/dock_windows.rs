@@ -2,7 +2,7 @@ use crate::config::DockConfig;
 use crate::ui;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 /// Per-monitor dock window state used during rebuilds.
@@ -12,6 +12,10 @@ pub struct MonitorDock {
     pub alignment_box: gtk4::Box,
     pub current_main_box: Rc<RefCell<Option<gtk4::Box>>>,
     pub win: gtk4::ApplicationWindow,
+    /// Item count from the previous rebuild — used to detect content
+    /// shrinkage so we only force a layer-shell surface reset when
+    /// actually needed (issue #62 fix without per-rebuild flicker).
+    pub prev_item_count: Cell<usize>,
 }
 
 /// Creates a dock window for each monitor and returns the per-monitor state.
@@ -55,6 +59,7 @@ pub fn create_single_dock_window(
         alignment_box,
         current_main_box: Rc::new(RefCell::new(None)),
         win,
+        prev_item_count: Cell::new(0),
     }
 }
 
