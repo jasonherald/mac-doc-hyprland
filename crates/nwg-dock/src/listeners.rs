@@ -261,8 +261,8 @@ fn zombie_names(
 ) -> Vec<String> {
     dock_names
         .iter()
-        .zip(dock_has_surface.iter())
-        .filter(|(name, has_surface)| !**has_surface && present_names.contains(name))
+        .zip(dock_has_surface.iter().copied())
+        .filter(|(name, has_surface)| !has_surface && present_names.contains(name))
         .map(|(name, _)| name.clone())
         .collect()
 }
