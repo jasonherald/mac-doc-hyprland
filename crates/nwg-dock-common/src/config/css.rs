@@ -1628,6 +1628,7 @@ mod tests {
     /// chmod/save on the file fires a `Modify` event that passes our
     /// content-change filter, triggering `maybe_rebuild_watcher` →
     /// rescan → discovery completes the chain.
+    #[cfg(unix)]
     #[test]
     fn unreadable_node_skips_children_without_panic() {
         use std::os::unix::fs::PermissionsExt;
@@ -1692,6 +1693,7 @@ mod tests {
     /// Discovery is invoked via the alias path. We verify the output
     /// contains the canonical form of `theme.css` so the notify match
     /// set lines up with event paths (which are canonical).
+    #[cfg(unix)]
     #[test]
     fn discovery_uses_as_referenced_base_dir_for_symlinked_parent() {
         let tmp = make_test_dir("symlink-parent");
