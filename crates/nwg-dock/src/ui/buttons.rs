@@ -109,14 +109,8 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
     let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
-    let image = icons::create_image(app_id, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = ctx
-            .data_home
-            .join("nwg-dock-hyprland/images/icon-missing.svg");
-        icons::pixbuf_from_file(&path, img_size, img_size)
-            .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
-            .unwrap_or_default()
-    });
+    let image = icons::create_image(app_id, img_size, &app_dirs)
+        .unwrap_or_else(|| gtk4::Image::from_icon_name("image-missing"));
     image.set_pixel_size(img_size);
     button.set_child(Some(&image));
     button.add_css_class("dock-button");
@@ -182,14 +176,8 @@ pub fn task_button(client: &WmClient, instances: &[WmClient], ctx: &DockContext)
     let app_dirs = ctx.state.borrow().app_dirs.clone();
 
     let button = gtk4::Button::new();
-    let image = icons::create_image(&client.class, img_size, &app_dirs).unwrap_or_else(|| {
-        let path = ctx
-            .data_home
-            .join("nwg-dock-hyprland/images/icon-missing.svg");
-        icons::pixbuf_from_file(&path, img_size, img_size)
-            .map(|pb| gtk4::Image::from_pixbuf(Some(&pb)))
-            .unwrap_or_default()
-    });
+    let image = icons::create_image(&client.class, img_size, &app_dirs)
+        .unwrap_or_else(|| gtk4::Image::from_icon_name("image-missing"));
     image.set_pixel_size(img_size);
     button.set_child(Some(&image));
     button.add_css_class("dock-button");
