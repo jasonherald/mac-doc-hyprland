@@ -349,7 +349,7 @@ Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
 - **Per-monitor dock windows** — the Go dock creates one window; the Rust dock creates a separate window per monitor for better multi-monitor support.
 - **Smart rebuild** — the Go dock force-rebuilds on every active window event; the Rust dock only rebuilds when the client class list or active window actually changes (more efficient).
 - **Compositor abstraction** — the Go versions are Hyprland-only; this Rust port supports Hyprland and Sway via a trait-based compositor abstraction with auto-detection.
-- **Math evaluation** — the Go drawer uses the `expr` library for arbitrary expression evaluation; the Rust port uses a custom arithmetic parser (safer, covers the common use case).
+- **Math evaluation** — the Go drawer uses the `expr` library for arbitrary expression evaluation; the Rust port uses the `exmex` crate with a small custom operator factory that adds `pi` (alongside `π`), `%` modulo, and base-10 `log`. Scoped to pure arithmetic (no variables) so random search queries don't accidentally evaluate.
 - **Drag-to-reorder** — new feature not in the Go dock: drag pinned icons to rearrange, drag off to unpin.
 - **CLI flag naming** — multi-word flags standardized to kebab-case (e.g., `--nocats` → `--no-cats`, `--pbsize` → `--pb-size`). Multi-char Go short forms (`-hd`, `-iw`, `-is`) not available in clap (single-char only); use the long forms instead.
 - **Fuzzy class matching** — compositor classes with hyphens vs spaces (e.g., desktop file `github-desktop` vs compositor class `github desktop`) are matched automatically for correct icon display and process grouping.
