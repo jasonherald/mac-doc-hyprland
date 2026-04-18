@@ -169,7 +169,7 @@ fn build_watch_state(
 /// the main CSS and every currently-discovered `@import` target.
 /// Pure; testable without notify or the filesystem.
 fn compute_watched_set(main_css: &Path, imports: &[PathBuf]) -> HashSet<PathBuf> {
-    let mut out = HashSet::with_capacity(imports.len() + 1);
+    let mut out = HashSet::with_capacity(imports.len() + 1); // +1 for main_css
     out.insert(main_css.to_path_buf());
     for imp in imports {
         out.insert(imp.clone());
@@ -1212,6 +1212,99 @@ mod tests {
         assert_ne!(set_b, set_both);
         assert_ne!(set_b, set_none);
         assert_ne!(set_both, set_none);
+
+        cleanup_test_dir(&tmp);
+    }
+
+    // ─── Cyclical / self-referential import safety ─────────────────────────
+    //
+    // These regressions pin the safety-by-construction properties that
+    // protect against infinite loops or unbounded work when a user
+    // accidentally (or deliberately) writes `@import` directives that
+    // reference each other or themselves:
+    //
+    // 1. `discover_watched_imports` is non-recursive — it only parses the
+    //    main CSS, never imports-of-imports. So `a.css ↔ b.css` produces
+    //    a bounded watched set.
+    // 2. `compute_watched_set` uses `HashSet<PathBuf>`, so identical
+    //    canonical paths collapse — self-import (`a.css` importing
+    //    itself) yields a one-element set, not an unbounded one.
+    //
+    // Actual CSS cycle-detection at *parse* time is GTK's responsibility;
+    // we're only asserting that our watching logic doesn't blow up.
+
+    #[test]
+    fn self_import_dedupes_to_single_entry() {
+        let tmp = make_test_dir("self-import");
+        let css = tmp.join("style.css");
+        // A file that `@import`s itself by absolute path.
+        let content = format!("@import \"{}\";", css.display());
+        std::fs::write(&css, &content).expect("write self-import style.css");
+
+        let imports = discover_watched_imports(&css);
+        let watched = compute_watched_set(&css, &imports);
+
+        // The main CSS and the "import" point to the same file, so the
+        // set contains exactly one entry after canonical dedup.
+        assert_eq!(
+            watched.len(),
+            1,
+            "self-import must dedupe via HashSet: {:?}",
+            watched
+        );
+        let canonical_css = css.canonicalize().expect("canonicalize main css");
+        assert!(watched.contains(&canonical_css));
+
+        cleanup_test_dir(&tmp);
+    }
+
+    #[test]
+    fn mutual_import_produces_bounded_set() {
+        let tmp = make_test_dir("mutual-import");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        // Mutual cycle: a imports b, b imports a.
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&b, format!("@import \"{}\";", a.display())).expect("write b.css");
+
+        let imports = discover_watched_imports(&a);
+        let watched = compute_watched_set(&a, &imports);
+
+        // We parse only the main CSS (a.css) and its direct imports
+        // (b.css). We never recurse into b.css to discover its imports,
+        // so the watched set is {a, b} — two entries, bounded.
+        assert_eq!(
+            watched.len(),
+            2,
+            "mutual import set must be bounded at direct-import depth: {:?}",
+            watched
+        );
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// A chain `main → a.css → b.css` only watches `{main, a.css}`.
+    /// This is a deliberate, documented limitation — not a bug — and
+    /// this test pins the behavior so a future "let's recurse" change
+    /// consciously updates it.
+    #[test]
+    fn nested_imports_are_not_recursively_discovered() {
+        let tmp = make_test_dir("nested-imports");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        std::fs::write(&b, "").expect("write b.css");
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        // main + a.css = 2. b.css is reachable through a.css but we
+        // don't recurse, so it's not in the watched set.
+        assert_eq!(watched.len(), 2);
+        let canonical_b = b.canonicalize().expect("canonicalize b.css");
+        assert!(!watched.contains(&canonical_b));
 
         cleanup_test_dir(&tmp);
     }
