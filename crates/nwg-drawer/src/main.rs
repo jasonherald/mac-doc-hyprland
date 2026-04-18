@@ -407,6 +407,7 @@ fn drawer_monitor_connector(
     }
     compositor
         .list_monitors()
+        .map_err(|e| log::debug!("list_monitors failed while resolving drawer monitor: {e}"))
         .ok()?
         .into_iter()
         .find(|m| m.focused)
