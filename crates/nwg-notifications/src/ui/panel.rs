@@ -31,8 +31,12 @@ impl NotificationPanel {
     ) -> Self {
         // One transparent backdrop per connected monitor — catches clicks
         // outside the panel on any output (issue #55).
-        let backdrops =
-            super::window::create_fullscreen_backdrops(app, "mac-notification-backdrop");
+        let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
+            app,
+            "mac-notification-backdrop",
+            "notification-backdrop",
+            None,
+        );
 
         // Panel window
         let win = gtk4::ApplicationWindow::new(app);

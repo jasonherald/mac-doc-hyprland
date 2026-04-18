@@ -29,8 +29,12 @@ impl DndMenu {
         on_state_change: Rc<dyn Fn()>,
     ) -> Self {
         // One transparent backdrop per connected monitor for click-outside-to-close
-        let backdrops =
-            super::window::create_fullscreen_backdrops(app, "mac-notification-dnd-backdrop");
+        let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
+            app,
+            "mac-notification-dnd-backdrop",
+            "dnd-menu-backdrop",
+            None,
+        );
 
         let win = gtk4::ApplicationWindow::new(app);
         win.add_css_class("dnd-menu-window");
