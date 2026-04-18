@@ -395,14 +395,15 @@ fn apply_provider(provider: &gtk4::CssProvider, priority: u32) {
 /// The main CSS itself is not in the returned vec — the caller
 /// (`watch_css`) already tracks it separately as the root.
 ///
-/// Canonicalization matters twice here:
-/// 1. The stored paths must match what `notify` later reports
-///    (dot segments resolved, symlinks followed) so the watched-set
-///    lookup actually matches event paths (issue #75).
-/// 2. Cycle detection via `HashSet<PathBuf>` only works if the same
-///    file always compares equal regardless of how it was referenced.
-///    Without canonicalization `a.css → b.css → ./a.css` would cycle
-///    forever because the lexical forms differ.
+/// Canonical paths are used for dedup (`visited`) and for the returned
+/// set (so the notify event match — which reports canonical paths —
+/// works), but the *as-referenced* form of each file is what drives
+/// the next hop's relative-import resolution. GTK4 resolves relative
+/// `@import` paths against the directory of the path it was *given*,
+/// not the symlink-resolved target, so our discovery must do the same
+/// to stay in sync. Without this a symlinked stylesheet tree could
+/// make us watch different files than GTK actually loads (CodeRabbit
+/// catch on #79).
 fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
     let main_canonical = match main_css.canonicalize() {
         Ok(c) => c,
@@ -418,19 +419,20 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
 
     // `visited` tracks every canonical path we've seen (including the
     // main file) so we don't re-process a node reached via two paths
-    // (diamond graph) or loop on a cycle. `queue` is the BFS frontier.
-    // `out` collects the discovered imports in BFS order, excluding
-    // the main file (seeded into `visited` so back-references to it
-    // from deeper nodes are treated as cycles, not re-discovered).
+    // (diamond graph) or loop on a cycle. `queue` holds the
+    // *as-referenced* paths to process — each file's own
+    // `@import` resolution uses that path's parent as `base_dir`,
+    // matching GTK's behavior. `out` collects the discovered imports
+    // in BFS order, excluding the main file.
     let mut visited: HashSet<PathBuf> = HashSet::new();
-    visited.insert(main_canonical.clone());
+    visited.insert(main_canonical);
     let mut queue: VecDeque<PathBuf> = VecDeque::new();
-    queue.push_back(main_canonical);
+    queue.push_back(main_css.to_path_buf());
     let mut out: Vec<PathBuf> = Vec::new();
 
     while let Some(current) = queue.pop_front() {
         if let Some(imports) = read_direct_imports(&current) {
-            for imp in imports {
+            for (import_ref, import_canonical) in imports {
                 if out.len() >= MAX_IMPORT_GRAPH_SIZE {
                     log::warn!(
                         "CSS @import graph reached the {}-file cap; not discovering further targets",
@@ -438,9 +440,12 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
                     );
                     return out;
                 }
-                if visited.insert(imp.clone()) {
-                    out.push(imp.clone());
-                    queue.push_back(imp);
+                if visited.insert(import_canonical.clone()) {
+                    out.push(import_canonical);
+                    // Queue the AS-REFERENCED form so its own
+                    // relative @imports resolve against the same
+                    // base_dir GTK will use at load time.
+                    queue.push_back(import_ref);
                 }
             }
         }
@@ -450,11 +455,15 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
 }
 
 /// Reads a single CSS file and returns its directly-referenced
-/// `@import` targets as canonical absolute paths. Unresolvable entries
-/// (missing files, unsupported URL schemes, unparseable directives) are
-/// skipped. Returns `None` if the file itself can't be read — callers
-/// treat that as "no imports" and continue.
-fn read_direct_imports(css_file: &Path) -> Option<Vec<PathBuf>> {
+/// `@import` targets as `(as_referenced, canonical)` pairs.
+/// `as_referenced` is the resolved path using the file's parent as
+/// base_dir — used for the next hop's relative-import resolution.
+/// `canonical` is `as_referenced.canonicalize()` — used for dedup and
+/// the final watched set. Unresolvable entries (missing files,
+/// unsupported URL schemes, unparseable directives) are skipped.
+/// Returns `None` if the file itself can't be read — callers treat
+/// that as "no imports" and continue.
+fn read_direct_imports(css_file: &Path) -> Option<Vec<(PathBuf, PathBuf)>> {
     let base_dir = css_file.parent()?;
     let content = match std::fs::read_to_string(css_file) {
         Ok(c) => c,
@@ -473,7 +482,7 @@ fn read_direct_imports(css_file: &Path) -> Option<Vec<PathBuf>> {
             continue;
         };
         match resolved.canonicalize() {
-            Ok(canonical) => out.push(canonical),
+            Ok(canonical) => out.push((resolved, canonical)),
             Err(e) => {
                 log::debug!(
                     "CSS @import target not accessible ({}): {}",
@@ -1507,11 +1516,58 @@ mod tests {
         std::fs::write(&main, format!("@import \"{}\";", files[0].display())).expect("write main");
 
         let imports = discover_watched_imports(&main);
-        assert!(
-            imports.len() <= MAX_IMPORT_GRAPH_SIZE,
-            "discovery exceeded cap: got {} imports (cap {})",
+        // Linear, duplicate-free chain → discovery should reach the
+        // boundary exactly. A regression that stops the walk earlier
+        // (e.g., off-by-one in the cap check) would be hidden by a
+        // loose `<=` assertion; pin the exact value instead.
+        assert_eq!(
             imports.len(),
-            MAX_IMPORT_GRAPH_SIZE
+            MAX_IMPORT_GRAPH_SIZE,
+            "linear chain should discover exactly up to the cap (got {})",
+            imports.len()
+        );
+
+        cleanup_test_dir(&tmp);
+    }
+
+    /// Regression for the CodeRabbit catch on #79: when the main CSS
+    /// is reached via a symlinked directory, relative `@import` paths
+    /// must resolve against the **as-referenced** parent (the symlink
+    /// path the user handed to GTK), not the canonical target. GTK4
+    /// uses the as-given base for its own `@import` resolution, so
+    /// discovery must agree — otherwise we'd watch a different set of
+    /// files than GTK actually loads, and edits to the real targets
+    /// wouldn't hot-reload.
+    ///
+    /// Fixture:
+    ///   /tmp/<test>/real/style.css   (contains `@import "theme.css"`)
+    ///   /tmp/<test>/real/theme.css   — exists via the alias path
+    ///   /tmp/<test>/alias            → symlink to `real`
+    ///
+    /// Discovery is invoked via the alias path. We verify the output
+    /// contains the canonical form of `theme.css` so the notify match
+    /// set lines up with event paths (which are canonical).
+    #[test]
+    fn discovery_uses_as_referenced_base_dir_for_symlinked_parent() {
+        let tmp = make_test_dir("symlink-parent");
+        let real = tmp.join("real");
+        std::fs::create_dir_all(&real).expect("create real dir");
+        let real_style = real.join("style.css");
+        let real_theme = real.join("theme.css");
+        std::fs::write(&real_theme, "").expect("write theme.css");
+        std::fs::write(&real_style, "@import \"theme.css\";").expect("write style.css");
+
+        let alias = tmp.join("alias");
+        std::os::unix::fs::symlink(&real, &alias).expect("create symlink alias→real");
+        let alias_style = alias.join("style.css");
+
+        let imports = discover_watched_imports(&alias_style);
+        let canonical_theme = real_theme.canonicalize().expect("canonicalize theme.css");
+
+        assert_eq!(imports.len(), 1, "expected one import, got {:?}", imports);
+        assert_eq!(
+            imports[0], canonical_theme,
+            "discovery must canonicalize the import target so notify match works"
         );
 
         cleanup_test_dir(&tmp);
