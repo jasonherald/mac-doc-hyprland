@@ -17,9 +17,6 @@ pub struct DockState {
     /// Scaled icon size (adjusted when many apps are open).
     pub img_size_scaled: i32,
 
-    /// Last window id from event stream (used for change detection).
-    pub last_win_addr: String,
-
     /// True when a popover menu is open — prevents autohide.
     pub popover_open: bool,
 
@@ -65,7 +62,6 @@ impl DockState {
             app_dirs,
             compositor,
             img_size_scaled: 48,
-            last_win_addr: String::new(),
             popover_open: false,
             locked: false,
             drag_pending: false,
