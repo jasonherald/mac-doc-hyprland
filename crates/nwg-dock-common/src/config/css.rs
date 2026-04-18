@@ -65,15 +65,40 @@ pub fn load_css_override(css: &str) -> gtk4::CssProvider {
 /// improvement is tracked in #74.
 pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     let path = css_path.to_path_buf();
-    let Some(main_dir) = path.parent().map(Path::to_path_buf) else {
+    let Some(parent) = path.parent() else {
         log::debug!(
             "CSS watch skipped: no parent directory for {}",
             path.display()
         );
         return;
     };
+    // Canonicalize the parent directory so path comparisons against
+    // notify events work consistently. notify reports canonical paths
+    // (dot/dotdot segments resolved, symlinks followed) — if we stored
+    // the lexical form (e.g. `/tmp/./dir`) events would arrive as
+    // `/tmp/dir` and `HashSet<PathBuf>::contains` would silently
+    // miss them, breaking hot-reload for any relative import path.
+    // Parent is canonicalized rather than the full path so the watch
+    // still works when the main CSS file doesn't exist yet (the
+    // "watch for creation" flow in `load_css`).
+    let main_dir = match parent.canonicalize() {
+        Ok(d) => d,
+        Err(e) => {
+            log::debug!(
+                "CSS watch skipped: can't canonicalize parent dir of {}: {}",
+                path.display(),
+                e
+            );
+            return;
+        }
+    };
+    let Some(file_name) = path.file_name() else {
+        log::debug!("CSS watch skipped: no filename for {}", path.display());
+        return;
+    };
+    let canonical_path = main_dir.join(file_name);
 
-    let imports = discover_watched_imports(&path);
+    let imports = discover_watched_imports(&canonical_path);
     if !imports.is_empty() {
         log::info!(
             "Watching {} CSS @import target{} for hot-reload",
@@ -83,8 +108,8 @@ pub fn watch_css(css_path: &Path, provider: &gtk4::CssProvider) {
     }
 
     let (tx, rx) = std::sync::mpsc::channel::<()>();
-    spawn_watcher_thread(main_dir, path.clone(), imports, tx);
-    install_reload_timer(path, provider.clone(), rx);
+    spawn_watcher_thread(main_dir, canonical_path.clone(), imports, tx);
+    install_reload_timer(canonical_path, provider.clone(), rx);
 }
 
 /// Spawns the notify watcher on a background thread. Watches the main
@@ -265,13 +290,20 @@ fn discover_watched_imports(main_css: &Path) -> Vec<PathBuf> {
         let Some(resolved) = resolve_import_path(&raw, base_dir) else {
             continue;
         };
-        if resolved.exists() {
-            out.push(resolved);
-        } else {
-            log::debug!(
-                "CSS @import target does not exist on disk: {}",
-                resolved.display()
-            );
+        // Canonicalize for the same reason as `watch_css` does for the
+        // main path — notify events arrive with canonical paths, so the
+        // comparison set must store canonical paths to match. This also
+        // doubles as the existence check (canonicalize errors if the
+        // target is missing), replacing the earlier `exists()` guard.
+        match resolved.canonicalize() {
+            Ok(canonical) => out.push(canonical),
+            Err(e) => {
+                log::debug!(
+                    "CSS @import target not accessible ({}): {}",
+                    e,
+                    resolved.display()
+                );
+            }
         }
     }
     out
@@ -676,6 +708,31 @@ mod tests {
     }
 
     // ─── discover_watched_imports (I/O; uses tempdir) ─────────────────────
+    //
+    // Each test carves a uniquely-named subdirectory under the OS temp
+    // dir so parallel `cargo test` runs don't collide. `create_dir_all`
+    // and `remove_dir_all` are wrapped with `.expect(...)` so filesystem
+    // setup or cleanup errors fail loudly rather than quietly polluting
+    // subsequent runs — per CodeRabbit review on #75 and the project
+    // coding guideline against silent `let _ =` discards.
+
+    /// Builds a fresh temp subdirectory for one of the I/O tests below.
+    /// The directory name includes the test name and process id so a
+    /// concurrent test can't trample it.
+    fn make_test_dir(test_name: &str) -> std::path::PathBuf {
+        let tmp =
+            std::env::temp_dir().join(format!("nwg-css-test-{}-{}", test_name, std::process::id()));
+        // Start clean in case a prior test run crashed before cleanup.
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp)
+            .unwrap_or_else(|e| panic!("create test dir {}: {}", tmp.display(), e));
+        tmp
+    }
+
+    fn cleanup_test_dir(dir: &Path) {
+        std::fs::remove_dir_all(dir)
+            .unwrap_or_else(|e| panic!("remove test dir {}: {}", dir.display(), e));
+    }
 
     #[test]
     fn discover_no_file_returns_empty() {
@@ -685,44 +742,74 @@ mod tests {
 
     #[test]
     fn discover_file_without_imports_returns_empty() {
-        let tmp = std::env::temp_dir().join(format!("nwg-css-test-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&tmp);
+        let tmp = make_test_dir("no-imports");
         let css = tmp.join("style.css");
-        std::fs::write(&css, "window { color: red; }").unwrap();
+        std::fs::write(&css, "window { color: red; }").expect("write style.css");
         assert!(discover_watched_imports(&css).is_empty());
-        let _ = std::fs::remove_dir_all(&tmp);
+        cleanup_test_dir(&tmp);
     }
 
     #[test]
     fn discover_relative_import_resolved_and_existing() {
-        let tmp = std::env::temp_dir().join(format!("nwg-css-test-rel-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&tmp);
+        let tmp = make_test_dir("rel-import");
         let css = tmp.join("style.css");
         let import = tmp.join("theme.css");
-        std::fs::write(&import, "").unwrap();
-        std::fs::write(&css, "@import \"theme.css\";").unwrap();
+        std::fs::write(&import, "").expect("write theme.css");
+        std::fs::write(&css, "@import \"theme.css\";").expect("write style.css");
         let found = discover_watched_imports(&css);
-        assert_eq!(found, vec![import.clone()]);
-        let _ = std::fs::remove_dir_all(&tmp);
+        // `discover_watched_imports` canonicalizes — compare against the
+        // canonical form of the import path so symlink-under-/tmp setups
+        // (e.g. macOS /tmp → /private/tmp) still match.
+        let expected = import.canonicalize().expect("canonicalize import");
+        assert_eq!(found, vec![expected]);
+        cleanup_test_dir(&tmp);
+    }
+
+    /// Regression for the CodeRabbit catch on #75: a relative import
+    /// containing `.` segments used to be stored lexically (e.g.
+    /// `/dir/./theme.css`) but notify events always use the canonical
+    /// form (`/dir/theme.css`), so the `HashSet::contains` match
+    /// silently failed and hot-reload never fired. Canonicalizing both
+    /// the watched set entry and the (implicit) event path fixes it;
+    /// this test pins the canonical form by construction.
+    #[test]
+    fn discover_dot_segment_import_canonicalized() {
+        let tmp = make_test_dir("dot-segment");
+        let css = tmp.join("style.css");
+        let import = tmp.join("theme.css");
+        std::fs::write(&import, "").expect("write theme.css");
+        std::fs::write(&css, "@import \"./theme.css\";").expect("write style.css");
+        let found = discover_watched_imports(&css);
+        let expected = import.canonicalize().expect("canonicalize import");
+        assert_eq!(found, vec![expected]);
+        // Ensure no stray `.` segment survived into the stored path.
+        assert!(
+            !found[0].components().any(|c| matches!(
+                c,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )),
+            "stored path should not contain `.` or `..` segments: {}",
+            found[0].display()
+        );
+        cleanup_test_dir(&tmp);
     }
 
     #[test]
     fn discover_skips_nonexistent_imports() {
-        let tmp = std::env::temp_dir().join(format!("nwg-css-test-missing-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&tmp);
+        let tmp = make_test_dir("missing-import");
         let css = tmp.join("style.css");
-        std::fs::write(&css, "@import \"missing-theme.css\";").unwrap();
+        std::fs::write(&css, "@import \"missing-theme.css\";").expect("write style.css");
         assert!(discover_watched_imports(&css).is_empty());
-        let _ = std::fs::remove_dir_all(&tmp);
+        cleanup_test_dir(&tmp);
     }
 
     #[test]
     fn discover_skips_http_imports() {
-        let tmp = std::env::temp_dir().join(format!("nwg-css-test-http-{}", std::process::id()));
-        let _ = std::fs::create_dir_all(&tmp);
+        let tmp = make_test_dir("http-import");
         let css = tmp.join("style.css");
-        std::fs::write(&css, "@import \"https://example.com/theme.css\";").unwrap();
+        std::fs::write(&css, "@import \"https://example.com/theme.css\";")
+            .expect("write style.css");
         assert!(discover_watched_imports(&css).is_empty());
-        let _ = std::fs::remove_dir_all(&tmp);
+        cleanup_test_dir(&tmp);
     }
 }
