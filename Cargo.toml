@@ -42,8 +42,10 @@ nix = { version = "0.31", features = ["signal", "process", "fs"] }
 # Shell-aware command splitting (POSIX quoting rules)
 shell-words = "1"
 
-# Math expression evaluation (search bar calculator)
-meval = "0.2"
+# Math expression evaluation (search bar calculator).
+# Migrated off `meval` because its nom 1.2.4 transitive dep emits a
+# future-incompat warning on every build and is unmaintained since 2018.
+exmex = "0.20"
 
 # XDG directory resolution
 dirs = "6"
