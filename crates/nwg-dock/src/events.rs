@@ -147,16 +147,24 @@ mod tests {
         assert!(drain_new_events(&rx));
     }
 
-    /// Regression for issue #62: the previous dedup dropped a second event
-    /// carrying the same window id as the last one seen. On Sway that meant
-    /// `close(X)` following `focus(X)` got swallowed, the rebuild never
-    /// fired, and a ghost icon lingered in the dock. Now every real event
-    /// counts as a change; `needs_rebuild` is the source of truth for
-    /// whether the rebuild has actual work to do.
+    /// Regression for issue #62: the previous dedup compared each event's
+    /// id against the last one seen *across polls* — if poll N saw id X
+    /// and poll N+1 also saw id X, the second one got swallowed. That's
+    /// exactly the focused-window-close flow on Sway: `focus(X)` drains
+    /// in poll N, then `close(X)` arrives by poll N+1 and the old code
+    /// dropped it, leaving a ghost icon in the dock until some unrelated
+    /// focus event rebuilt it away.
+    ///
+    /// Splitting into two drain calls is what makes this assertion
+    /// meaningful — both drains receive the same id and both must
+    /// signal a change.
     #[test]
-    fn repeat_id_still_signals_change() {
+    fn repeat_id_across_polls_still_signals_change() {
         let (tx, rx) = mpsc::channel::<String>();
+
         tx.send("0xabc".to_string()).unwrap();
+        assert!(drain_new_events(&rx));
+
         tx.send("0xabc".to_string()).unwrap();
         assert!(drain_new_events(&rx));
     }
