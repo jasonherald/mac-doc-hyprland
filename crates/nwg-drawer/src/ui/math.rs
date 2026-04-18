@@ -1,3 +1,4 @@
+use exmex::{BinOp, Express, FlatEx, FloatOpsFactory, MakeOperators, Operator};
 use gtk4::prelude::*;
 
 /// Result of attempting to evaluate a math expression.
@@ -12,16 +13,68 @@ pub enum MathResult {
     NotMath,
 }
 
-/// Evaluates a math expression using the meval crate.
+/// Operator factory extending exmex's default float operators with the
+/// user-facing behaviors meval provided so the migration (#64) is
+/// transparent to people typing math in the search bar:
+///
+/// - `pi` as an alias for `π` — exmex ships `π` only, but humans type `pi`.
+/// - `%` as a binary modulo operator — exmex documents `%` as a custom
+///   operator example but doesn't register it by default.
+/// - `log` redefined to base-10 — exmex's default `log` is the natural
+///   logarithm (same as `ln`), whereas calculators and meval treat `log`
+///   as log-base-10. `ln` stays available for natural log.
+///
+/// `%` priority matches exmex's `/` (prio 3), which is higher than `*`
+/// (prio 2). Within a single priority class exmex resolves
+/// right-associatively, so picking `/`'s priority keeps `10 % 3 * 2`
+/// evaluating as `(10 % 3) * 2 = 2` rather than `10 % (3 * 2) = 4`.
+#[derive(Clone, Debug)]
+struct DrawerOpsFactory;
+impl MakeOperators<f64> for DrawerOpsFactory {
+    fn make<'a>() -> Vec<Operator<'a, f64>> {
+        let mut ops: Vec<Operator<'a, f64>> = FloatOpsFactory::<f64>::make()
+            .into_iter()
+            .filter(|op| op.repr() != "log")
+            .collect();
+        ops.push(Operator::make_unary("log", |a| a.log10()));
+        ops.push(Operator::make_constant("pi", std::f64::consts::PI));
+        ops.push(Operator::make_bin(
+            "%",
+            BinOp {
+                apply: |a, b| a % b,
+                prio: 3,
+                is_commutative: false,
+            },
+        ));
+        ops
+    }
+}
+
+/// Evaluates a math expression using the exmex crate.
 /// Supports: +, -, *, /, ^, %, parentheses, decimals,
-/// functions (sin, cos, sqrt, abs, ln, log, etc.),
-/// and constants (pi, e).
+/// functions (sin, cos, tan, sqrt, abs, ln, log, floor, ceil, signum, cbrt, tanh, ...),
+/// and constants (pi, π, e).
+///
+/// Migrated from meval in #64 to eliminate the nom 1.2.4
+/// future-incompat warning. exmex returns a single `ExError` for both
+/// parse and runtime failures; we squash all Err results to `NotMath`
+/// so partially-typed expressions don't show a red error inline. NaN
+/// and infinity are mapped to user-facing error messages identically
+/// to the old behavior.
 pub fn eval_expression(expr: &str) -> MathResult {
     let trimmed = expr.trim();
     if trimmed.is_empty() {
         return MathResult::NotMath;
     }
-    match meval::eval_str(trimmed) {
+    let parsed = match FlatEx::<f64, DrawerOpsFactory>::parse(trimmed) {
+        Ok(p) => p,
+        Err(_) => return MathResult::NotMath,
+    };
+    // Pure arithmetic only — expressions with free variables (unknown
+    // identifiers that aren't our registered constants) are treated as
+    // "not math". The empty binding slice makes `exmex::Express::eval`
+    // return Err for any unresolved variable, which matches the intent.
+    match parsed.eval(&[]) {
         Ok(val) if val.is_nan() => MathResult::Error("undefined".to_string()),
         Ok(val) if val.is_infinite() => MathResult::Error("overflow".to_string()),
         Ok(val) => MathResult::Value(val),
@@ -368,5 +421,71 @@ mod tests {
         // Test negative exponent with trailing zero: 1e-5 < 1e-4, above zero-snap
         let result = format_result(1e-5);
         assert!(result.contains("e-5"), "exponent corrupted: {}", result);
+    }
+
+    // ─── Regression tests for the meval → exmex migration (#64) ──────────
+    //
+    // These pin down behaviors that exmex doesn't provide out of the box
+    // but that meval did, so our custom `DrawerOpsFactory` must continue
+    // to cover them. If someone ever trims the factory these will fail
+    // loudly before users see the regression.
+
+    #[test]
+    fn pi_and_pi_unicode_both_resolve() {
+        // meval accepted `pi`; exmex ships only the Unicode `π` by default.
+        // Our factory adds `pi` as an alias, so both must work and agree.
+        let via_ascii = eval_val("pi");
+        let via_unicode = eval_val("π");
+        assert!((via_ascii - std::f64::consts::PI).abs() < 1e-10);
+        assert!((via_unicode - std::f64::consts::PI).abs() < 1e-10);
+        assert_eq!(via_ascii, via_unicode);
+    }
+
+    #[test]
+    fn modulo_in_basic_and_compound_expressions() {
+        // exmex doesn't register `%` by default. Our factory adds it with
+        // priority 2, matching `*` and `/` so precedence behaves as expected.
+        assert_eq!(eval_val("10 % 3"), 1.0);
+        assert_eq!(eval_val("17 % 5"), 2.0);
+        // Precedence sanity: `%` and `*` share priority → left-to-right
+        assert_eq!(eval_val("10 % 3 * 2"), 2.0);
+        // `%` after `+` → `+` should happen first since `+` is lower prio
+        assert_eq!(eval_val("7 + 10 % 3"), 8.0);
+    }
+
+    #[test]
+    fn unbound_identifier_is_not_math() {
+        // exmex parses app names as free variables — we must reject them
+        // so typing "firefox" in the drawer doesn't show a math result row.
+        assert!(matches!(eval_expression("xyz"), MathResult::NotMath));
+        assert!(matches!(eval_expression("foo + 1"), MathResult::NotMath));
+    }
+
+    #[test]
+    fn whitespace_trimming() {
+        // Leading/trailing/internal whitespace must all parse the same as
+        // the bare expression — meval was lenient here and users rely on it.
+        assert_eq!(eval_val("  2 + 2  "), 4.0);
+        assert_eq!(eval_val("2+2"), 4.0);
+        assert_eq!(eval_val("2 + 2"), 4.0);
+    }
+
+    #[test]
+    fn sin_pi_is_effectively_zero() {
+        // Classic FP smoke test: sin(pi) is ~1.2e-16, not exactly 0.
+        // format_result snaps that to "0" for display — verify the raw
+        // eval is at least tiny so the display path works.
+        let val = eval_val("sin(pi)");
+        assert!(val.abs() < 1e-10, "sin(pi) = {} should be ~0", val);
+        assert_eq!(format_result(val), "0");
+    }
+
+    #[test]
+    fn common_math_functions_available() {
+        // Round-up of functions the issue listed as non-negotiable.
+        assert!((eval_val("cos(0)") - 1.0).abs() < 1e-10);
+        assert!((eval_val("tan(0)") - 0.0).abs() < 1e-10);
+        assert!((eval_val("ln(e)") - 1.0).abs() < 1e-10);
+        assert!((eval_val("log(100)") - 2.0).abs() < 1e-10);
     }
 }
