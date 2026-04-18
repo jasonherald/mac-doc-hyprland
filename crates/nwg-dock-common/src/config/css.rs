@@ -1530,6 +1530,67 @@ mod tests {
         cleanup_test_dir(&tmp);
     }
 
+    /// When a node in the `@import` graph is unreadable (permission
+    /// denied), the walk should:
+    ///   - keep the file itself in the discovered set (its parent
+    ///     already canonicalized + queued it, and the watcher can
+    ///     still react to future content changes or a chmod that
+    ///     restores readability),
+    ///   - skip its children silently — `read_direct_imports` logs
+    ///     at debug level and returns `None`,
+    ///   - NOT panic, NOT propagate the failure upward.
+    ///
+    /// The self-heal path: when perms are fixed, a subsequent
+    /// chmod/save on the file fires a `Modify` event that passes our
+    /// content-change filter, triggering `maybe_rebuild_watcher` →
+    /// rescan → discovery completes the chain.
+    #[test]
+    fn unreadable_node_skips_children_without_panic() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = make_test_dir("unreadable-node");
+        let main = tmp.join("style.css");
+        let a = tmp.join("a.css");
+        let b = tmp.join("b.css");
+        std::fs::write(&b, "").expect("write b.css");
+        std::fs::write(&a, format!("@import \"{}\";", b.display())).expect("write a.css");
+        std::fs::write(&main, format!("@import \"{}\";", a.display())).expect("write style.css");
+
+        // Strip read perms from a.css so its content (and therefore
+        // its `@import b.css`) is invisible to discovery.
+        std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o000))
+            .expect("chmod a.css to 000");
+
+        let imports = discover_watched_imports(&main);
+        let watched = compute_watched_set(&main, &imports);
+
+        let canonical_a = a.canonicalize().expect("canonicalize a.css");
+        let canonical_b = b.canonicalize().expect("canonicalize b.css");
+
+        // a.css is still in the watched set — we canonicalize via
+        // stat, which doesn't need read perms on the file — so
+        // content changes fire events and the watcher will
+        // self-heal once perms are fixed.
+        assert!(
+            watched.contains(&canonical_a),
+            "unreadable a.css should still be watched (for self-heal on chmod); got {:?}",
+            watched
+        );
+        // b.css is reachable through a.css but we couldn't read a
+        // to find it, so it's not in the set.
+        assert!(
+            !watched.contains(&canonical_b),
+            "b.css should not be discovered when a.css is unreadable; got {:?}",
+            watched
+        );
+
+        // Restore perms so cleanup_test_dir's remove_dir_all doesn't
+        // trip on the locked-down file.
+        std::fs::set_permissions(&a, std::fs::Permissions::from_mode(0o644))
+            .expect("restore a.css perms");
+        cleanup_test_dir(&tmp);
+    }
+
     /// Regression for the CodeRabbit catch on #79: when the main CSS
     /// is reached via a symlinked directory, relative `@import` paths
     /// must resolve against the **as-referenced** parent (the symlink
