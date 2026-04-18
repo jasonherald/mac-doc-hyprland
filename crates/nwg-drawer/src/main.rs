@@ -180,34 +180,40 @@ fn activate_drawer(
     // close paths sometimes miss them (issue #55). One backdrop per
     // *other* monitor — the drawer's own monitor is excluded so the
     // backdrop doesn't race the drawer for click delivery there.
-    let drawer_monitor_name = drawer_monitor_connector(&config, compositor, &target_monitor);
-    let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
-        app,
-        "nwg-drawer-backdrop",
-        "drawer-backdrop",
-        drawer_monitor_name.as_deref(),
-    );
-    for backdrop in &backdrops {
-        let click = gtk4::GestureClick::new();
-        let on_launch_bd = Rc::clone(&on_launch);
-        click.connect_released(move |gesture, _, _, _| {
-            gesture.set_state(gtk4::EventSequenceState::Claimed);
-            on_launch_bd();
-        });
-        backdrop.add_controller(click);
-        backdrop.present();
-        backdrop.set_visible(false);
-    }
-    // Sync backdrop visibility with the drawer window. Using
-    // `connect_visible_notify` means every code path that toggles the
-    // drawer's visibility (signal poller, focus-loss, escape, close
-    // button, right-click on background) automatically toggles the
-    // backdrops too — no need to thread the Vec through every site.
-    {
-        let backdrops_sync = backdrops.clone();
+    //
+    // Only create backdrops in OnDemand keyboard mode. In Exclusive
+    // mode (the default) Hyprland drops pointer events to other
+    // layer-shell surfaces regardless of opacity — visible backdrops
+    // that never receive clicks would be worse UX than no backdrops
+    // at all (a dimmed desktop with no way to dismiss it).
+    if config.keyboard_on_demand {
+        let drawer_monitor_name = drawer_monitor_connector(&config, compositor, &target_monitor);
+        let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
+            app,
+            "nwg-drawer-backdrop",
+            "drawer-backdrop",
+            drawer_monitor_name.as_deref(),
+        );
+        for backdrop in &backdrops {
+            let click = gtk4::GestureClick::new();
+            let on_launch_bd = Rc::clone(&on_launch);
+            click.connect_released(move |gesture, _, _, _| {
+                gesture.set_state(gtk4::EventSequenceState::Claimed);
+                on_launch_bd();
+            });
+            backdrop.add_controller(click);
+            backdrop.present();
+            backdrop.set_visible(false);
+        }
+        // Sync backdrop visibility with the drawer window. Using
+        // `connect_visible_notify` means every code path that toggles
+        // the drawer's visibility (signal poller, focus-loss, escape,
+        // close button, right-click on background) automatically
+        // toggles the backdrops too — no need to thread the Vec
+        // through every site.
         win.connect_visible_notify(move |w| {
             let visible = w.is_visible();
-            for b in &backdrops_sync {
+            for b in &backdrops {
                 b.set_visible(visible);
             }
         });
@@ -385,8 +391,16 @@ fn drawer_monitor_connector(
     compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
     target_monitor: &Option<gtk4::gdk::Monitor>,
 ) -> Option<String> {
-    if let Some(mon) = target_monitor {
-        return mon.connector().map(|c| c.to_string());
+    // Let-guard so the target_monitor branch only returns when a connector
+    // name is actually available. On backends where GDK omits connector
+    // metadata we fall through to the `--output` flag and then to the
+    // compositor's focused-monitor answer, rather than giving up and
+    // creating a backdrop that races the drawer for clicks on the same
+    // output (CodeRabbit catch on #71).
+    if let Some(mon) = target_monitor
+        && let Some(connector) = mon.connector().map(|c| c.to_string())
+    {
+        return Some(connector);
     }
     if !config.output.is_empty() {
         return Some(config.output.clone());
