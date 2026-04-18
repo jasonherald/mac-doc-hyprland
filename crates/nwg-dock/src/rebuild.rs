@@ -77,43 +77,7 @@ pub fn create_rebuild_fn(
                 };
 
                 for dock in per_monitor.borrow().iter() {
-                    // Defense-in-depth: remove ALL children from
-                    // alignment_box, not just the tracked main_box. If a
-                    // ghost widget ever slipped through (older bug or
-                    // future regression), this purges it.
-                    while let Some(child) = dock.alignment_box.first_child() {
-                        dock.alignment_box.remove(&child);
-                    }
-                    dock.current_main_box.borrow_mut().take();
-
-                    let new_box = ui::dock_box::build(&dock.alignment_box, &ctx, &dock.win);
-                    let new_count = count_children(&new_box);
-                    *dock.current_main_box.borrow_mut() = Some(new_box);
-
-                    // Layer-shell surfaces don't shrink on their own when
-                    // content shrinks — GTK keeps a high-water-mark
-                    // allocation and `queue_resize` / `present` aren't enough
-                    // to invalidate it. The only reliable way is a hide/show
-                    // cycle, which tears the surface down and re-creates it
-                    // at the new natural size.
-                    //
-                    // Doing that on every rebuild causes a visible flicker,
-                    // so we only force the cycle when the item count actually
-                    // dropped — i.e. when the surface is now larger than it
-                    // needs to be (issue #62). Growing or steady-state
-                    // rebuilds don't need it; the surface naturally accepts a
-                    // larger natural-size request. Autohide users never see
-                    // this bug because the hover-driven hide/show does the
-                    // same thing for free.
-                    let prev = dock.prev_item_count.get();
-                    if dock.win.is_visible() && new_count < prev {
-                        let win = dock.win.clone();
-                        gtk4::glib::idle_add_local_once(move || {
-                            win.set_visible(false);
-                            win.set_visible(true);
-                        });
-                    }
-                    dock.prev_item_count.set(new_count);
+                    rebuild_one_dock(dock, &ctx);
                 }
 
                 // If another rebuild was requested during this iteration
@@ -133,10 +97,49 @@ pub fn create_rebuild_fn(
     rebuild_fn
 }
 
+/// Rebuilds the content of a single monitor's dock window.
+///
+/// Clears the alignment_box, builds a fresh main_box via dock_box::build,
+/// and triggers a layer-shell surface reset (hide/show cycle) if the item
+/// count dropped compared to the previous rebuild — see the outer loop
+/// comment for why shrink-only, and issue #62 for the underlying cause.
+fn rebuild_one_dock(dock: &MonitorDock, ctx: &DockContext) {
+    // Defense-in-depth: remove ALL children from alignment_box, not just
+    // the tracked main_box. If a ghost widget ever slipped through (older
+    // bug or future regression), this purges it.
+    while let Some(child) = dock.alignment_box.first_child() {
+        dock.alignment_box.remove(&child);
+    }
+    dock.current_main_box.borrow_mut().take();
+
+    let new_box = ui::dock_box::build(&dock.alignment_box, ctx, &dock.win);
+    let new_count = count_children(&new_box);
+    *dock.current_main_box.borrow_mut() = Some(new_box);
+
+    let prev = dock.prev_item_count.get();
+    if dock.win.is_visible() && new_count < prev {
+        schedule_surface_reset(&dock.win);
+    }
+    dock.prev_item_count.set(new_count);
+}
+
+/// Defers a hide/show cycle via an idle callback. The hide/show tears
+/// down the layer-shell surface and re-creates it at the new natural
+/// size, which is the only reliable way to shrink a layer-shell
+/// allocation in GTK4 — `queue_resize` and `present` both leave the
+/// surface at its high-water-mark width.
+fn schedule_surface_reset(win: &gtk4::ApplicationWindow) {
+    let win = win.clone();
+    gtk4::glib::idle_add_local_once(move || {
+        win.set_visible(false);
+        win.set_visible(true);
+    });
+}
+
 /// Counts the immediate children of a Box. Used to compare new vs previous
 /// rebuild item counts so we can detect content shrinkage and trigger the
 /// layer-shell surface reset only when actually needed (see issue #62 fix
-/// in the rebuild loop above).
+/// in `rebuild_one_dock`).
 fn count_children(parent: &gtk4::Box) -> usize {
     let mut n = 0;
     let mut child = parent.first_child();

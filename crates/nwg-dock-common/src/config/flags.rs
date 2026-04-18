@@ -20,28 +20,34 @@ pub fn normalize_legacy_flags(
             result.push(arg);
             continue;
         }
-        // Map -v to --version (Go compatibility for nwg-shell config utility)
-        if arg == "-v" {
-            result.push("--version".to_string());
-            continue;
+        match rewrite_arg(&arg, legacy_flags) {
+            Some(rewritten) => result.push(rewritten),
+            None => result.push(arg),
         }
-        // Convert -flag or -flag=value to --flag or --flag=value
-        if let Some(name) = arg.strip_prefix('-')
-            && !name.starts_with('-')
-        {
-            if let Some((flag, value)) = name.split_once('=') {
-                if legacy_flags.contains(&flag) {
-                    result.push(format!("--{}={}", flag, value));
-                    continue;
-                }
-            } else if legacy_flags.contains(&name) {
-                result.push(format!("--{}", name));
-                continue;
-            }
-        }
-        result.push(arg);
     }
     result
+}
+
+/// Rewrites a single argument if it's a recognized Go-style legacy flag,
+/// returning `None` to leave it unchanged otherwise. Splitting this out
+/// keeps the main loop shallow enough to stay under the cognitive-
+/// complexity budget (sonar rust:S3776).
+fn rewrite_arg(arg: &str, legacy_flags: &'static [&'static str]) -> Option<String> {
+    // Map -v to --version (Go compatibility for nwg-shell config utility)
+    if arg == "-v" {
+        return Some("--version".to_string());
+    }
+    let name = arg.strip_prefix('-')?;
+    if name.starts_with('-') {
+        return None;
+    }
+    if let Some((flag, value)) = name.split_once('=') {
+        legacy_flags
+            .contains(&flag)
+            .then(|| format!("--{}={}", flag, value))
+    } else {
+        legacy_flags.contains(&name).then(|| format!("--{}", name))
+    }
 }
 
 #[cfg(test)]
