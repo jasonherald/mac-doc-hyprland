@@ -12,7 +12,7 @@
 > | `nwg-drawer` | [Phase 3: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/99) | [Phase 3: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/102) | planned |
 > | `nwg-notifications` | [Phase 4: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/103) | [Phase 4: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/106) | planned |
 >
-> **Heading to the dock?** Current `exec-once = nwg-dock-hyprland …` autostart lines keep working — we're shipping a `nwg-dock-hyprland` symlink alias with the renamed binary so nothing breaks on upgrade.
+> **Heading to the dock?** Nothing's renamed yet — current `exec-once = nwg-dock-hyprland …` autostart lines keep working today because the binary is still called `nwg-dock-hyprland` in this monorepo. When the Phase 2 rename to `nwg-dock` lands, the Makefile will install a `nwg-dock-hyprland` → `nwg-dock` symlink ([tracked in #96](https://github.com/jasonherald/mac-doc-hyprland/issues/96)) so those autostart lines continue to work on upgrade without any config edits.
 
 ---
 
