@@ -1,31 +1,42 @@
+//! Real-time signal handling for inter-process control.
+//!
+//! The dock, drawer, and notification daemon use `SIGRTMIN+N` signals for
+//! user-driven toggle / show / hide actions. RT signals don't fit into
+//! `nix::sys::signal::Signal`, so this module drops to raw libc for the
+//! RT-specific parts.
+
 use nix::sys::signal::{self, Signal};
 use std::sync::mpsc;
 
-/// SIGRTMIN value on Linux (glibc = 34).
+/// `SIGRTMIN` value on Linux (glibc = 34).
 const SIGRTMIN: i32 = 34;
 
-/// Signal numbers used by dock/drawer for control.
+/// Signal used to toggle the dock/drawer window (SIGRTMIN+1).
 pub fn sig_toggle() -> i32 {
     SIGRTMIN + 1
 }
 
+/// Signal used to show the dock/drawer window (SIGRTMIN+2).
 pub fn sig_show() -> i32 {
     SIGRTMIN + 2
 }
 
+/// Signal used to hide the dock/drawer window (SIGRTMIN+3).
 pub fn sig_hide() -> i32 {
     SIGRTMIN + 3
 }
 
-/// Signal numbers used by the notification daemon.
+/// Signal used to toggle the notification panel (SIGRTMIN+4).
 pub fn sig_notification_toggle() -> i32 {
     SIGRTMIN + 4
 }
 
+/// Signal used to toggle Do-Not-Disturb (SIGRTMIN+5).
 pub fn sig_notification_dnd() -> i32 {
     SIGRTMIN + 5
 }
 
+/// Signal used to show the DND duration menu (SIGRTMIN+6).
 pub fn sig_notification_dnd_menu() -> i32 {
     SIGRTMIN + 6
 }
@@ -33,9 +44,13 @@ pub fn sig_notification_dnd_menu() -> i32 {
 /// Window visibility commands sent via signal handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowCommand {
+    /// Show the window.
     Show,
+    /// Hide the window.
     Hide,
+    /// Toggle visibility; on non-resident programs this means "quit".
     Toggle,
+    /// Quit the program.
     Quit,
 }
 

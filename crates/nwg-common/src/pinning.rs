@@ -1,3 +1,9 @@
+//! Pinned-app persistence shared between the dock and drawer.
+//!
+//! The cache file stores one desktop ID per line (no `.desktop` suffix).
+//! Writes go through an atomic temp-file-plus-rename so a crash mid-write
+//! never leaves a zero-byte or half-written list.
+
 use std::fs;
 use std::path::Path;
 

@@ -1,21 +1,32 @@
 use std::io::BufRead;
 use std::path::Path;
 
-/// A parsed XDG .desktop file entry.
+/// A parsed XDG `.desktop` file entry.
 #[derive(Debug, Clone, Default)]
 pub struct DesktopEntry {
+    /// The file's desktop ID (basename without `.desktop` suffix).
     pub desktop_id: String,
+    /// The base `Name=` field.
     pub name: String,
+    /// Locale-specific name (e.g. `Name[pl]=…`), if the user's locale matched.
     pub name_loc: String,
+    /// The base `Comment=` field.
     pub comment: String,
+    /// Locale-specific comment, if any.
     pub comment_loc: String,
+    /// The `Icon=` field (name or absolute path).
     pub icon: String,
+    /// The `Exec=` field (with `%U`/`%f`/etc. field codes still present).
     pub exec: String,
+    /// Raw `Categories=` field (semicolon-separated, possibly empty).
     pub category: String,
+    /// `Terminal=true` flag — launch in a terminal emulator.
     pub terminal: bool,
+    /// `NoDisplay=true` flag — entry is hidden from launchers.
     pub no_display: bool,
-    /// StartupWMClass from the .desktop file — used to match compositor window class
-    /// to desktop ID when they differ (e.g. "com.billz.app" → "billz").
+    /// `StartupWMClass=` — used to match compositor window class to desktop ID
+    /// when they differ (e.g. Visual Studio Code's `code.desktop` declares
+    /// `StartupWMClass=Code` because the running window class is `Code`, not `code`).
     pub startup_wm_class: String,
 }
 

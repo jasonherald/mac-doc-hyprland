@@ -4,10 +4,11 @@ use crate::error::{DockError, Result};
 
 /// Fallback compositor backend for environments without Hyprland or Sway IPC.
 ///
-/// Used by `nwg-drawer` so it can run on any compositor (Niri, river, Openbox, etc.).
-/// Most methods return errors — the drawer already handles those gracefully.
-/// The one exception is the launch path, which falls back to direct process spawn.
-pub struct NullCompositor;
+/// Returned by [`init_or_null`](super::init_or_null) on drawers that can run
+/// on any compositor (Niri, river, Openbox, etc.). Most methods return errors
+/// — the drawer already handles those gracefully. The one exception is the
+/// launch path, which falls back to direct process spawn.
+pub(crate) struct NullCompositor;
 
 impl Compositor for NullCompositor {
     fn list_clients(&self) -> Result<Vec<WmClient>> {

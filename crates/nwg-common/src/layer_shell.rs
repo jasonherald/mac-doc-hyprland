@@ -13,7 +13,7 @@ use gtk4_layer_shell::LayerShell;
 /// keyboard input. Caller is responsible for adding any CSS class that
 /// gives the window a non-zero background opacity — without that, some
 /// compositors won't deliver pointer events to it.
-pub fn setup_fullscreen_backdrop(
+pub(crate) fn setup_fullscreen_backdrop(
     win: &gtk4::ApplicationWindow,
     namespace: &str,
     monitor: &gtk4::gdk::Monitor,

@@ -23,7 +23,7 @@ pub fn config_dir(app_name: &str) -> PathBuf {
 }
 
 /// Returns the temp directory, checking TMPDIR/TEMP/TMP then falling back to /tmp.
-pub fn temp_dir() -> PathBuf {
+pub(crate) fn temp_dir() -> PathBuf {
     for var in &["TMPDIR", "TEMP", "TMP"] {
         if let Ok(dir) = env::var(var) {
             return PathBuf::from(dir);
@@ -81,7 +81,3 @@ pub fn load_text_lines(path: &Path) -> std::io::Result<Vec<String>> {
         .collect())
 }
 
-/// Reads a text file and returns its full contents.
-pub fn read_text_file(path: &Path) -> std::io::Result<String> {
-    fs::read_to_string(path)
-}

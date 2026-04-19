@@ -1,3 +1,12 @@
+//! Application launching helpers.
+//!
+//! Covers the two paths an app can be started by: directly via
+//! [`std::process::Command`] (for tools like `wl-copy`) or through the
+//! active compositor's `exec` mechanism (so `nwg-dock` / `nwg-drawer`
+//! launches inherit the compositor's session environment). Also hosts
+//! the shared child-reaper thread so GUI app processes don't become
+//! zombies.
+
 use crate::compositor::Compositor;
 use crate::desktop::icons::get_exec;
 use std::path::PathBuf;
@@ -111,7 +120,7 @@ pub fn launch(app_id: &str, app_dirs: &[PathBuf]) {
 }
 
 /// Prepends `GTK_THEME=` to a command if force-theme is enabled.
-pub fn prepend_theme(cmd: &str, theme_prefix: &str) -> String {
+pub(crate) fn prepend_theme(cmd: &str, theme_prefix: &str) -> String {
     if theme_prefix.is_empty() {
         cmd.to_string()
     } else {
@@ -169,7 +178,7 @@ pub fn launch_via_compositor(command: &str, compositor: &dyn Compositor) {
 static USE_UWSM: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Enables uwsm launch mode. Called at startup when `--wm uwsm` is detected.
-pub fn set_uwsm_mode(enabled: bool) {
+pub(crate) fn set_uwsm_mode(enabled: bool) {
     USE_UWSM.store(enabled, std::sync::atomic::Ordering::Relaxed);
     if enabled {
         log::info!("Launch mode: uwsm app --");
@@ -227,14 +236,14 @@ pub fn launch_shell_command(command: &str) {
 }
 
 /// Launches a command with terminal wrapping via the compositor.
-pub fn launch_terminal_via_compositor(command: &str, term: &str, compositor: &dyn Compositor) {
+pub(crate) fn launch_terminal_via_compositor(command: &str, term: &str, compositor: &dyn Compositor) {
     let full = format!("{} -e {}", term, command);
     launch_via_compositor(&full, compositor);
 }
 
 /// Launches a raw command string directly (without WM dispatch).
 /// Uses shell_words::split for POSIX-compliant quoted argument handling.
-pub fn launch_command(command: &str) {
+pub(crate) fn launch_command(command: &str) {
     let elements = split_command(command);
     if elements.is_empty() {
         log::error!("Empty command to launch");

@@ -41,9 +41,8 @@ pub fn get_exec(app_name: &str, app_dirs: &[PathBuf]) -> Option<String> {
 
 /// Resolves the display name for an application.
 ///
-/// Returns the locale-aware name (e.g., Name[pl] for Polish) if available,
-/// falling back to the base Name field, then the raw app class name.
-/// Fixes: nwg-piotr/nwg-dock#56 (broken application names)
+/// Returns the locale-aware name (e.g. `Name[pl]` for Polish) if available,
+/// falling back to the base `Name` field, then the raw app class name.
 pub fn get_name(app_name: &str, app_dirs: &[PathBuf]) -> String {
     if let Some(desktop_path) = find_desktop_file(app_name, app_dirs)
         && let Ok(entry) = parse_desktop_file(app_name, &desktop_path)
