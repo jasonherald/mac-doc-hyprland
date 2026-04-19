@@ -1,5 +1,21 @@
 # mac-dock-hyprland
 
+> [!IMPORTANT]
+> **This repo is being split into per-tool repositories.** Tracked in [#80](https://github.com/jasonherald/mac-doc-hyprland/issues/80).
+>
+> The shared library and the three binaries are moving to dedicated repos and will be published individually to crates.io at v0.3.0. Until each extraction lands, the monorepo here remains the source of truth; once a repo exists, this banner will link to it directly.
+>
+> | Tool | New repo | crates.io | Status |
+> |------|----------|-----------|--------|
+> | `nwg-common` (shared library) | [Phase 1: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/91) | [Phase 1: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/93) | planned |
+> | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | [Phase 2: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/95) | [Phase 2: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/98) | planned |
+> | `nwg-drawer` | [Phase 3: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/99) | [Phase 3: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/102) | planned |
+> | `nwg-notifications` | [Phase 4: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/103) | [Phase 4: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/106) | planned |
+>
+> **Heading to the dock?** Nothing's renamed yet — current `exec-once = nwg-dock-hyprland …` autostart lines keep working today because the binary is still called `nwg-dock-hyprland` in this monorepo. When the Phase 2 rename to `nwg-dock` lands, the Makefile will install a `nwg-dock-hyprland` → `nwg-dock` symlink ([tracked in #96](https://github.com/jasonherald/mac-doc-hyprland/issues/96)) so those autostart lines continue to work on upgrade without any config edits.
+
+---
+
 A macOS-style dock, application launcher, and notification center for [Hyprland](https://hyprland.org/) and [Sway](https://swaywm.org/), written in Rust.
 
 Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [nwg-drawer](https://github.com/nwg-piotr/nwg-drawer), and [mako](https://github.com/emersion/mako) with a unified, memory-safe implementation.
