@@ -57,7 +57,7 @@ you can import is documented. See `cargo doc --open -p nwg-common`.
 
 ## Pre-split history
 
-Prior to v0.3.0, this crate lived inside the
+Before v0.3.0, this crate lived inside the
 [`mac-doc-hyprland`](https://github.com/jasonherald/mac-doc-hyprland)
 monorepo as `nwg-dock-common` at version 0.2.0. The full pre-split git
 history is preserved in the monorepo; this crate's `CHANGELOG.md`
