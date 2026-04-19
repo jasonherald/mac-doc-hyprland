@@ -198,3 +198,83 @@ extern "C" fn sigterm_handler(_: i32) {
     // SAFETY: libc::_exit is async-signal-safe and terminates immediately.
     unsafe { libc::_exit(0) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rt_offsets_are_stable() {
+        let base = sigrtmin();
+        assert_eq!(sig_toggle(), base + 1);
+        assert_eq!(sig_show(), base + 2);
+        assert_eq!(sig_hide(), base + 3);
+        assert_eq!(sig_notification_toggle(), base + 4);
+        assert_eq!(sig_notification_dnd(), base + 5);
+        assert_eq!(sig_notification_dnd_menu(), base + 6);
+    }
+
+    #[test]
+    fn non_resident_only_accepts_toggle() {
+        assert_eq!(
+            map_signal_to_command(sig_toggle(), false),
+            Some(WindowCommand::Toggle)
+        );
+        assert_eq!(map_signal_to_command(sig_show(), false), None);
+        assert_eq!(map_signal_to_command(sig_hide(), false), None);
+    }
+
+    #[test]
+    fn resident_maps_toggle_show_hide() {
+        assert_eq!(
+            map_signal_to_command(sig_toggle(), true),
+            Some(WindowCommand::Toggle)
+        );
+        assert_eq!(
+            map_signal_to_command(sig_show(), true),
+            Some(WindowCommand::Show)
+        );
+        assert_eq!(
+            map_signal_to_command(sig_hide(), true),
+            Some(WindowCommand::Hide)
+        );
+    }
+
+    #[test]
+    fn sigusr1_maps_to_toggle_for_compat() {
+        // SIGUSR1 is the pre-RT-signals toggle mechanism — still honored
+        // (with a deprecation warning) in both resident and non-resident modes.
+        assert_eq!(
+            map_signal_to_command(libc::SIGUSR1, true),
+            Some(WindowCommand::Toggle)
+        );
+        assert_eq!(
+            map_signal_to_command(libc::SIGUSR1, false),
+            Some(WindowCommand::Toggle)
+        );
+    }
+
+    #[test]
+    fn unknown_signal_returns_none() {
+        assert_eq!(map_signal_to_command(libc::SIGTERM, true), None);
+        assert_eq!(map_signal_to_command(libc::SIGTERM, false), None);
+        // Higher RT signal we don't dispatch on
+        assert_eq!(map_signal_to_command(sigrtmin() + 99, true), None);
+    }
+
+    #[test]
+    fn send_signal_existence_check_on_self() {
+        // `kill(pid, 0)` is the POSIX idiom for "does this PID exist and
+        // can we signal it" without actually delivering a signal.
+        // Our own PID always qualifies.
+        let our_pid = std::process::id();
+        assert!(send_signal_to_pid(our_pid, 0));
+    }
+
+    #[test]
+    fn send_signal_to_invalid_pid_fails() {
+        // PID beyond the kernel's pid_max (4194304) can't exist.
+        let bogus_pid: u32 = 999_999_999;
+        assert!(!send_signal_to_pid(bogus_pid, 0));
+    }
+}
