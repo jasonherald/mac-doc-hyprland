@@ -359,6 +359,12 @@ Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
 - **Fuzzy class matching** — compositor classes with hyphens vs spaces (e.g., desktop file `github-desktop` vs compositor class `github desktop`) are matched automatically for correct icon display and process grouping.
 - **Launcher auto-detection** — if the configured launcher command (default `nwg-drawer`) is not found on PATH, the launcher button is automatically hidden with a log message.
 
+## Contributing
+
+PRs are welcome — main is protected, so please open a PR from a feature branch. `make lint` (fmt + clippy + test + deny + audit) should pass cleanly before review; CI runs the same pipeline.
+
+**Changelog entries are expected on every user-visible PR.** Each crate that maintains its own CHANGELOG (starting with `nwg-common` — see `crates/nwg-common/CHANGELOG.md`) follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Add a bullet under the `## [x.y.z] — Unreleased` section in the relevant crate's changelog covering what changed for the user, not the implementation details. Internal refactors and test-only changes may skip the entry.
+
 ## Credits
 
 Ported from the Go implementations by [Piotr Miller](https://github.com/nwg-piotr):
