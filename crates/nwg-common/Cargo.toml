@@ -2,8 +2,15 @@
 name = "nwg-common"
 version.workspace = true
 edition = "2024"
-license.workspace = true
-rust-version.workspace = true
+rust-version = "1.95"
+license = "MIT"
+description = "Shared library for nwg-dock, nwg-drawer, and nwg-notifications — compositor-neutral IPC abstraction for Hyprland and Sway, .desktop parsing, CSS hot-reload, and related system plumbing."
+readme = "README.md"
+# Placeholder — updated in Phase 1 of the monorepo split (#80) when this crate
+# gets extracted to its own repo.
+repository = "https://github.com/jasonherald/nwg-common"
+keywords = ["hyprland", "sway", "wayland", "gtk4", "layer-shell"]
+categories = ["gui", "config"]
 
 [dependencies]
 gtk4 = { workspace = true }
