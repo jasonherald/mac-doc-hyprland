@@ -7,10 +7,10 @@
 >
 > | Tool | New repo | crates.io | Status |
 > |------|----------|-----------|--------|
-> | `nwg-common` (shared library) | _coming in Phase 1_ | _coming in Phase 1_ | planned |
-> | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | _coming in Phase 2_ | _coming in Phase 2_ | planned |
-> | `nwg-drawer` | _coming in Phase 3_ | _coming in Phase 3_ | planned |
-> | `nwg-notifications` | _coming in Phase 4_ | _coming in Phase 4_ | planned |
+> | `nwg-common` (shared library) | [Phase 1: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/91) | [Phase 1: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/93) | planned |
+> | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | [Phase 2: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/95) | [Phase 2: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/98) | planned |
+> | `nwg-drawer` | [Phase 3: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/99) | [Phase 3: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/102) | planned |
+> | `nwg-notifications` | [Phase 4: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/103) | [Phase 4: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/106) | planned |
 >
 > **Heading to the dock?** Current `exec-once = nwg-dock-hyprland …` autostart lines keep working — we're shipping a `nwg-dock-hyprland` symlink alias with the renamed binary so nothing breaks on upgrade.
 
