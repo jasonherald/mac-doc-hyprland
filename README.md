@@ -361,7 +361,7 @@ Intentional differences from the original Go nwg-dock-hyprland and nwg-drawer:
 
 ## Contributing
 
-PRs are welcome — main is protected, so please open a PR from a feature branch. `make lint` (fmt + clippy + test + deny + audit) should pass cleanly before review; CI runs the same pipeline.
+PRs are welcome — main is protected, so please open a PR from a feature branch. Run `make lint` (fmt + clippy + test + deny + audit) locally before requesting review. CI runs a subset via separate workflows — `cargo-deny` (`.github/workflows/deny.yml`), `cargo-audit` (`audit.yml`), and CodeQL (`codeql.yml`) — plus CodeRabbit review; fmt / clippy / `cargo test` are not currently enforced in CI, so please ensure `make lint` is green locally.
 
 **Changelog entries are expected on every user-visible PR.** Each crate that maintains its own CHANGELOG (starting with `nwg-common` — see `crates/nwg-common/CHANGELOG.md`) follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Add a bullet under the `## [x.y.z] — Unreleased` section in the relevant crate's changelog covering what changed for the user, not the implementation details. Internal refactors and test-only changes may skip the entry.
 

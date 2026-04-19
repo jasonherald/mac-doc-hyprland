@@ -1,4 +1,4 @@
-## Changelog
+# Changelog
 
 All notable changes to `nwg-common` will be documented in this file.
 
@@ -78,3 +78,10 @@ the monorepo.
   at the crate root, so `cargo doc --no-deps -p nwg-common` runs
   warning-free and `cargo rustdoc -p nwg-common -- -D missing-docs`
   succeeds.
+
+### Fixed
+
+- `sigrtmin()` queries `libc::SIGRTMIN()` at runtime instead of
+  hardcoding `34`, so the RT-signal offsets resolve correctly on musl
+  (glibc reserves two NPTL slots and starts user RT signals at 34;
+  musl reserves three and starts at 35).
