@@ -61,19 +61,6 @@ pub struct HyprMonitor {
     pub vrr: bool,
 }
 
-/// A Hyprland workspace.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct HyprWorkspace {
-    pub id: i32,
-    pub name: String,
-    pub monitor: String,
-    pub windows: i32,
-    pub hasfullscreen: bool,
-    pub lastwindow: String,
-    pub lastwindowtitle: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,25 +93,6 @@ mod tests {
         assert_eq!(client.class, "firefox");
         assert_eq!(client.workspace.id, 1);
         assert_eq!(client.pid, 12345);
-    }
-
-    #[test]
-    fn deserialize_workspace() {
-        // Hyprland sends these fields as all-lowercase (no camelCase)
-        let json = r#"{
-            "id": 1,
-            "name": "1",
-            "monitor": "DP-1",
-            "windows": 3,
-            "hasfullscreen": true,
-            "lastwindow": "0xabc",
-            "lastwindowtitle": "Firefox"
-        }"#;
-        let ws: HyprWorkspace = serde_json::from_str(json).unwrap();
-        assert_eq!(ws.id, 1);
-        assert!(ws.hasfullscreen);
-        assert_eq!(ws.lastwindow, "0xabc");
-        assert_eq!(ws.lastwindowtitle, "Firefox");
     }
 
     #[test]
