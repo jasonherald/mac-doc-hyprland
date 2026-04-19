@@ -9,18 +9,42 @@ on:
 permissions:
   contents: read
 
+env:
+  GTK4_LAYER_SHELL_VERSION: v1.3.0
+
 jobs:
   test:
     name: cargo test --workspace
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Install GTK4 + layer-shell dev packages
+
+      - name: Install GTK4 dev + build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgtk-4-dev \
-            libgtk4-layer-shell-dev
-      - name: cargo test --workspace
-        run: cargo test --workspace
+            libwayland-dev \
+            meson \
+            ninja-build
+
+      # gtk4-layer-shell is not packaged in Ubuntu's default apt repos
+      # (checked Ubuntu 24.04 noble). Build from source, pinned by tag.
+      - name: Build & install gtk4-layer-shell ${{ env.GTK4_LAYER_SHELL_VERSION }}
+        run: |
+          git clone --depth 1 --branch "$GTK4_LAYER_SHELL_VERSION" \
+            https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+          cd /tmp/gtk4-layer-shell
+          meson setup build \
+            --buildtype=release \
+            -Dintrospection=false \
+            -Dvapi=false \
+            -Ddocs=false \
+            -Dexamples=false \
+            -Dtests=false
+          ninja -C build
+          sudo ninja -C build install
+          sudo ldconfig
+
+      - run: cargo test --workspace
