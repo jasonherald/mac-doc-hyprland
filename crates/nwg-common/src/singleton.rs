@@ -1,3 +1,11 @@
+//! Single-instance enforcement via a per-user lock file.
+//!
+//! The lock file stores the PID of the running instance; on startup a
+//! new process reads that PID, confirms the process is still alive and
+//! running our binary, and either refuses to start (returning the
+//! existing PID so the new invocation can signal it instead) or claims
+//! a stale lock when the prior owner is gone.
+
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -55,6 +63,7 @@ pub struct LockFile {
 }
 
 impl LockFile {
+    /// Path of the underlying lock file on disk.
     pub fn path(&self) -> &Path {
         &self.path
     }

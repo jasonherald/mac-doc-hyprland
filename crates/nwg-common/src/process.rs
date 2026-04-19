@@ -1,3 +1,7 @@
+//! Process introspection helpers, primarily for the `--dump-args` flow
+//! used by `make upgrade` to capture a running instance's CLI arguments
+//! before restarting it.
+
 use std::ffi::OsStr;
 use std::fs;
 

@@ -77,10 +77,7 @@ mod tests {
     #[test]
     fn wm_flag_uwsm() {
         let config = NotificationConfig::parse_from(["test", "--wm", "uwsm"]);
-        assert_eq!(
-            config.wm,
-            Some(nwg_common::compositor::WmOverride::Uwsm)
-        );
+        assert_eq!(config.wm, Some(nwg_common::compositor::WmOverride::Uwsm));
     }
 
     #[test]

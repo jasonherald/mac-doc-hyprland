@@ -1,34 +1,46 @@
+//! Compositor-neutral IPC abstraction.
+//!
+//! All window-manager IPC flows through the [`Compositor`] trait. Backends
+//! for Hyprland, Sway, and a no-op fallback are private implementation
+//! details; consumers call [`init_or_exit`] or [`init_or_null`] to get a
+//! trait object and only interact with the trait methods and the `Wm*`
+//! types from this module.
+
 mod hyprland;
 mod null;
 mod sway;
-pub mod traits;
-pub mod types;
+mod traits;
+mod types;
 
 use crate::error::{DockError, Result};
-pub use null::NullCompositor;
+use null::NullCompositor;
 pub use traits::{Compositor, WmEventStream};
 pub use types::{WmClient, WmEvent, WmMonitor, WmWorkspace};
 
 /// Supported compositor backends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CompositorKind {
+pub(crate) enum CompositorKind {
     Hyprland,
     Sway,
 }
 
-/// CLI `--wm` flag values. Uwsm is a launch wrapper that falls through
+/// CLI `--wm` flag values. `Uwsm` is a launch wrapper that falls through
 /// to auto-detection of the actual compositor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum WmOverride {
+    /// Force the Hyprland backend regardless of environment.
     Hyprland,
+    /// Force the Sway backend regardless of environment.
     Sway,
     /// Universal Wayland Session Manager — launch wrapper, not a compositor.
+    /// Detection falls through to the `HYPRLAND_INSTANCE_SIGNATURE` / `SWAYSOCK`
+    /// env vars as usual.
     Uwsm,
 }
 
 /// Auto-detect the running compositor from environment variables.
 /// Pass `wm_override` to force a specific backend (from `--wm` flag).
-pub fn detect(wm_override: Option<WmOverride>) -> Result<CompositorKind> {
+pub(crate) fn detect(wm_override: Option<WmOverride>) -> Result<CompositorKind> {
     if let Some(wm) = wm_override {
         match wm {
             WmOverride::Hyprland => return Ok(CompositorKind::Hyprland),
@@ -50,7 +62,7 @@ pub fn detect(wm_override: Option<WmOverride>) -> Result<CompositorKind> {
 }
 
 /// Create a compositor backend for the given kind.
-pub fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
+pub(crate) fn create(kind: CompositorKind) -> Result<Box<dyn Compositor>> {
     match kind {
         CompositorKind::Hyprland => Ok(Box::new(hyprland::HyprlandBackend::new()?)),
         CompositorKind::Sway => Ok(Box::new(sway::SwayBackend::new()?)),

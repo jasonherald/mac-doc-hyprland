@@ -339,10 +339,7 @@ mod tests {
                 .into_iter()
                 .map(String::from),
         ));
-        assert_eq!(
-            config.wm,
-            Some(nwg_common::compositor::WmOverride::Uwsm)
-        );
+        assert_eq!(config.wm, Some(nwg_common::compositor::WmOverride::Uwsm));
     }
 
     #[test]
@@ -352,10 +349,7 @@ mod tests {
                 .into_iter()
                 .map(String::from),
         ));
-        assert_eq!(
-            config.wm,
-            Some(nwg_common::compositor::WmOverride::Uwsm)
-        );
+        assert_eq!(config.wm, Some(nwg_common::compositor::WmOverride::Uwsm));
     }
 
     #[test]

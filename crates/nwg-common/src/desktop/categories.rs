@@ -1,8 +1,11 @@
 /// A freedesktop application category.
 #[derive(Debug, Clone)]
 pub struct Category {
+    /// Machine-readable category name (e.g. `Development`).
     pub name: String,
+    /// Human-readable label used in the drawer UI (e.g. `Development`).
     pub display_name: String,
+    /// Icon name used to render the category's section header.
     pub icon: String,
 }
 
@@ -20,6 +23,7 @@ const CATEGORY_DEFS: &[(&str, &str, &str)] = &[
     ("Other", "Other", "applications-other"),
 ];
 
+/// Returns the standard freedesktop main-category set the drawer uses.
 pub fn default_categories() -> Vec<Category> {
     CATEGORY_DEFS
         .iter()
