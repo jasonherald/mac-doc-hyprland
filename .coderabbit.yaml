@@ -106,6 +106,16 @@ reviews:
         - No untrusted input (issue/PR title, body, head ref, commit message) interpolated directly into `run:` blocks; route via `env:` if needed
         - Reasonable `timeout-minutes` set so a hung job doesn't burn an hour of runner time
         - System-dependency installs (`apt-get install`) use `--no-install-recommends` to keep image lean
+    - path: ".github/actions/**/action.yml"
+      instructions: |
+        GitHub composite / reusable actions. Same security posture as the
+        calling workflows — verify:
+        - All third-party actions pinned by full commit SHA, never floating tags
+        - No untrusted input interpolated directly into `run:` blocks; route via `env:` (`shell: bash` steps are equally vulnerable to injection)
+        - Every `run:` step explicitly declares `shell: bash` (composite-action requirement; missing shell silently breaks the step)
+        - Pinned external sources (git clones, downloads) use immutable refs — commit SHAs for git, checksum verification for binaries
+        - Shell steps quote interpolations defensively (`"$VAR"`, not `$VAR`) and fail fast (`set -e` or `||` chains on critical steps)
+        - System-dependency installs (`apt-get install`) use `--no-install-recommends` to keep image lean
     - path: "Makefile"
       instructions: |
         Build system. Verify:
