@@ -1,6 +1,6 @@
 use crate::config::DrawerConfig;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::icons;
+use nwg_common::desktop::icons;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -68,7 +68,7 @@ pub fn build_power_bar(
         let cmd = command.to_string();
         let on_launch = Rc::clone(&on_launch);
         button.connect_clicked(move |_| {
-            nwg_dock_common::launch::launch_shell_command(&cmd);
+            nwg_common::launch::launch_shell_command(&cmd);
             on_launch();
         });
 

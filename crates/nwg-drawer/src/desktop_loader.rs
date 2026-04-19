@@ -1,7 +1,7 @@
 use crate::state::DrawerState;
-use nwg_dock_common::desktop::categories::assign_categories;
-use nwg_dock_common::desktop::dirs;
-use nwg_dock_common::desktop::entry;
+use nwg_common::desktop::categories::assign_categories;
+use nwg_common::desktop::dirs;
+use nwg_common::desktop::entry;
 
 /// Scans all app directories, parses .desktop files, and populates state.
 pub fn load_desktop_entries(state: &mut DrawerState) {

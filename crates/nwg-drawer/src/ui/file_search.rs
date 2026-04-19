@@ -224,7 +224,7 @@ fn file_result_row(
     let path = file_path.to_path_buf();
     let path_str = file_path.to_string_lossy().to_string();
     let preferred_cmd =
-        nwg_dock_common::desktop::preferred_apps::find_preferred_app(&path_str, preferred_apps);
+        nwg_common::desktop::preferred_apps::find_preferred_app(&path_str, preferred_apps);
     button.connect_clicked(move |_| {
         let cmd = if let Some(ref app) = preferred_cmd {
             let mut c = std::process::Command::new(app);
@@ -235,7 +235,7 @@ fn file_result_row(
             c.arg(&path);
             c
         };
-        nwg_dock_common::launch::spawn_and_forget(cmd, &path.to_string_lossy());
+        nwg_common::launch::spawn_and_forget(cmd, &path.to_string_lossy());
         on_launch();
     });
 

@@ -3,7 +3,7 @@ use crate::dock_windows::MonitorDock;
 use crate::state::DockState;
 use gtk4::glib;
 use gtk4::prelude::*;
-use nwg_dock_common::compositor::{Compositor, WmMonitor};
+use nwg_common::compositor::{Compositor, WmMonitor};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -183,7 +183,7 @@ fn fresh_fullscreen_check(ctx: &PollContext<'_>, monitor_name: &str) -> bool {
 /// fullscreen. Scoped to the active workspace so a fullscreen window parked
 /// on a hidden workspace doesn't suppress the dock on the visible one.
 fn monitor_has_fullscreen(
-    clients: &[nwg_dock_common::compositor::WmClient],
+    clients: &[nwg_common::compositor::WmClient],
     monitors: &[WmMonitor],
     monitor_name: &str,
 ) -> bool {
@@ -376,7 +376,7 @@ fn is_cursor_in_visible_dock(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nwg_dock_common::compositor::{WmClient, WmWorkspace};
+    use nwg_common::compositor::{WmClient, WmWorkspace};
 
     fn test_monitor(name: &str, x: i32, y: i32, w: i32, h: i32) -> WmMonitor {
         test_monitor_with_id(0, name, x, y, w, h)

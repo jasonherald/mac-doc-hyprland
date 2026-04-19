@@ -1,6 +1,6 @@
 use super::constants;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::icons;
+use nwg_common::desktop::icons;
 
 /// Creates a GTK4 button with icon above label, matching macOS Launchpad style.
 ///

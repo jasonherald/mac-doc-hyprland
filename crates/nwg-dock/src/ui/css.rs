@@ -1,4 +1,4 @@
-use nwg_dock_common::config::css;
+use nwg_common::config::css;
 use std::path::Path;
 
 /// GTK4 overrides for mac-style dock rendering.

@@ -5,7 +5,7 @@ use crate::config::DockConfig;
 use crate::dock_windows::MonitorDock;
 use crate::state::DockState;
 use gtk4::prelude::*;
-use nwg_dock_common::compositor::Compositor;
+use nwg_common::compositor::Compositor;
 use std::cell::RefCell;
 use std::rc::Rc;
 

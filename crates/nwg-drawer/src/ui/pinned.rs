@@ -2,8 +2,8 @@ use crate::config::DrawerConfig;
 use crate::state::DrawerState;
 use crate::ui::widgets;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::entry::DesktopEntry;
-use nwg_dock_common::pinning;
+use nwg_common::desktop::entry::DesktopEntry;
+use nwg_common::pinning;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -105,7 +105,7 @@ fn create_pinned_button(
     let compositor = Rc::clone(&state.borrow().compositor);
     let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
-        nwg_dock_common::launch::launch_desktop_entry(
+        nwg_common::launch::launch_desktop_entry(
             &exec, terminal, &term, &theme_prefix, &*compositor,
         );
         on_launch_ref();

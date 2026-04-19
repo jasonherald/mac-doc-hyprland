@@ -9,11 +9,11 @@ use crate::config::DrawerConfig;
 use crate::state::DrawerState;
 use clap::Parser;
 use gtk4::prelude::*;
-use nwg_dock_common::config::paths;
-use nwg_dock_common::desktop::dirs::get_app_dirs;
-use nwg_dock_common::pinning;
-use nwg_dock_common::signals;
-use nwg_dock_common::singleton;
+use nwg_common::config::paths;
+use nwg_common::desktop::dirs::get_app_dirs;
+use nwg_common::pinning;
+use nwg_common::signals;
+use nwg_common::singleton;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -22,7 +22,7 @@ use std::rc::Rc;
 const DRAWER_CSS: &str = include_str!("assets/drawer.css");
 
 fn main() {
-    nwg_dock_common::process::handle_dump_args();
+    nwg_common::process::handle_dump_args();
     let mut config = DrawerConfig::parse_from(config::normalize_legacy_flags(std::env::args()));
 
     if config.debug {
@@ -40,8 +40,8 @@ fn main() {
     handle_open_close(&config);
     handle_existing_instance(&config);
     let _lock = acquire_singleton_lock();
-    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_null(config.wm));
+    let compositor: Rc<dyn nwg_common::compositor::Compositor> =
+        Rc::from(nwg_common::compositor::init_or_null(config.wm));
 
     let sig_rx = Rc::new(signals::setup_signal_handlers(config.resident));
     let config_dir = paths::config_dir("nwg-drawer");
@@ -103,19 +103,19 @@ fn activate_drawer(
     css_path: &Rc<std::path::PathBuf>,
     config: &Rc<DrawerConfig>,
     app_dirs: &[std::path::PathBuf],
-    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    compositor: &Rc<dyn nwg_common::compositor::Compositor>,
     pinned_file: &Rc<std::path::PathBuf>,
     exclusions: &[String],
     data_home: &Rc<Option<std::path::PathBuf>>,
-    sig_rx: &Rc<std::sync::mpsc::Receiver<nwg_dock_common::signals::WindowCommand>>,
+    sig_rx: &Rc<std::sync::mpsc::Receiver<nwg_common::signals::WindowCommand>>,
 ) {
     let config = Rc::clone(config);
     let pinned_file = Rc::clone(pinned_file);
 
     // CSS (with hot-reload for user CSS file)
-    let user_provider = nwg_dock_common::config::css::load_css(css_path);
-    nwg_dock_common::config::css::watch_css(css_path, &user_provider);
-    nwg_dock_common::config::css::load_css_from_data(DRAWER_CSS);
+    let user_provider = nwg_common::config::css::load_css(css_path);
+    nwg_common::config::css::watch_css(css_path, &user_provider);
+    nwg_common::config::css::load_css_from_data(DRAWER_CSS);
 
     // Apply user-configurable opacity (overrides the default in embedded CSS)
     let opacity = config.opacity.min(100) as f64 / 100.0;
@@ -123,7 +123,7 @@ fn activate_drawer(
         "window {{ background-color: rgba(22, 22, 30, {:.2}); }}",
         opacity
     );
-    nwg_dock_common::config::css::load_css_override(&opacity_css);
+    nwg_common::config::css::load_css_override(&opacity_css);
 
     apply_theme_settings(&config);
 
@@ -188,7 +188,7 @@ fn activate_drawer(
     // at all (a dimmed desktop with no way to dismiss it).
     if config.keyboard_on_demand {
         let drawer_monitor_name = drawer_monitor_connector(&config, compositor, &target_monitor);
-        let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
+        let backdrops = nwg_common::layer_shell::create_fullscreen_backdrops(
             app,
             "nwg-drawer-backdrop",
             "drawer-backdrop",
@@ -330,7 +330,7 @@ fn apply_force_theme(config: &DrawerConfig, state: &Rc<RefCell<state::DrawerStat
     if !config.force_theme {
         return;
     }
-    if config.wm == Some(nwg_dock_common::compositor::WmOverride::Uwsm) {
+    if config.wm == Some(nwg_common::compositor::WmOverride::Uwsm) {
         log::warn!("--force-theme ignored when running through uwsm");
         return;
     }
@@ -365,7 +365,7 @@ fn apply_theme_settings(config: &DrawerConfig) {
 fn load_preferred_apps(state: &mut DrawerState) {
     let pa_file = paths::config_dir("nwg-drawer").join("preferred-apps.json");
     if pa_file.exists()
-        && let Some(pa) = nwg_dock_common::desktop::preferred_apps::load_preferred_apps(&pa_file)
+        && let Some(pa) = nwg_common::desktop::preferred_apps::load_preferred_apps(&pa_file)
     {
         log::info!("Found {} custom file associations", pa.len());
         state.preferred_apps = pa;
@@ -388,7 +388,7 @@ fn load_preferred_apps(state: &mut DrawerState) {
 /// still works on the drawer itself).
 fn drawer_monitor_connector(
     config: &DrawerConfig,
-    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    compositor: &Rc<dyn nwg_common::compositor::Compositor>,
     target_monitor: &Option<gtk4::gdk::Monitor>,
 ) -> Option<String> {
     // Let-guard so the target_monitor branch only returns when a connector
@@ -416,7 +416,7 @@ fn drawer_monitor_connector(
 
 fn resolve_target_monitor(
     config: &DrawerConfig,
-    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    compositor: &Rc<dyn nwg_common::compositor::Compositor>,
 ) -> Option<gtk4::gdk::Monitor> {
     if config.output.is_empty() {
         return None;

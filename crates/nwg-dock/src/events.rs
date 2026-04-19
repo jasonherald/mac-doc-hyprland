@@ -1,6 +1,6 @@
 use crate::state::DockState;
 use gtk4::glib;
-use nwg_dock_common::compositor::{Compositor, WmEvent};
+use nwg_common::compositor::{Compositor, WmEvent};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;

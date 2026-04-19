@@ -1,6 +1,6 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
-use nwg_dock_common::compositor::Compositor;
+use nwg_common::compositor::Compositor;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;

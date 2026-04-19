@@ -1,5 +1,5 @@
-use nwg_dock_common::compositor::Compositor;
-use nwg_dock_common::desktop::entry::DesktopEntry;
+use nwg_common::compositor::Compositor;
+use nwg_common::desktop::entry::DesktopEntry;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;

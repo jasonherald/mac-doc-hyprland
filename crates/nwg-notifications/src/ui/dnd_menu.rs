@@ -29,7 +29,7 @@ impl DndMenu {
         on_state_change: Rc<dyn Fn()>,
     ) -> Self {
         // One transparent backdrop per connected monitor for click-outside-to-close
-        let backdrops = nwg_dock_common::layer_shell::create_fullscreen_backdrops(
+        let backdrops = nwg_common::layer_shell::create_fullscreen_backdrops(
             app,
             "mac-notification-dnd-backdrop",
             "dnd-menu-backdrop",

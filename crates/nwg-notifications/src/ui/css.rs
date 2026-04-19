@@ -1,4 +1,4 @@
-use nwg_dock_common::config::css;
+use nwg_common::config::css;
 
 /// Embedded notification CSS, loaded at compile time.
 const NOTIFICATION_CSS: &str = include_str!("../assets/notifications.css");

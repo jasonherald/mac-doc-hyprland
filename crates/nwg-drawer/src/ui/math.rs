@@ -206,7 +206,7 @@ fn append_copy_button(row: &gtk4::Box, vbox: &gtk4::Box, result_copy: String) {
         let mut cmd = std::process::Command::new("wl-copy");
         cmd.arg(&result_copy);
         match cmd.spawn() {
-            Ok(child) => nwg_dock_common::launch::reap_child(child, "wl-copy".to_string()),
+            Ok(child) => nwg_common::launch::reap_child(child, "wl-copy".to_string()),
             Err(_) => return, // wl-copy not available — skip "Copied!" feedback
         }
         // Cancel previous hide timer so repeated clicks reset the 2s window

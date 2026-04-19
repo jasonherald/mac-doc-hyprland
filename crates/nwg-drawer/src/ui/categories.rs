@@ -1,7 +1,7 @@
 use crate::ui;
 use crate::ui::well_context::WellContext;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::categories::default_categories;
+use nwg_common::desktop::categories::default_categories;
 use std::cell::RefCell;
 use std::rc::Rc;
 

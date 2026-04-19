@@ -1,4 +1,4 @@
-use nwg_dock_common::desktop::icons;
+use nwg_common::desktop::icons;
 use std::path::PathBuf;
 
 /// Resolves the best icon for a notification.

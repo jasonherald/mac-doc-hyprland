@@ -2,7 +2,7 @@ use crate::state::NotificationState;
 use crate::ui::dnd_menu;
 use crate::ui::panel::NotificationPanel;
 use gtk4::glib;
-use nwg_dock_common::signals;
+use nwg_common::signals;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;

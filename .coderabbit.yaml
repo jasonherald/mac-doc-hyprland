@@ -16,7 +16,7 @@ reviews:
     - "!original/**"
 
   path_instructions:
-    - path: "crates/nwg-dock-common/src/compositor/**"
+    - path: "crates/nwg-common/src/compositor/**"
       instructions: |
         Compositor abstraction layer. Verify:
         - All IPC goes through the Compositor trait, never direct hyprland calls from binaries
@@ -26,7 +26,7 @@ reviews:
         - No command injection in hyprctl/swaymsg dispatch strings
         - Thread safety: Rc<dyn Compositor> must never cross thread boundaries
         - WmEventStream must be Send (used in background threads)
-    - path: "crates/nwg-dock-common/src/launch.rs"
+    - path: "crates/nwg-common/src/launch.rs"
       instructions: |
         App launching pipeline. Verify:
         - All spawned Child processes are passed to reap_child() or spawn_and_forget() — no dropped Children
@@ -34,14 +34,14 @@ reviews:
         - Quotes preserved end-to-end (PR #11 fix)
         - extract_env_prefix validates POSIX identifiers (no digit-start keys)
         - Mutex guard dropped before any blocking wait in enqueue_or_reap_sync
-    - path: "crates/nwg-dock-common/src/desktop/**"
+    - path: "crates/nwg-common/src/desktop/**"
       instructions: |
         Desktop file parsing and icon resolution. Verify:
         - strip_field_codes removes only freedesktop-spec field codes (%u, %F, etc.)
         - %% is collapsed to literal %
         - Exec field quotes are preserved (never stripped at parse time)
         - Malformed .desktop files handled gracefully (no panics)
-    - path: "crates/nwg-dock-common/src/process.rs"
+    - path: "crates/nwg-common/src/process.rs"
       instructions: |
         Process utility for --dump-args. Verify:
         - Uses args_os() not args() to avoid panic on non-Unicode argv

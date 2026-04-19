@@ -49,7 +49,7 @@ nwg-dock-hyprland --wm hyprland
 
 Four crates in a Cargo workspace:
 
-- **nwg-dock-common** — shared library (no GTK dependency in types/IPC)
+- **nwg-common** — shared library (no GTK dependency in types/IPC)
   - `compositor/` — trait-based compositor abstraction (Hyprland + Sway backends)
   - `hyprland/` — Hyprland IPC socket, event stream, types (internal to compositor backend)
   - `desktop/` — .desktop parser, icon resolution, categories, preferred-apps
@@ -92,7 +92,7 @@ Four crates in a Cargo workspace:
 - **Enums over strings** — Position, Alignment, Layer, CloseButton, PopupPosition, Urgency are all `clap::ValueEnum` or repr enums
 - **Named constants** — all UI dimensions in `ui/constants.rs`
 - **DockContext** — bundles config/state/data_home/pinned_file/rebuild/compositor for clean function signatures
-- **Compositor trait** — all WM IPC goes through `dyn Compositor` (nwg-dock-common/src/compositor/traits.rs), never direct hyprland calls from binaries
+- **Compositor trait** — all WM IPC goes through `dyn Compositor` (nwg-common/src/compositor/traits.rs), never direct hyprland calls from binaries
 - **No `#[allow(dead_code)]`** — all code is used
 - **No magic numbers** — every numeric literal has a named constant or clear inline comment
 - **Error handling** — log errors, never silently discard with `let _ =` (except optional wl-copy)
@@ -102,7 +102,7 @@ Four crates in a Cargo workspace:
 
 ## Compositor abstraction
 
-All compositor IPC goes through the `Compositor` trait in `nwg-dock-common/src/compositor/`. Auto-detection checks `HYPRLAND_INSTANCE_SIGNATURE` and `SWAYSOCK` env vars. Override with `--wm hyprland` or `--wm sway`.
+All compositor IPC goes through the `Compositor` trait in `nwg-common/src/compositor/`. Auto-detection checks `HYPRLAND_INSTANCE_SIGNATURE` and `SWAYSOCK` env vars. Override with `--wm hyprland` or `--wm sway`.
 
 Key types: `WmClient`, `WmMonitor`, `WmWorkspace`, `WmEvent` (compositor-neutral).
 

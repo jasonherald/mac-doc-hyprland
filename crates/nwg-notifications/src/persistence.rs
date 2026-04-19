@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 /// Returns the path to the notification history file.
 pub fn history_path() -> PathBuf {
-    nwg_dock_common::config::paths::cache_dir()
+    nwg_common::config::paths::cache_dir()
         .unwrap_or_else(|| PathBuf::from("/tmp"))
         .join("mac-notifications-history.json")
 }

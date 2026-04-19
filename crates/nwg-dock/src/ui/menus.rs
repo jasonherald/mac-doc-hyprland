@@ -1,8 +1,8 @@
 use crate::config::DockConfig;
 use crate::state::DockState;
 use gtk4::prelude::*;
-use nwg_dock_common::compositor::{Compositor, WmClient};
-use nwg_dock_common::pinning;
+use nwg_common::compositor::{Compositor, WmClient};
+use nwg_common::pinning;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -126,7 +126,7 @@ pub fn show_context_menu(
     let app_dirs = state.borrow().app_dirs.clone();
     let p = popover.clone();
     btn.connect_clicked(move |_| {
-        nwg_dock_common::launch::launch(&class_str, &app_dirs);
+        nwg_common::launch::launch(&class_str, &app_dirs);
         p.popdown();
     });
     vbox.append(&btn);

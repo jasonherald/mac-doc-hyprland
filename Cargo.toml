@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/nwg-dock-common",
+    "crates/nwg-common",
     "crates/nwg-dock",
     "crates/nwg-drawer",
     "crates/nwg-notifications",
@@ -51,4 +51,4 @@ exmex = "0.20"
 dirs = "6"
 
 # Internal crates
-nwg-dock-common = { path = "crates/nwg-dock-common" }
+nwg-common = { path = "crates/nwg-common" }

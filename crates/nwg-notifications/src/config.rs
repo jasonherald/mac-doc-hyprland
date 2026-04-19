@@ -43,7 +43,7 @@ pub struct NotificationConfig {
 
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
-    pub wm: Option<nwg_dock_common::compositor::WmOverride>,
+    pub wm: Option<nwg_common::compositor::WmOverride>,
 }
 
 #[cfg(test)]
@@ -70,7 +70,7 @@ mod tests {
         let config = NotificationConfig::parse_from(["test", "--wm", "hyprland"]);
         assert_eq!(
             config.wm,
-            Some(nwg_dock_common::compositor::WmOverride::Hyprland)
+            Some(nwg_common::compositor::WmOverride::Hyprland)
         );
     }
 
@@ -79,7 +79,7 @@ mod tests {
         let config = NotificationConfig::parse_from(["test", "--wm", "uwsm"]);
         assert_eq!(
             config.wm,
-            Some(nwg_dock_common::compositor::WmOverride::Uwsm)
+            Some(nwg_common::compositor::WmOverride::Uwsm)
         );
     }
 
