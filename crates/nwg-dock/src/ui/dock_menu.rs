@@ -71,7 +71,7 @@ fn save_lock_state(locked: bool) {
 }
 
 fn lock_file_path() -> std::path::PathBuf {
-    nwg_dock_common::config::paths::cache_dir()
+    nwg_common::config::paths::cache_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("/tmp"))
         .join(LOCK_FILE)
 }

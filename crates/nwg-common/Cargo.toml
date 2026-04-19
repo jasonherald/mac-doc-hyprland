@@ -1,5 +1,5 @@
 [package]
-name = "nwg-dock-common"
+name = "nwg-common"
 version.workspace = true
 edition = "2024"
 license.workspace = true

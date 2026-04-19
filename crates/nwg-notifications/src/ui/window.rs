@@ -57,6 +57,6 @@ pub fn setup_popup_window(win: &gtk4::ApplicationWindow, position: PopupPosition
     win.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::None);
 }
 
-// Backdrop helpers live in `nwg_dock_common::layer_shell`; the panel and
+// Backdrop helpers live in `nwg_common::layer_shell`; the panel and
 // DND menu re-export-by-using them with their own CSS class so the
 // stylesheet for each gets the right opacity.

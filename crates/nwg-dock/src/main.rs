@@ -12,18 +12,18 @@ use crate::config::DockConfig;
 use crate::state::DockState;
 use clap::Parser;
 use gtk4::prelude::*;
-use nwg_dock_common::config::paths;
-use nwg_dock_common::desktop::dirs::get_app_dirs;
-use nwg_dock_common::pinning;
-use nwg_dock_common::signals;
-use nwg_dock_common::singleton;
+use nwg_common::config::paths;
+use nwg_common::desktop::dirs::get_app_dirs;
+use nwg_common::pinning;
+use nwg_common::signals;
+use nwg_common::singleton;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 fn main() {
-    nwg_dock_common::process::handle_dump_args();
+    nwg_common::process::handle_dump_args();
     let mut config = DockConfig::parse_from(config::normalize_legacy_flags(std::env::args()));
 
     if config.debug {
@@ -40,8 +40,8 @@ fn main() {
     }
 
     auto_detect_launcher(&mut config);
-    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
+    let compositor: Rc<dyn nwg_common::compositor::Compositor> =
+        Rc::from(nwg_common::compositor::init_or_exit(config.wm));
     let _lock = acquire_singleton_lock("mac-dock", config.multi, config.is_resident_mode());
 
     let data_home = paths::find_data_home("nwg-dock-hyprland").unwrap_or_else(|| {
@@ -99,7 +99,7 @@ fn activate_dock(
     css_path: &Rc<std::path::PathBuf>,
     config: &Rc<DockConfig>,
     app_dirs: &[std::path::PathBuf],
-    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    compositor: &Rc<dyn nwg_common::compositor::Compositor>,
     pinned_file: &Rc<std::path::PathBuf>,
     data_home: &Rc<std::path::PathBuf>,
     sig_rx: &Rc<std::sync::mpsc::Receiver<signals::WindowCommand>>,
@@ -220,14 +220,14 @@ fn command_exists(cmd: &str) -> bool {
 fn build_wm_class_map(app_dirs: &[PathBuf]) -> HashMap<String, String> {
     let mut map = HashMap::new();
     for dir in app_dirs {
-        let files = nwg_dock_common::desktop::dirs::list_desktop_files(dir);
+        let files = nwg_common::desktop::dirs::list_desktop_files(dir);
         for path in files {
             let id = path
                 .file_stem()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
-            match nwg_dock_common::desktop::entry::parse_desktop_file(&id, &path) {
+            match nwg_common::desktop::entry::parse_desktop_file(&id, &path) {
                 Ok(entry) if !entry.startup_wm_class.is_empty() => {
                     map.insert(entry.startup_wm_class.clone(), id.clone());
                     map.insert(entry.startup_wm_class.to_lowercase(), id);

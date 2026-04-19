@@ -11,7 +11,7 @@
 
 use crate::state::DockState;
 use gtk4::prelude::*;
-use nwg_dock_common::pinning;
+use nwg_common::pinning;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;

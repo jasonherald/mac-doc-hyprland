@@ -2,7 +2,7 @@ use crate::ui;
 use crate::ui::navigation;
 use crate::ui::well_context::WellContext;
 use gtk4::prelude::*;
-use nwg_dock_common::pinning;
+use nwg_common::pinning;
 use std::rc::Rc;
 
 /// Builds the normal (non-search) well content.
@@ -185,7 +185,7 @@ fn build_pinned_flow(ctx: &WellContext, on_rebuild: &Rc<dyn Fn()>) -> gtk4::Flow
 
 /// Builds a single pinned icon button with click-to-launch and right-click-to-unpin.
 fn build_pinned_button(
-    entry: &nwg_dock_common::desktop::entry::DesktopEntry,
+    entry: &nwg_common::desktop::entry::DesktopEntry,
     ctx: &WellContext,
     app_dirs: &[std::path::PathBuf],
     on_rebuild: &Rc<dyn Fn()>,
@@ -218,7 +218,7 @@ fn build_pinned_button(
     let compositor = Rc::clone(&ctx.state.borrow().compositor);
     let theme_prefix = ctx.state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
-        nwg_dock_common::launch::launch_desktop_entry(
+        nwg_common::launch::launch_desktop_entry(
             &exec,
             terminal,
             &term,

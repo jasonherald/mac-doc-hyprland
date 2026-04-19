@@ -1,5 +1,5 @@
 use gtk4::glib;
-use nwg_dock_common::compositor::{Compositor, WmClient};
+use nwg_common::compositor::{Compositor, WmClient};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;

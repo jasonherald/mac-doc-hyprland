@@ -3,9 +3,9 @@ use crate::ui::well_builder;
 use crate::{desktop_loader, watcher};
 use gtk4::glib;
 use gtk4::prelude::*;
-use nwg_dock_common::compositor::Compositor;
-use nwg_dock_common::pinning;
-use nwg_dock_common::signals::WindowCommand;
+use nwg_common::compositor::Compositor;
+use nwg_common::pinning;
+use nwg_common::signals::WindowCommand;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::mpsc;
@@ -362,7 +362,7 @@ fn handle_return(
     let text = search_entry.text().to_string();
     if text.starts_with(':') && text.len() > 1 {
         let cmd = &text[1..];
-        nwg_dock_common::launch::launch_via_compositor(cmd, compositor);
+        nwg_common::launch::launch_via_compositor(cmd, compositor);
         on_launch();
     }
 }

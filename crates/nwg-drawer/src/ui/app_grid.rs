@@ -3,8 +3,8 @@ use crate::state::DrawerState;
 use crate::ui::search::subsequence_match;
 use crate::ui::widgets;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::entry::DesktopEntry;
-use nwg_dock_common::pinning;
+use nwg_common::desktop::entry::DesktopEntry;
+use nwg_common::pinning;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -144,7 +144,7 @@ fn connect_launch(
     let compositor = Rc::clone(&state.borrow().compositor);
     let theme_prefix = state.borrow().gtk_theme_prefix.clone();
     button.connect_clicked(move |_| {
-        nwg_dock_common::launch::launch_desktop_entry(
+        nwg_common::launch::launch_desktop_entry(
             &exec,
             terminal,
             &term_cmd,

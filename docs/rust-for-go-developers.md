@@ -7,7 +7,7 @@ A guide to reading and contributing to this codebase, written for someone who kn
 | Go | Rust | Where you'll see it |
 |----|------|-------------------|
 | `package main` | `fn main()` in a `[[bin]]` crate | `nwg-dock/src/main.rs` |
-| `package lib` | `lib.rs` in a library crate | `nwg-dock-common/src/lib.rs` |
+| `package lib` | `lib.rs` in a library crate | `nwg-common/src/lib.rs` |
 | `go.mod` workspace | `Cargo.toml` workspace | Root `Cargo.toml` |
 | `go build` | `cargo build` | |
 | `go test ./...` | `cargo test --workspace` | |
@@ -26,7 +26,7 @@ if err != nil {
 }
 ```
 
-**Rust equivalent** (from `nwg-dock-common/src/compositor/hyprland.rs`):
+**Rust equivalent** (from `nwg-common/src/compositor/hyprland.rs`):
 ```rust
 fn list_monitors(&self) -> Result<Vec<WmMonitor>> {
     Ok(ipc::list_monitors()?.into_iter().map(to_wm_monitor).collect())
@@ -57,7 +57,7 @@ type Compositor interface {
 }
 ```
 
-**Rust** (from `nwg-dock-common/src/compositor/traits.rs`):
+**Rust** (from `nwg-common/src/compositor/traits.rs`):
 ```rust
 pub trait Compositor {
     fn list_clients(&self) -> Result<Vec<WmClient>>;
@@ -283,7 +283,7 @@ Go uses packages and directory structure. Rust uses modules declared explicitly.
 
 **Rust:** You must declare modules in the parent:
 ```rust
-// nwg-dock-common/src/lib.rs
+// nwg-common/src/lib.rs
 pub mod compositor;   // → loads compositor/mod.rs
 pub mod desktop;      // → loads desktop/mod.rs
 pub mod hyprland;     // → loads hyprland/mod.rs
@@ -355,7 +355,7 @@ cargo fmt --all                # Format (like gofmt)
 
 ```text
 crates/
-├── nwg-dock-common/       # Shared library (like a Go internal package)
+├── nwg-common/       # Shared library (like a Go internal package)
 │   └── src/
 │       ├── compositor/    # Trait + Hyprland/Sway backends
 │       ├── desktop/       # .desktop file parsing
@@ -395,7 +395,7 @@ crates/
 
 ## Where to start reading
 
-1. **`nwg-dock-common/src/compositor/traits.rs`** — the core abstraction. Every compositor operation goes through this trait.
-2. **`nwg-dock-common/src/compositor/hyprland.rs`** — familiar territory if you wrote the Go version. Maps 1:1 to hyprctl calls.
+1. **`nwg-common/src/compositor/traits.rs`** — the core abstraction. Every compositor operation goes through this trait.
+2. **`nwg-common/src/compositor/hyprland.rs`** — familiar territory if you wrote the Go version. Maps 1:1 to hyprctl calls.
 3. **`nwg-dock/src/main.rs`** — entry point. Short (~190 lines), shows the full initialization flow.
 4. **`nwg-dock/src/ui/dock_box.rs`** — the main UI builder. Equivalent to Go's `refreshMainBox()`.

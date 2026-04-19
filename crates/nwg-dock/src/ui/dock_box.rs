@@ -3,8 +3,8 @@ use crate::context::DockContext;
 use crate::state::DockState;
 use crate::ui::buttons;
 use gtk4::prelude::*;
-use nwg_dock_common::compositor::WmClient;
-use nwg_dock_common::pinning;
+use nwg_common::compositor::WmClient;
+use nwg_common::pinning;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -248,7 +248,7 @@ fn build_pinned_items(
 fn build_running_items(
     main_box: &gtk4::Box,
     ctx: &DockContext,
-    clients: &[nwg_dock_common::compositor::WmClient],
+    clients: &[nwg_common::compositor::WmClient],
     pinned: &[String],
     active_class: &str,
     ignored_classes: &[String],
@@ -290,7 +290,7 @@ fn should_skip_running(
 
 /// Returns true if a child window's initial_class is already represented by a pinned or added item.
 fn is_child_already_shown(
-    task: &nwg_dock_common::compositor::WmClient,
+    task: &nwg_common::compositor::WmClient,
     pinned: &[String],
     already_added: &[String],
 ) -> bool {

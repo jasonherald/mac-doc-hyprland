@@ -53,7 +53,7 @@ Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [n
 - **Persistence** — notification history saved across restarts with `--persist`
 - **Focused monitor** — popups appear on the currently focused monitor
 
-### Shared (`nwg-dock-common`)
+### Shared (`nwg-common`)
 - Compositor abstraction layer (Hyprland and Sway supported)
 - Custom IPC implementation (no external crate dependency)
 - XDG desktop entry parser with locale support
@@ -230,7 +230,7 @@ Add to `~/.config/waybar/config.jsonc`:
 ```
 mac-dock-hyprland/
 ├── crates/
-│   ├── nwg-dock-common/       # Shared library
+│   ├── nwg-common/       # Shared library
 │   ├── nwg-dock/              # Dock binary
 │   ├── nwg-drawer/            # Drawer binary
 │   └── nwg-notifications/     # Notification daemon

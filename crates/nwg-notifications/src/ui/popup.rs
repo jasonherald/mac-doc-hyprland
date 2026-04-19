@@ -8,7 +8,7 @@ use crate::notification::{Notification, Urgency};
 use crate::state::NotificationState;
 use gtk4::prelude::*;
 use gtk4_layer_shell::LayerShell;
-use nwg_dock_common::compositor::Compositor;
+use nwg_common::compositor::Compositor;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -335,8 +335,8 @@ pub fn focus_app(
     // App not running — try to launch it
     let class_to_find = desktop_entry.unwrap_or(app_name);
     let app_dirs = state.borrow().app_dirs.clone();
-    nwg_dock_common::launch::launch_via_compositor(
-        &nwg_dock_common::desktop::icons::get_exec(class_to_find, &app_dirs)
+    nwg_common::launch::launch_via_compositor(
+        &nwg_common::desktop::icons::get_exec(class_to_find, &app_dirs)
             .unwrap_or_else(|| class_to_find.to_string()),
         compositor,
     );

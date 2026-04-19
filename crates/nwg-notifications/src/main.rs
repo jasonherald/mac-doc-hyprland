@@ -14,13 +14,13 @@ use crate::ui::popup::PopupManager;
 use clap::Parser;
 use gtk4::gio;
 use gtk4::prelude::*;
-use nwg_dock_common::desktop::dirs::get_app_dirs;
-use nwg_dock_common::singleton;
+use nwg_common::desktop::dirs::get_app_dirs;
+use nwg_common::singleton;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 fn main() {
-    nwg_dock_common::process::handle_dump_args();
+    nwg_common::process::handle_dump_args();
     let config = NotificationConfig::parse();
 
     if config.debug {
@@ -41,8 +41,8 @@ fn main() {
         }
     };
 
-    let compositor: Rc<dyn nwg_dock_common::compositor::Compositor> =
-        Rc::from(nwg_dock_common::compositor::init_or_exit(config.wm));
+    let compositor: Rc<dyn nwg_common::compositor::Compositor> =
+        Rc::from(nwg_common::compositor::init_or_exit(config.wm));
 
     // Signal listener — BEFORE GTK, same pattern as the dock
     let sig_rx = listeners::start_signal_listener();
@@ -67,7 +67,7 @@ fn main() {
 fn activate_notifications(
     app: &gtk4::Application,
     config: &Rc<NotificationConfig>,
-    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    compositor: &Rc<dyn nwg_common::compositor::Compositor>,
     sig_rx: &Rc<std::sync::mpsc::Receiver<listeners::NotificationCommand>>,
 ) {
     ui::css::load_notification_css();
@@ -166,7 +166,7 @@ fn build_state_change_callback(
 /// Creates the callback invoked when a notification row is clicked in the panel.
 fn build_panel_click_callback(
     state: &Rc<RefCell<NotificationState>>,
-    compositor: &Rc<dyn nwg_dock_common::compositor::Compositor>,
+    compositor: &Rc<dyn nwg_common::compositor::Compositor>,
 ) -> Rc<dyn Fn(u32)> {
     let state_click = Rc::clone(state);
     let compositor_panel = Rc::clone(compositor);

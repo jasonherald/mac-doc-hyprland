@@ -19,7 +19,7 @@ const LEGACY_FLAGS: &[&str] = &[
 
 /// Converts Go-style single-dash flags to clap-compatible double-dash flags.
 pub fn normalize_legacy_flags(args: impl Iterator<Item = String>) -> Vec<String> {
-    nwg_dock_common::config::flags::normalize_legacy_flags(args, LEGACY_FLAGS)
+    nwg_common::config::flags::normalize_legacy_flags(args, LEGACY_FLAGS)
 }
 
 /// Dock position on screen edge.
@@ -169,7 +169,7 @@ pub struct DockConfig {
 
     /// Window manager override (auto-detected from environment if not specified)
     #[arg(long, value_enum)]
-    pub wm: Option<nwg_dock_common::compositor::WmOverride>,
+    pub wm: Option<nwg_common::compositor::WmOverride>,
 }
 
 impl DockConfig {
@@ -258,7 +258,7 @@ mod tests {
         let config = DockConfig::parse_from(["test", "--wm", "hyprland"]);
         assert_eq!(
             config.wm,
-            Some(nwg_dock_common::compositor::WmOverride::Hyprland)
+            Some(nwg_common::compositor::WmOverride::Hyprland)
         );
     }
 

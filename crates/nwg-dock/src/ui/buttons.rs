@@ -1,8 +1,8 @@
 use crate::context::DockContext;
 use crate::ui::menus;
 use gtk4::prelude::*;
-use nwg_dock_common::compositor::WmClient;
-use nwg_dock_common::desktop::icons;
+use nwg_common::compositor::WmClient;
+use nwg_common::desktop::icons;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -123,7 +123,7 @@ pub fn pinned_button(app_id: &str, index: usize, ctx: &DockContext) -> gtk4::Box
     let launch_rebuild = Rc::clone(&ctx.rebuild);
     let launch_anim = ctx.config.launch_animation;
     button.connect_clicked(move |_| {
-        nwg_dock_common::launch::launch(&id, &dirs);
+        nwg_common::launch::launch(&id, &dirs);
         if launch_anim {
             crate::ui::launch_bounce::start(&id, &launch_state, &launch_rebuild);
         }
@@ -210,7 +210,7 @@ pub fn task_button(client: &WmClient, instances: &[WmClient], ctx: &DockContext)
     middle.set_button(2);
     middle.connect_released(move |gesture, _, _, _| {
         gesture.set_state(gtk4::EventSequenceState::Claimed);
-        nwg_dock_common::launch::launch(&class, &dirs);
+        nwg_common::launch::launch(&class, &dirs);
         if mid_anim {
             crate::ui::launch_bounce::start(&class, &mid_state, &mid_rebuild);
         }
@@ -285,7 +285,7 @@ pub fn launcher_button(ctx: &DockContext, win: &gtk4::ApplicationWindow) -> Opti
     let autohide = ctx.config.autohide;
     let win_ref = win.clone();
     button.connect_clicked(move |_| {
-        nwg_dock_common::launch::launch_shell_command(&cmd);
+        nwg_common::launch::launch_shell_command(&cmd);
         if autohide {
             win_ref.set_visible(false);
         }
