@@ -236,7 +236,11 @@ pub fn launch_shell_command(command: &str) {
 }
 
 /// Launches a command with terminal wrapping via the compositor.
-pub(crate) fn launch_terminal_via_compositor(command: &str, term: &str, compositor: &dyn Compositor) {
+pub(crate) fn launch_terminal_via_compositor(
+    command: &str,
+    term: &str,
+    compositor: &dyn Compositor,
+) {
     let full = format!("{} -e {}", term, command);
     launch_via_compositor(&full, compositor);
 }

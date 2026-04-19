@@ -80,4 +80,3 @@ pub fn load_text_lines(path: &Path) -> std::io::Result<Vec<String>> {
         .filter(|l| !l.is_empty())
         .collect())
 }
-
