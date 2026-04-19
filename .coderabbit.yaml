@@ -98,7 +98,7 @@ reviews:
         - ActionInvoked signals emitted correctly on action button click
         - DND state changes fire on_state_change callback
         - Protocol compliance with Desktop Notifications Specification
-    - path: ".github/workflows/*.yml"
+    - path: ".github/workflows/*.y*ml"
       instructions: |
         GitHub Actions workflows. Verify:
         - permissions: block scoped to the minimum (typically `contents: read`); never default-permissive
@@ -106,7 +106,7 @@ reviews:
         - No untrusted input (issue/PR title, body, head ref, commit message) interpolated directly into `run:` blocks; route via `env:` if needed
         - Reasonable `timeout-minutes` set so a hung job doesn't burn an hour of runner time
         - System-dependency installs (`apt-get install`) use `--no-install-recommends` to keep image lean
-    - path: ".github/actions/**/action.yml"
+    - path: ".github/actions/**/action.y*ml"
       instructions: |
         GitHub composite / reusable actions. Same security posture as the
         calling workflows — verify:
