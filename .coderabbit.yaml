@@ -157,16 +157,17 @@ reviews:
       enabled: true
     opengrep:
       enabled: true
-    # TOML formatter / linter — covers the workspace and per-crate Cargo.toml,
-    # rust-toolchain.toml, deny.toml, sonar-project.properties is .properties
-    # not TOML, so taplo skips it.
-    taplo:
-      enabled: true
     # English prose check for long-form docs (README, CHANGELOG, SECURITY.md,
     # CLAUDE.md, doc-comments). Catches typos, awkward phrasing, missing
     # punctuation in user-facing text without being noisy on code.
     languagetool:
       enabled: true
+    # NOTE: taplo (TOML formatter/linter) is not supported by CodeRabbit's
+    # schema v2 (verified against https://coderabbit.ai/integrations/schema.v2.json
+    # — additionalProperties is false and taplo isn't in the 50-tool list).
+    # If we want Cargo.toml linting, add it to `make lint` locally or as its
+    # own CI workflow; CodeRabbit catches Cargo.toml issues via the
+    # **/Cargo.toml path instructions above.
 
 chat:
   auto_reply: true
