@@ -1,5 +1,21 @@
 # mac-dock-hyprland
 
+> [!IMPORTANT]
+> **This repo is being split into per-tool repositories.** Tracked in [#80](https://github.com/jasonherald/mac-doc-hyprland/issues/80).
+>
+> The shared library and the three binaries are moving to dedicated repos and will be published individually to crates.io at v0.3.0. Until each extraction lands, the monorepo here remains the source of truth; once a repo exists, this banner will link to it directly.
+>
+> | Tool | New repo | crates.io | Status |
+> |------|----------|-----------|--------|
+> | `nwg-common` (shared library) | _coming in Phase 1_ | _coming in Phase 1_ | planned |
+> | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | _coming in Phase 2_ | _coming in Phase 2_ | planned |
+> | `nwg-drawer` | _coming in Phase 3_ | _coming in Phase 3_ | planned |
+> | `nwg-notifications` | _coming in Phase 4_ | _coming in Phase 4_ | planned |
+>
+> **Heading to the dock?** Current `exec-once = nwg-dock-hyprland …` autostart lines keep working — we're shipping a `nwg-dock-hyprland` symlink alias with the renamed binary so nothing breaks on upgrade.
+
+---
+
 A macOS-style dock, application launcher, and notification center for [Hyprland](https://hyprland.org/) and [Sway](https://swaywm.org/), written in Rust.
 
 Replaces [nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland), [nwg-drawer](https://github.com/nwg-piotr/nwg-drawer), and [mako](https://github.com/emersion/mako) with a unified, memory-safe implementation.
