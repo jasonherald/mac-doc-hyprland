@@ -11,7 +11,7 @@ Walks `tests/integration/test_runner.sh` block-by-block and assigns each test se
 | `test_runner.sh` | Bootstraps headless Sway, runs every test block in sequence, cleans up on exit. |
 | `sway_config` | Minimal Sway config used during bootstrap (`bar swaybar_command true`, `swaybg_command true`). |
 
-The script runs 18 assertions across 5 sections. Tests `cargo build --release --workspace`s the full workspace up front so both the dock and the notification daemon exist as built binaries before any assertion runs.
+The script runs 18 assertions across 5 sections. It builds the full workspace up front (`cargo build --release --workspace`) so both the dock and notification daemon binaries exist before any assertion runs.
 
 ## Per-section classification
 
