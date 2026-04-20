@@ -7,8 +7,8 @@
 >
 > | Tool | New repo | crates.io | Status |
 > |------|----------|-----------|--------|
-> | `nwg-common` (shared library) | [Phase 1: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/91) | [Phase 1: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/93) | planned |
-> | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | [Phase 2: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/95) | [Phase 2: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/98) | planned |
+> | `nwg-common` (shared library) | [`jasonherald/nwg-common`](https://github.com/jasonherald/nwg-common) | [`nwg-common 0.3.0`](https://crates.io/crates/nwg-common) | ✅ published |
+> | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | [`jasonherald/nwg-dock`](https://github.com/jasonherald/nwg-dock) | [`nwg-dock 0.3.0`](https://crates.io/crates/nwg-dock) | ✅ published |
 > | `nwg-drawer` | [Phase 3: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/99) | [Phase 3: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/102) | planned |
 > | `nwg-notifications` | [Phase 4: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/103) | [Phase 4: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/106) | planned |
 >
