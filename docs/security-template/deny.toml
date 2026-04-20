@@ -29,6 +29,11 @@ allow = [
     "MPL-2.0",
     "Unicode-3.0",
     "Unlicense",
+    # Common permissive licenses that occasionally surface via C-binding
+    # and compression dep chains. Added preemptively so a routine
+    # `cargo update` doesn't break `cargo-deny` on an otherwise fine dep.
+    "BSD-3-Clause",
+    "Zlib",
 ]
 confidence-threshold = 0.8
 exceptions = []

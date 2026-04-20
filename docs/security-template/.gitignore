@@ -11,9 +11,10 @@ target/
 # SonarQube scanner work dir
 .scannerwork/
 
-# Secrets — per-repo .env holds SONAR_TOKEN and any other credentials
+# Secrets — per-repo .env holds SONAR_TOKEN and any other credentials.
+# `.env.example` is intentionally NOT ignored — commit a placeholder
+# template so contributors know which vars to set.
 .env
-.env.example
 
 # SonarQube truststore (self-signed cert; regenerated per-machine)
 .truststore

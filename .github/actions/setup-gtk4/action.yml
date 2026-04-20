@@ -29,6 +29,9 @@ runs:
         # gtk4-layer-shell v1.3.0
         GTK4_LAYER_SHELL_SHA: 1c963c51514581c41b9bdae08cdf69171265cdda
       run: |
+        # Idempotent: remove any prior clone so reused runners (self-hosted
+        # or retried jobs) don't fail on `git clone` into an existing dir.
+        rm -rf /tmp/gtk4-layer-shell
         git clone https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
         git -C /tmp/gtk4-layer-shell checkout "$GTK4_LAYER_SHELL_SHA"
         cd /tmp/gtk4-layer-shell
