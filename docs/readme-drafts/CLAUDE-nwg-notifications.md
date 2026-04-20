@@ -32,7 +32,7 @@ make install PREFIX=$HOME/.local BINDIR=$HOME/.cargo/bin
 make install-dbus
 ```
 
-`make install-dbus` is ALWAYS user-scope (no sudo; drops the service file into `~/.local/share/dbus-1/services/`) regardless of `PREFIX`. D-Bus user services are per-user by convention, and installing the service file system-wide would break auto-activation for other users.
+`make install-dbus` is ALWAYS user-scope (no sudo; installs the service file into `~/.local/share/dbus-1/services/`) regardless of `PREFIX`. D-Bus user services are per-user by convention, and installing the service file system-wide would break auto-activation for other users.
 
 See the README for the full install matrix.
 

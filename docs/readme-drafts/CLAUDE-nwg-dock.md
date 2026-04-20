@@ -2,7 +2,7 @@
 
 ## What is this?
 
-A macOS-style dock for Hyprland and Sway, written in Rust. Renamed from `nwg-dock-hyprland` at v0.3.0 because the Rust port supports both compositors through one binary (Compositor trait + runtime `--wm` auto-detection), so the compositor-specific name stopped fitting. A `nwg-dock-hyprland` symlink alias is dropped by `make install` so existing autostart lines keep working.
+A macOS-style dock for Hyprland and Sway, written in Rust. Renamed from `nwg-dock-hyprland` at v0.3.0 because the Rust port supports both compositors through one binary (Compositor trait + runtime `--wm` auto-detection), so the compositor-specific name stopped fitting. A `nwg-dock-hyprland` symlink alias is installed by `make install` so existing autostart lines keep working.
 
 Consumes [`nwg-common`](https://github.com/jasonherald/nwg-common) for compositor IPC, `.desktop` parsing, pin-file management, CSS hot-reload, and signal plumbing.
 

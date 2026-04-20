@@ -12,7 +12,7 @@
 
 ## Migrating from `nwg-dock-hyprland`?
 
-The Rust port's dock is now called `nwg-dock` and supports both Hyprland and Sway in one binary. Existing `exec-once = nwg-dock-hyprland …` autostart lines keep working: `make install` in the [nwg-dock](https://github.com/jasonherald/nwg-dock) repo drops a `nwg-dock-hyprland` symlink pointing at the renamed binary, so no compositor config edits are needed.
+The Rust port's dock is now called `nwg-dock` and supports both Hyprland and Sway in one binary. Existing `exec-once = nwg-dock-hyprland …` autostart lines keep working: `make install` in the [nwg-dock](https://github.com/jasonherald/nwg-dock) repo installs a `nwg-dock-hyprland` symlink pointing at the renamed binary, so no compositor config edits are needed.
 
 ## History
 

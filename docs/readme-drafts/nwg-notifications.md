@@ -76,7 +76,7 @@ make install-dbus
 cargo install nwg-notifications
 ```
 
-`cargo install` only drops the binary. You'll need to write the D-Bus service file yourself (see [D-Bus service](#d-bus-service) below) — it's a ~5-line file pointing at `~/.cargo/bin/nwg-notifications`.
+`cargo install` only installs the binary. You'll need to write the D-Bus service file yourself (see [D-Bus service](#d-bus-service) below) — it's a ~5-line file pointing at `~/.cargo/bin/nwg-notifications`.
 
 ## Usage
 
@@ -90,7 +90,7 @@ nwg-notifications --wm sway --persist
 
 ## D-Bus service
 
-`make install-dbus` drops this file into `~/.local/share/dbus-1/services/`. If you're cargo-installing, create it manually:
+`make install-dbus` installs this file into `~/.local/share/dbus-1/services/`. If you're cargo-installing, create it manually:
 
 ```ini
 # ~/.local/share/dbus-1/services/org.freedesktop.Notifications.service

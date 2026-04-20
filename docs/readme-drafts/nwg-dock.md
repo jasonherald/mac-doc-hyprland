@@ -2,7 +2,7 @@
 
 A macOS-style dock for [Hyprland](https://hyprland.org/) and [Sway](https://swaywm.org/), written in Rust.
 
-**Renamed from `nwg-dock-hyprland`.** The Rust port supports both Hyprland and Sway through one binary (Compositor trait + runtime `--wm` auto-detection), so the compositor-specific name didn't fit anymore. Existing users: `make install` drops a `nwg-dock-hyprland` → `nwg-dock` symlink so your `exec-once = nwg-dock-hyprland …` autostart line keeps working. See [Migrating from `nwg-dock-hyprland`](#migrating-from-nwg-dock-hyprland) below.
+**Renamed from `nwg-dock-hyprland`.** The Rust port supports both Hyprland and Sway through one binary (Compositor trait + runtime `--wm` auto-detection), so the compositor-specific name didn't fit anymore. Existing users: `make install` installs a `nwg-dock-hyprland` → `nwg-dock` symlink so your `exec-once = nwg-dock-hyprland …` autostart line keeps working. See [Migrating from `nwg-dock-hyprland`](#migrating-from-nwg-dock-hyprland) below.
 
 Ported from [nwg-piotr/nwg-dock-hyprland](https://github.com/nwg-piotr/nwg-dock-hyprland) (Hyprland-only Go) and informed by [nwg-piotr/nwg-dock](https://github.com/nwg-piotr/nwg-dock) (Sway-only Go), with enhancements the Go versions don't have.
 
@@ -80,7 +80,7 @@ sudo make install PREFIX=/usr
 cargo install nwg-dock
 ```
 
-`cargo install` only drops the `nwg-dock` binary in `~/.cargo/bin/`; the `nwg-dock-hyprland` symlink alias is a `make install` feature only. If you're migrating from `nwg-dock-hyprland` and using `cargo install`, update your autostart to `nwg-dock …`.
+`cargo install` only installs the `nwg-dock` binary in `~/.cargo/bin/`; the `nwg-dock-hyprland` symlink alias is a `make install` feature only. If you're migrating from `nwg-dock-hyprland` and using `cargo install`, update your autostart to `nwg-dock …`.
 
 ## Usage
 
