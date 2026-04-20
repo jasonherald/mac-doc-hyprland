@@ -82,11 +82,15 @@ Reproducible against the pinned commits in the Scope row above. All steps below 
 GO_SHA=8ecd84c65f
 RUST_SHA=d907e17b
 
-# Go side — fetch and inspect
-mkdir -p /tmp/nwg-dock-parity/go
+# Go side — fetch top-level files + the config/ directory
+mkdir -p /tmp/nwg-dock-parity/go/config
 for f in README.md main.go tools.go Makefile; do
     gh api "repos/nwg-piotr/nwg-dock/contents/$f?ref=$GO_SHA" \
         --jq .content | base64 -d > "/tmp/nwg-dock-parity/go/$f"
+done
+for f in style.css hotspot.css; do
+    gh api "repos/nwg-piotr/nwg-dock/contents/config/$f?ref=$GO_SHA" \
+        --jq .content | base64 -d > "/tmp/nwg-dock-parity/go/config/$f"
 done
 
 # Rust side — fetch the pinned source tree and enumerate CLI flags
