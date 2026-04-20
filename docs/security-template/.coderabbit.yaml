@@ -42,7 +42,7 @@ reviews:
         - No command injection in hyprctl/swaymsg dispatch strings
         - Thread safety: Rc<dyn Compositor> must never cross thread boundaries
         - WmEventStream must be Send (used in background threads)
-        - Wm* types (WmClient, WmMonitor, WmWorkspace, WmEvent) are public API; once #117 lands they will be #[non_exhaustive] with builder construction — never construct via struct literal from outside nwg-common.
+        - Wm* types (WmClient, WmMonitor, WmWorkspace, WmEvent) are public API and #[non_exhaustive]. External crates must construct via `Default::default()` + the `with_*` fluent setters — never via struct literal. Same-crate (nwg-common) construction sites keep using struct literals; that's unaffected by the attribute.
     - path: "crates/nwg-common/src/launch.rs"
       instructions: |
         App launching pipeline. Verify:

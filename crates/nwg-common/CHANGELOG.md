@@ -78,6 +78,12 @@ the monorepo.
   at the crate root, so `cargo doc --no-deps -p nwg-common` runs
   warning-free and `cargo rustdoc -p nwg-common -- -D missing-docs`
   succeeds.
+- `compositor::{WmClient, WmMonitor, WmWorkspace, WmEvent}` are now
+  `#[non_exhaustive]`. External crates must construct via
+  `Default::default()` + the new fluent `with_*` setters
+  (`WmMonitor::default().with_id(1).with_name("DP-1") …`) rather than
+  struct literals; future field additions won't break downstream
+  construction or exhaustive matches. Same-crate usage is unaffected.
 
 ### Fixed
 
