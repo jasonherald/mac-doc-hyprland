@@ -24,7 +24,7 @@ make lint                     # Full check: fmt + clippy + test + deny + audit
 
 ## What lives where
 
-```
+```text
 crates/nwg-common/ (or src/ post-extraction)
 ├── compositor/       # Compositor trait + Hyprland/Sway/null backends
 ├── config/

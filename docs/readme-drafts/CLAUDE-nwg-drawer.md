@@ -54,7 +54,7 @@ nwg-drawer --wm uwsm
 
 ## What lives where
 
-```
+```text
 src/
 ├── main.rs            # Coordinator (~185 lines)
 ├── config.rs          # clap CLI with CloseButton enum

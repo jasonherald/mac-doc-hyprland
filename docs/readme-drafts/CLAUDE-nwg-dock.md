@@ -51,7 +51,7 @@ nwg-dock-hyprland -d -i 48 --mb 10
 
 ## What lives where
 
-```
+```text
 src/  (or crates/nwg-dock/src/ in the monorepo)
 ├── main.rs             # Thin coordinator (~130 lines)
 ├── config.rs           # clap CLI with Position / Alignment / Layer enums

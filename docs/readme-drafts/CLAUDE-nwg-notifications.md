@@ -50,7 +50,7 @@ The daemon auto-starts the first time any app calls `org.freedesktop.Notificatio
 
 ## What lives where
 
-```
+```text
 src/
 ├── main.rs            # Coordinator (~160 lines)
 ├── config.rs          # clap CLI with PopupPosition enum
