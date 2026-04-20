@@ -1,7 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/nwg-common",
     "crates/nwg-dock",
     "crates/nwg-drawer",
     "crates/nwg-notifications",
@@ -50,5 +49,5 @@ exmex = "0.20"
 # XDG directory resolution
 dirs = "6"
 
-# Internal crates
-nwg-common = { path = "crates/nwg-common" }
+# Shared library — consumed from crates.io post-extraction (#80 Phase 1 / #94)
+nwg-common = "0.3"
