@@ -395,20 +395,20 @@ mod tests {
         h: i32,
         active_workspace_id: i32,
     ) -> WmMonitor {
-        WmMonitor {
-            id,
-            name: name.to_string(),
-            x,
-            y,
-            width: w,
-            height: h,
-            scale: 1.0,
-            focused: false,
-            active_workspace: WmWorkspace {
-                id: active_workspace_id,
-                name: format!("{}", active_workspace_id),
-            },
-        }
+        // `WmMonitor` is #[non_exhaustive] — construct via Default + fluent setters.
+        WmMonitor::default()
+            .with_id(id)
+            .with_name(name)
+            .with_x(x)
+            .with_y(y)
+            .with_width(w)
+            .with_height(h)
+            .with_scale(1.0) // test fixture — no HiDPI scaling
+            .with_active_workspace(
+                WmWorkspace::default()
+                    .with_id(active_workspace_id)
+                    .with_name(format!("{}", active_workspace_id)),
+            )
     }
 
     fn test_client(monitor_id: i32, fullscreen: bool) -> WmClient {
@@ -417,20 +417,20 @@ mod tests {
     }
 
     fn test_client_on_workspace(monitor_id: i32, fullscreen: bool, workspace_id: i32) -> WmClient {
-        WmClient {
-            id: format!("0x{}", monitor_id),
-            class: "test".into(),
-            initial_class: "test".into(),
-            title: "test".into(),
-            pid: 1,
-            workspace: WmWorkspace {
-                id: workspace_id,
-                name: format!("{}", workspace_id),
-            },
-            floating: false,
-            monitor_id,
-            fullscreen,
-        }
+        // `WmClient` is #[non_exhaustive] — construct via Default + fluent setters.
+        WmClient::default()
+            .with_id(format!("0x{}", monitor_id))
+            .with_class("test")
+            .with_initial_class("test")
+            .with_title("test")
+            .with_pid(1) // arbitrary non-zero PID for this fixture
+            .with_workspace(
+                WmWorkspace::default()
+                    .with_id(workspace_id)
+                    .with_name(format!("{}", workspace_id)),
+            )
+            .with_monitor_id(monitor_id)
+            .with_fullscreen(fullscreen)
     }
 
     #[test]
