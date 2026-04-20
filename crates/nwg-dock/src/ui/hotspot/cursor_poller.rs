@@ -403,7 +403,7 @@ mod tests {
             .with_y(y)
             .with_width(w)
             .with_height(h)
-            .with_scale(1.0)
+            .with_scale(1.0) // test fixture — no HiDPI scaling
             .with_active_workspace(
                 WmWorkspace::default()
                     .with_id(active_workspace_id)
@@ -423,7 +423,7 @@ mod tests {
             .with_class("test")
             .with_initial_class("test")
             .with_title("test")
-            .with_pid(1)
+            .with_pid(1) // arbitrary non-zero PID for this fixture
             .with_workspace(
                 WmWorkspace::default()
                     .with_id(workspace_id)
