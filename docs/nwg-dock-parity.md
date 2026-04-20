@@ -4,7 +4,7 @@ Comparison of the Rust port's dock (`crates/nwg-dock/`) against [`nwg-piotr/nwg-
 
 | | |
 |---|---|
-| **Scope** | `nwg-piotr/nwg-dock@8ecd84c65f` (v0.4.3, 2025-01-10) vs. current Rust port |
+| **Scope** | `nwg-piotr/nwg-dock@8ecd84c65f` (v0.4.3, 2025-01-10) vs. `jasonherald/mac-doc-hyprland@d907e17b` (2026-04-19) |
 | **Audit date** | 2026-04-19 |
 | **Tracking epic** | [#126](https://github.com/jasonherald/mac-doc-hyprland/issues/126) |
 | **Scheduling** | Deferred until after Phase 4 / split completes — not blocking Phase 2 v0.3.0 publish (see epic #126 rationale) |
@@ -75,12 +75,35 @@ Not gaps, but worth recording so "superset" is honest:
 
 ## Method
 
+Reproducible against the pinned commits in the Scope row above. All steps below fetch exactly the sources audited:
+
+```bash
+# Pin both sides
+GO_SHA=8ecd84c65f
+RUST_SHA=d907e17b
+
+# Go side — fetch and inspect
+mkdir -p /tmp/nwg-dock-parity/go
+for f in README.md main.go tools.go Makefile; do
+    gh api "repos/nwg-piotr/nwg-dock/contents/$f?ref=$GO_SHA" \
+        --jq .content | base64 -d > "/tmp/nwg-dock-parity/go/$f"
+done
+
+# Rust side — fetch the pinned source tree and enumerate CLI flags
+git clone https://github.com/jasonherald/mac-doc-hyprland /tmp/nwg-dock-parity/rust
+git -C /tmp/nwg-dock-parity/rust checkout "$RUST_SHA"
+cd /tmp/nwg-dock-parity/rust
+cargo run -p nwg-dock --bin nwg-dock-hyprland -- --help > /tmp/nwg-dock-parity/rust-help.txt
+```
+
+Concrete steps performed:
+
 1. Pulled `README.md`, `main.go`, `tools.go`, `config/` from `nwg-piotr/nwg-dock@8ecd84c65f` via `gh api`.
 2. Enumerated Go CLI flags from `main.go`'s `flag.*` declarations.
-3. Enumerated Rust CLI flags from `target/release/nwg-dock-hyprland --help` output.
-4. Cross-checked Go Sway event handlers (`tools.go:swayEventHandler.*`) against our `WmEvent` enum.
+3. Enumerated Rust CLI flags via `cargo run -p nwg-dock --bin nwg-dock-hyprland -- --help` at the pinned Rust SHA.
+4. Cross-checked Go Sway event handlers (`tools.go:swayEventHandler.*`) against our `WmEvent` enum at the pinned Rust SHA.
 5. Skimmed Go `config/` contents — only `style.css` + `hotspot.css` (no config-file schema, so nothing to diff).
-6. Walked runtime behaviors called out in the Go README (resident mode, SIGUSR1 toggle, autohide, hotspots).
+6. Walked runtime behaviors called out in the Go README (resident mode, SIGUSR1 toggle, autohide, hotspots) and grepped the Rust tree for the equivalent.
 
 ## Closing-out convention
 
