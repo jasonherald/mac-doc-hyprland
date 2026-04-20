@@ -15,7 +15,11 @@ The script runs 18 assertions across 5 sections. It builds the full workspace up
 
 ## Per-section classification
 
+> **Validated against `tests/integration/test_runner.sh` at commit `657d320` (2026-04-19).** Line ranges below are point-in-time anchors and will drift as the script evolves. Each subsection also records the section-header string the script prints (e.g. `=== Sway IPC Tests ===`) so future readers can re-locate sections by grep regardless of line numbers. When the script changes, re-validate via header match first, then update the ranges here.
+
 ### Bootstrap (lines 9–159, 419–432)
+
+_No header banner — this is the script's setup/teardown scaffolding, not one of the `echo "=== ... ==="` sections._
 
 Prerequisite checks, Sway headless launch, Wayland/SWAYSOCK socket discovery, teardown trap, result tally. Infrastructure, not tests.
 
@@ -25,6 +29,8 @@ Prerequisite checks, Sway headless launch, Wayland/SWAYSOCK socket discovery, te
 
 ### Sway IPC tests (lines 161–176) — 3 assertions
 
+Section header in the script: `=== Sway IPC Tests ===`.
+
 Drives `swaymsg -t get_tree / get_outputs / get_version` against the headless Sway and asserts the responses contain the expected JSON fields.
 
 **Target repo:** `nwg-common`.
@@ -32,6 +38,8 @@ Drives `swaymsg -t get_tree / get_outputs / get_version` against the headless Sw
 These validate that the Sway backend we abstract in `compositor/sway/ipc.rs` has an underlying compositor actually talking back. They're the contract tests for the library's Sway backend. No binary involvement.
 
 ### Dock binary tests (lines 178–214) — 2 assertions
+
+Section header in the script: `=== Dock Binary Tests ===`.
 
 Starts the dock with `--wm sway -m -d -i 48 --mb 10 --hide-timeout 400`, checks it stays alive for 2 s, greps the log for errors/panics.
 
@@ -41,6 +49,8 @@ Exclusively about the dock binary starting cleanly against a compositor. No cros
 
 ### Sway window-management tests (lines 216–371) — 7 assertions + 1 stress
 
+Section header in the script: `=== Sway Window Management Tests ===`.
+
 Opens `foot` terminals via `swaymsg exec`, verifies window appears in tree, focus command targets the right app_id, `floating toggle` creates a floating_con, `move to workspace 2` relocates the window, `kill` removes it, `create_output` adds a second headless output, and a 5-window rapid-open/close stress test leaves the tree clean.
 
 **Target repo:** `nwg-common`.
@@ -48,6 +58,8 @@ Opens `foot` terminals via `swaymsg exec`, verifies window appears in tree, focu
 Despite driving raw `swaymsg` (not our Compositor trait), these are validating the behaviors the library's Sway backend depends on — focus, floating, workspace moves, multi-output, kill semantics. Natural home is alongside the trait they back. A future refactor could rewrite these to use the Rust trait directly; that's out of scope for the split itself (tracked separately if we file it).
 
 ### Notification daemon tests (lines 373–417) — 3 assertions + 2 signal checks
+
+Section header in the script: `=== Notification Daemon Tests ===`.
 
 Starts `nwg-notifications --wm sway --persist`, verifies it's alive, checks the log for panics, sends `SIGRTMIN+4` (panel toggle) and `SIGRTMIN+5` (DND toggle), verifies the daemon stays alive after each signal.
 
