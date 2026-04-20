@@ -44,7 +44,11 @@ nwg-drawer -r --pb-auto
 # Force Sway backend (auto-detection is usually enough)
 nwg-drawer --wm sway
 
-# Force the null (compositor-less) fallback
+# Use uwsm launcher mode (auto-detects Hyprland or Sway from env).
+# Note: uwsm is a launch-wrapper mode, NOT a trigger for the null
+# fallback — detection still falls through to
+# HYPRLAND_INSTANCE_SIGNATURE / SWAYSOCK. The null backend kicks in
+# automatically when neither env var is set (Niri, river, Openbox).
 nwg-drawer --wm uwsm
 ```
 
@@ -56,13 +60,19 @@ src/
 ├── config.rs          # clap CLI with CloseButton enum
 ├── state.rs           # DrawerState + AppRegistry sub-struct
 ├── desktop_loader.rs  # Scans .desktop files, multi-category assignment
-├── listeners.rs       # Keyboard, focus detector, file watcher, signals
+├── listeners.rs       # Focus detector, file watcher, signal receiver
 └── ui/
+    ├── navigation.rs     # install_grid_nav — capture-phase arrow-key
+    │                     # traversal across FlowBox grids (app grid,
+    │                     # pinned row, categories). Uses Weak refs
+    │                     # to avoid widget ↔ controller cycles.
     ├── well_builder.rs   # WellContext (bundles 7+ params into one struct)
+    ├── well_context.rs   # The WellContext struct itself
     ├── search_handler.rs
     ├── app_grid.rs, pinned.rs, file_search.rs
     ├── widgets.rs
     ├── math.rs           # exmex-based expression evaluator (see Conventions)
+    ├── categories.rs
     ├── power_bar.rs
     ├── search.rs
     └── window.rs
@@ -87,7 +97,7 @@ assets/
 
 ### Capture-phase keyboard nav
 
-The drawer's arrow-key navigation uses a capture-phase event handler to bypass `FlowBox`'s default key bindings. See `listeners.rs`. Avoids intercepting type-to-search characters; only arrows/Enter/Escape are consumed.
+The drawer's arrow-key navigation uses a capture-phase event handler to bypass `FlowBox`'s default key bindings. See `ui/navigation.rs` (`install_grid_nav`). Avoids intercepting type-to-search characters; only arrows/Enter/Escape are consumed. Up/down edges can jump to adjacent FlowBox grids (app grid → pinned row → categories) via the `up_target` / `down_target` parameters.
 
 ### Launcher command
 
