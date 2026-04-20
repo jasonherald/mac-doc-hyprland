@@ -4,7 +4,7 @@
 
 A D-Bus notification daemon + notification center for Hyprland and Sway, written in Rust. Claims `org.freedesktop.Notifications`, shows popup toasts, and ships a slide-out history panel with Do-Not-Disturb and waybar integration. Replaces mako in the mac-doc-hyprland stack; runs standalone.
 
-Consumes [`nwg-common`](https://github.com/jasonherald/nwg-common) for compositor IPC, `.desktop` parsing, icon resolution, signal plumbing, and layer-shell backdrops.
+Consumes [`nwg-common`](https://github.com/jasonherald/nwg-common) for compositor IPC, `.desktop` parsing, signal plumbing, and layer-shell backdrops. Notification-specific icon helpers (`resolve_popup_icon` / `resolve_theme_icon`) live locally in `src/ui/icons.rs` — they're pixbuf / theme-variant helpers specific to the popup and panel rendering path, not shared with dock/drawer.
 
 Pre-split (before v0.3.0) this lived inside the [mac-doc-hyprland](https://github.com/jasonherald/mac-doc-hyprland) monorepo at `crates/nwg-notifications/`.
 
@@ -122,6 +122,6 @@ The daemon writes its current state to `$XDG_RUNTIME_DIR/mac-notifications-statu
 
 - `CHANGELOG.md` — user-visible changes per release, Keep-a-Changelog format.
 - `README.md` — public-facing docs + install matrix + waybar config + D-Bus service file setup.
-- [`nwg-common`](https://github.com/jasonherald/nwg-common) — shared library (Compositor trait for focus-on-click, icons, signals, layer-shell backdrops).
+- [`nwg-common`](https://github.com/jasonherald/nwg-common) — shared library (Compositor trait for focus-on-click, `.desktop` metadata lookup via `desktop::icons::get_exec`, signals, layer-shell backdrops). Pixbuf + theme-variant icon rendering stays local — see `src/ui/icons.rs`.
 - Parent monorepo archive: [jasonherald/mac-doc-hyprland](https://github.com/jasonherald/mac-doc-hyprland).
 - [Desktop Notifications Specification](https://specifications.freedesktop.org/notification-spec/latest/) — canonical reference for D-Bus protocol compliance.

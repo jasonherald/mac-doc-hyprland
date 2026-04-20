@@ -106,7 +106,7 @@ The dock rebuild function needs to pass itself to buttons (for pin/unpin rebuild
 
 ### Cursor-based autohide
 
-Uses compositor IPC cursor position polling (Hyprland `j/cursorpos`). Cached monitor list refreshed every ~10s. See `ui/hotspot.rs`. On Sway (no cursor-position IPC) this falls back to GTK hotspot windows.
+Uses compositor IPC cursor position polling (Hyprland `j/cursorpos`). Cached monitor list refreshed every ~10s. The implementation lives under `ui/hotspot/` — `mod.rs` coordinates, `cursor_poller.rs` owns the Hyprland path, `hotspot_windows.rs` owns the Sway fallback (GTK hotspot surfaces, since Sway has no cursor-position IPC).
 
 ### Drag-to-reorder
 
