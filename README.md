@@ -10,7 +10,7 @@
 > | `nwg-common` (shared library) | [`jasonherald/nwg-common`](https://github.com/jasonherald/nwg-common) | [`nwg-common 0.3.0`](https://crates.io/crates/nwg-common) | ✅ published |
 > | `nwg-dock` (renamed from `nwg-dock-hyprland` — supports both Hyprland and Sway) | [`jasonherald/nwg-dock`](https://github.com/jasonherald/nwg-dock) | [`nwg-dock 0.3.0`](https://crates.io/crates/nwg-dock) | ✅ published |
 > | `nwg-drawer` | [`jasonherald/nwg-drawer`](https://github.com/jasonherald/nwg-drawer) | [`nwg-drawer 0.3.0`](https://crates.io/crates/nwg-drawer) | ✅ published |
-> | `nwg-notifications` | [Phase 4: create repo](https://github.com/jasonherald/mac-doc-hyprland/issues/103) | [Phase 4: publish v0.3.0](https://github.com/jasonherald/mac-doc-hyprland/issues/106) | planned |
+> | `nwg-notifications` | [`jasonherald/nwg-notifications`](https://github.com/jasonherald/nwg-notifications) | [`nwg-notifications 0.3.0`](https://crates.io/crates/nwg-notifications) | ✅ published |
 >
 > **Heading to the dock?** Nothing's renamed yet — current `exec-once = nwg-dock-hyprland …` autostart lines keep working today because the binary is still called `nwg-dock-hyprland` in this monorepo. When the Phase 2 rename to `nwg-dock` lands, the Makefile will install a `nwg-dock-hyprland` → `nwg-dock` symlink ([tracked in #96](https://github.com/jasonherald/mac-doc-hyprland/issues/96)) so those autostart lines continue to work on upgrade without any config edits.
 
